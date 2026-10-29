@@ -1,0 +1,24 @@
+# Every path requires review from a maintainer.
+# Later rules take precedence; the explicit sections below document the
+# areas where maintainer approval is never optional (REPO-005).
+
+*                   @tapionx
+
+# Sources of truth
+/specs/             @tapionx
+/VISION.md          @tapionx
+/ROADMAP.md         @tapionx
+
+# Project rules and governance
+/AGENTS.md          @tapionx
+/CLAUDE.md          @tapionx
+/CONTRIBUTING.md    @tapionx
+/GOVERNANCE.md      @tapionx
+/SECURITY.md        @tapionx
+/CODE_OF_CONDUCT.md @tapionx
+/LICENSE            @tapionx
+/LICENSES/          @tapionx
+/REUSE.toml         @tapionx
+/.github/           @tapionx
+/tools/             @tapionx
+/tests/tooling/     @tapionx

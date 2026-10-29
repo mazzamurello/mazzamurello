@@ -1,0 +1,29 @@
+version = 1
+
+# Default: everything is AGPL-3.0-or-later (see ADR-0002).
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "The Mazzamurello contributors"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+# Specifications, documentation and prose are CC-BY-4.0.
+# Later annotations take precedence over earlier ones.
+[[annotations]]
+path = [
+  "specs/**",
+  "docs/**",
+  "README.md",
+  "VISION.md",
+  "ROADMAP.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "CONTRIBUTING.md",
+  "GOVERNANCE.md",
+  "SECURITY.md",
+  "CHANGELOG.md",
+  "CODE_OF_CONDUCT.md",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "The Mazzamurello contributors"
+SPDX-License-Identifier = "CC-BY-4.0"

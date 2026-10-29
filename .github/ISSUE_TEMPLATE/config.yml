@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/mazzamurello/mazzamurello/security/advisories/new
+    about: Report security issues privately. Never open a public issue for them.
+  - name: Questions and ideas
+    url: https://github.com/mazzamurello/mazzamurello/discussions
+    about: Ask questions and discuss ideas before proposing a spec change.

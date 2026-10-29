@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Least privilege by default (REPO-007). No job in this workflow uses secrets,
+# so it is safe to run on pull requests from forks (REPO-008).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  specs:
+    name: Spec lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check specs (REPO-003)
+        run: python3 tools/check_specs.py
+
+  tooling-tests:
+    name: Tooling tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run tooling tests
+        run: python3 -m unittest discover -s tests/tooling -t . -v
+
+  pr-policy:
+    name: Pull request policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # Branch names are attacker-controlled: pass them through the
+      # environment, never interpolate them into the script.
+      - name: Check allowed paths (REPO-001)
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 tools/check_pr_paths.py --branch "$HEAD_REF" --base "origin/$BASE_REF" --head HEAD
+      - name: Check DCO sign-off (REPO-002)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 tools/check_dco.py --base "origin/$BASE_REF" --head HEAD
