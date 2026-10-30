@@ -45,9 +45,13 @@ requirement ID or ADR that does not exist.
 - **Phase:** 0
 - **Verification:** unit
 
-Once the first tests exist, CI MUST fail when an `accepted` or `implemented`
-requirement with priority MUST and an automated verification kind has no test
-referencing it, or when a test references a requirement that does not exist.
+Tests reference the requirements they verify with the `spec` pytest marker.
+CI MUST fail when a test references a requirement that does not exist or whose
+status is `draft` or `deprecated`, and when an `implemented` requirement with
+priority MUST and an automated verification kind has no test referencing it.
+CI MUST report, without failing, the `accepted` requirements of that kind that
+have no test yet, so that tests can be written incrementally before a
+requirement is marked `implemented`.
 
 ## REPO-005: Maintainer review of rules and specs
 
@@ -91,3 +95,15 @@ names) directly into scripts.
 Workflows triggered by pull requests from forks, including AI review agents,
 MUST run without secrets and without write permissions. Automation that needs
 secrets MUST be triggered explicitly by a maintainer.
+
+## REPO-009: Code quality gates
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** review
+
+CI MUST run, on every pull request and on `master`, the formatter check, the
+linter, the type checker in strict mode and the test suite of the Python
+workspace, and MUST fail on any finding. Dependencies MUST be installed from
+the committed lock file only.
