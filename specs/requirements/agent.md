@@ -5,13 +5,13 @@ model T-08 to T-10.
 
 ## AGT-001: All actions through mediated tools
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
 
 The agent MUST act only by invoking mediated tools executed by the control
-plane. There MUST NOT be any other channel from the model to the outside
+plane. There MUST NOT be any other way for the model to act on the outside
 world.
 
 ## AGT-002: Per-user tool permissions
@@ -92,7 +92,7 @@ conversation, approval outcome) that the user it acted for can view.
 
 ## AGT-009: Durable runs
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -103,7 +103,7 @@ disconnect and later receive everything that happened (ADR-0026).
 
 ## AGT-010: Runs are never silently lost
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -111,3 +111,14 @@ disconnect and later receive everything that happened (ADR-0026).
 If the process executing a run stops before the run completes, the run MUST
 be either resumed, retried or marked as failed with an event visible to the
 user.
+
+## AGT-011: Command execution tool
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+The agent MUST have a mediated tool that runs a command in the sandbox of the
+user it acts for and returns the command's output and exit code. The tool
+MUST NOT be able to target any other user's sandbox.
