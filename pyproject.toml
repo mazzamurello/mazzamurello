@@ -1,0 +1,52 @@
+# Workspace root (ADR-0028): tooling configuration shared by every package.
+[project]
+name = "mazzamurello-workspace"
+version = "0.0.0"
+requires-python = ">=3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["src/server", "src/sandboxd", "src/netguard"]
+
+[dependency-groups]
+dev = [
+  "pyright==1.1.414",
+  "pytest==9.2.0",
+  "ruff==0.17.3",
+  "ty==0.0.95",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+src = ["src/server", "src/sandboxd", "src/netguard", "tests"]
+# Repository governance tooling is stdlib-only and checked by its own tests.
+extend-exclude = ["tools", "tests/tooling"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "S", "ASYNC", "SIM", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
+include = ["src", "tests"]
+exclude = ["tests/tooling", "**/__pycache__", "**/.venv"]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+include = ["src", "tests"]
+exclude = ["tests/tooling"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--strict-config", "-ra"]
+markers = [
+  "spec(*ids): requirement IDs the test verifies (REPO-004)",
+]
