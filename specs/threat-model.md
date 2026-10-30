@@ -10,8 +10,11 @@ whenever a requirement in the security-relevant areas changes.
   admin, in containers, with Docker Engine.
 - **The instance admin is trusted** (ADR-0011). They can read all data on
   the server; protecting users from the admin is out of scope.
-- The host kernel and the isolation runtime (gVisor, or Kata Containers) are
-  kept up to date by the instance admin.
+- The host kernel and the isolation runtime (gVisor) are kept up to date by
+  the instance admin.
+- Sandbox egress is enforced in the host kernel by a dedicated `nftables`
+  table maintained by the network guard (ADR-0021). The host may be a cloud VM
+  without hardware virtualization (OPS-009).
 - Models — local or remote — are **not trusted to behave**: any model can be
   manipulated by the content it reads (prompt injection).
 - Remote model providers receive whatever the data egress policy allows them
@@ -73,7 +76,7 @@ beyond keeping them configurable and updatable.
 |---|---|---|---|
 | T-01 | A user reads or modifies another user's private data through the API | X2 | TEN-003, TEN-004, TEN-005, TEN-006, TEN-007 |
 | T-02 | A user of one tenant reaches data of another tenant | X2 | TEN-002, TEN-003, TEN-006, TEN-008 |
-| T-03 | Code in a sandbox escapes to the host | X3 | SBX-002, SBX-003, SBX-011, SBX-012, OPS-004 |
+| T-03 | Code in a sandbox escapes to the host | X3 | SBX-002, SBX-003, SBX-011, SBX-012, SBX-017, OPS-004 |
 | T-04 | Code in a sandbox scans or attacks the LAN, the host's services or cloud metadata endpoints | X1, X3 | SBX-005, SBX-007, SBX-013, SBX-015, OPS-003 |
 | T-05 | Code in one sandbox reaches another user's sandbox | X3 | SBX-001, SBX-006 |
 | T-06 | Secrets are stolen from inside a sandbox | X3 | SBX-008, MOD-002 |
@@ -85,9 +88,10 @@ beyond keeping them configurable and updatable.
 | T-12 | Personal data leaks through logs, traces or telemetry | X4, X5 | OBS-001, OBS-002, OBS-003, OBS-004, OBS-005 |
 | T-13 | A user cannot see or remove what the assistant retained about them | — | MEM-001, MEM-002, MEM-003, MEM-004 |
 | T-14 | Unauthenticated access or account takeover through the exposed endpoint | X4 | AUTH-001, AUTH-002, OPS-003 |
-| T-15 | Resource exhaustion: a sandbox or a user consumes all CPU, memory, disk or model budget | X2, X3 | SBX-011, MOD-004 |
+| T-15 | Resource exhaustion: a sandbox or a user consumes all CPU, memory, disk or model budget | X2, X3 | SBX-011, SBX-016, MOD-004 |
 | T-16 | Malicious pull request or compromised CI action injects code or steals secrets | X5 | REPO-001, REPO-005, REPO-007, REPO-008 |
 | T-17 | Tampered release images | X5 | OPS-007 |
+| T-18 | The host egress rules disappear (firewall reload, reboot, manual change) while sandboxes run, leaving them unfiltered | — | SBX-015, OPS-002 |
 
 ## The lethal trifecta in Mazzamurello
 
@@ -117,5 +121,7 @@ Prompts are never relied upon as a security boundary.
   the assistant give a wrong answer. Provenance labels make this visible but
   cannot prevent it.
 - **Isolation runtime vulnerabilities.** gVisor reduces but does not
-  eliminate kernel attack surface; Kata Containers is available for stronger
-  isolation (ADR-0010).
+  eliminate kernel attack surface. A dedicated guest kernel per sandbox
+  (microVMs) would isolate more strongly, but requires hardware virtualization,
+  which cloud VMs often lack; this trade-off is accepted (ADR-0023). Egress
+  enforcement does not depend on gVisor's integrity (ADR-0021).

@@ -44,9 +44,11 @@ new entry here first (ADR-0005).
 | Sandbox | A per-user isolated execution environment with internet access and no access to local networks. |
 | Workspace | The persistent storage of a user's sandbox. |
 | Sandbox driver | The only component allowed to manage containers; exposes a minimal API to the control plane. |
-| Network sidecar | A minimal container that owns a sandbox's network namespace and enforces its egress policy (ADR-0021). Never runs user code. |
+| Sandbox bridge | The host network bridge, with a fixed interface name, to which all sandboxes attach; the egress table matches it (ADR-0021). |
+| Network guard | A small infrastructure container, with host networking and `NET_ADMIN`, that installs and maintains the egress table on the host (ADR-0021). Never runs user code. |
+| Egress table | The dedicated `nftables` table on the host that enforces the egress policy for traffic from the sandbox bridge (ADR-0021). |
 | Canary sandbox | A short-lived sandbox the sandbox driver starts to verify isolation before accepting requests. |
-| Isolation runtime | The container runtime that enforces sandbox isolation: gVisor by default, Kata Containers optionally. |
+| Isolation runtime | The container runtime that enforces sandbox isolation: gVisor (ADR-0023). |
 | Egress policy | The network rules that decide which destinations a sandbox may reach. |
 
 ## Models
