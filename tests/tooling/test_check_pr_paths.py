@@ -40,7 +40,14 @@ class PullRequestPathsTest(unittest.TestCase):
         self.assertRejected("docs/install-guide", "AGENTS.md")
 
     def test_rules_files_only_in_rules_pull_requests(self) -> None:
-        for path in ("AGENTS.md", ".github/workflows/ci.yml", "tools/check_dco.py", "tests/tooling/test_x.py", "LICENSE"):
+        for path in (
+            "AGENTS.md",
+            ".github/workflows/ci.yml",
+            ".devcontainer/devcontainer.json",
+            "tools/check_dco.py",
+            "tests/tooling/test_x.py",
+            "LICENSE",
+        ):
             with self.subTest(path=path):
                 self.assertAllowed("rules/tighten-ci", path)
                 self.assertRejected("test/anything", path)
