@@ -39,7 +39,7 @@ given by its branch prefix. CI rejects files outside the allowed paths.
 | `test/` | `tests/`, `evals/` |
 | `impl/` | `src/`, `migrations/`, `deploy/`, `pyproject.toml`, `uv.lock` |
 | `docs/` | `docs/`, `README.md`, `CHANGELOG.md` |
-| `rules/` | `AGENTS.md`, governance files, `.github/`, `tools/`, licensing files |
+| `rules/` | `AGENTS.md`, governance files, `.github/`, `.devcontainer/`, `tools/`, licensing files |
 
 The intended flow for a feature is:
 
@@ -100,7 +100,16 @@ AI-assisted contributions are welcome — under the same rules:
 
 ```bash
 python3 tools/check_specs.py
+python3 tools/check_traceability.py
 python3 -m unittest discover -s tests/tooling -t . -v
 ```
 
-More checks will be added as code arrives.
+Once the Python workspace exists, also run:
+
+```bash
+uv sync --locked --all-packages
+uv run ruff format --check
+uv run ruff check
+uv run pyright
+uv run pytest
+```
