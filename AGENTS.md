@@ -36,7 +36,7 @@ The branch prefix defines what a pull request may touch. CI enforces it
 | `test/*` | `tests/`, `evals/` | Tests written from specs, before code |
 | `impl/*` | `src/`, `migrations/`, `deploy/`, `pyproject.toml`, `uv.lock` | Make tests pass |
 | `docs/*` | `docs/`, `README.md`, `CHANGELOG.md` | Documentation |
-| `rules/*` | this file, `.github/`, `tools/`, governance files | Project rules (maintainer only) |
+| `rules/*` | this file, `.github/`, `.devcontainer/`, `tools/`, governance files | Project rules (maintainer only) |
 
 Implementation never modifies tests. If a test looks wrong, stop and say so.
 
