@@ -13,6 +13,7 @@ new entry here first (ADR-0005).
 | Tenant | An isolated group of users with its own data: typically a household, possibly a small organization. |
 | Tenant admin | A user who manages a tenant's users, shared spaces and tool permissions. |
 | User | A person with an account in exactly one tenant. |
+| Device session | An authenticated session of one user on one device, identified by an opaque token and revocable by the user (ADR-0025). |
 | Private data | Data owned by one user and visible only to that user. The default for all data. |
 | Shared space | A container of data explicitly shared among some or all users of a tenant (e.g. family calendar, shopping list). |
 
@@ -24,6 +25,8 @@ new entry here first (ADR-0005).
 | Message | One entry in a conversation, from the user or the assistant. |
 | Agent | The component that turns a user request into model calls and tool calls. |
 | Run | One execution of the agent in response to a message, including all its model and tool calls. |
+| Run event | An ordered, persisted record of something that happened during a run (text, tool call, result, approval request, completion), streamed to clients (ADR-0026). |
+| Worker | A server process that executes runs and scheduled tasks taken from the job queue (ADR-0026). |
 | Tool | A capability the agent can invoke. All tools are mediated tools. |
 | Mediated tool | A tool executed by the control plane, which checks permissions, approvals and records audit events. |
 | Capability class | A declared property of a tool used for safety decisions: `reads_private_data`, `ingests_untrusted`, `external_communication`, `irreversible`, `physical`. |
