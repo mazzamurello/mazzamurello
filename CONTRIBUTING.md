@@ -113,3 +113,6 @@ uv run ruff check
 uv run pyright
 uv run pytest
 ```
+
+`uv run ty check` gives faster type-checking feedback; pyright remains the
+required gate until ty meets the switch criteria recorded in `specs/adr/`.
