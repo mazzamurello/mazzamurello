@@ -5,7 +5,7 @@ T-03 to T-07.
 
 ## SBX-001: One sandbox per user
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -15,7 +15,7 @@ users, and code run on behalf of a user MUST run only in that user's sandbox.
 
 ## SBX-002: Strong isolation runtime
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -26,7 +26,7 @@ stronger than a plain container and does not require hardware virtualization
 
 ## SBX-003: Fail closed without isolation
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -40,7 +40,7 @@ accepting any request.
 
 ## SBX-004: Internet access
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -50,14 +50,14 @@ can browse, download and install software.
 
 ## SBX-005: No access to local networks
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
 
 A sandbox MUST NOT be able to open connections to: `0.0.0.0/8`, `10.0.0.0/8`,
 `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`,
-`192.168.0.0/16`, `224.0.0.0/4`, `::1/128`, `fc00::/7`, `fe80::/10`, `ff00::/8`,
+`192.168.0.0/16`, `224.0.0.0/4`, `240.0.0.0/4`, `::1/128`, `fc00::/7`, `fe80::/10`, `ff00::/8`,
 or any address of the host. These restrictions MUST be enforced outside the
 sandbox's kernel, so that they hold even for code with full control of the
 sandbox's network configuration. Security tests MUST verify this from inside a
@@ -66,7 +66,7 @@ privileges attached like a sandbox.
 
 ## SBX-006: No sandbox-to-sandbox traffic
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -86,7 +86,7 @@ internal to the instance or the household network.
 
 ## SBX-008: No secrets in sandboxes
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -97,13 +97,13 @@ explicitly placed in their own workspace.
 
 ## SBX-009: Container runtime confined to the sandbox driver
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
 
-Only the sandbox driver MUST have access to the container runtime. The
-control plane MUST NOT mount the container runtime socket and MUST interact
+The sandbox driver MUST be the only component with access to the container
+runtime. The control plane MUST NOT mount the container runtime socket and MUST interact
 with sandboxes only through the sandbox driver's authenticated API.
 
 ## SBX-010: Persistent workspace
@@ -118,7 +118,7 @@ and re-creation, so that installed software and files persist for the user.
 
 ## SBX-011: Resource limits
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -129,7 +129,7 @@ MUST count the processes running inside the sandbox.
 
 ## SBX-012: No privileged sandboxes
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -139,7 +139,7 @@ other than their own workspace. Root inside the sandbox is allowed.
 
 ## SBX-013: No unfiltered IPv6
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -161,7 +161,7 @@ work on files provided by the user and return the files it produces.
 
 ## SBX-015: Network restrictions before any code runs
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -184,7 +184,7 @@ ext4.
 
 ## SBX-017: Supported gVisor release
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration

@@ -4,7 +4,7 @@ How people sign in and how accounts are created.
 
 ## AUTH-001: Local accounts
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -14,7 +14,7 @@ Passwords MUST never be logged or stored in reversible form.
 
 ## AUTH-002: Accounts created by administrators
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -34,7 +34,7 @@ provider (e.g. a self-hosted identity provider), mapped to existing accounts.
 
 ## AUTH-004: Revocable device sessions
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -58,9 +58,20 @@ set.
 
 ## AUTH-006: Login rate limiting
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
 
 Login attempts MUST be rate-limited per account and per source address.
+
+## AUTH-007: First administrator without default credentials
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+The first instance admin MUST be created during setup by an explicit,
+one-time command run by whoever operates the instance. The system MUST NOT
+ship or accept any default credentials.

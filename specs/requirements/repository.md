@@ -5,7 +5,7 @@ ADR-0003, ADR-0004, ADR-0002.
 
 ## REPO-001: Pull request types and allowed paths
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -18,7 +18,7 @@ Implementation pull requests MUST NOT change tests.
 
 ## REPO-002: DCO sign-off
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -29,7 +29,7 @@ update bots are exempt.
 
 ## REPO-003: Spec format and cross-references
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -40,7 +40,7 @@ requirement ID or ADR that does not exist.
 
 ## REPO-004: Traceability
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -51,7 +51,7 @@ referencing it, or when a test references a requirement that does not exist.
 
 ## REPO-005: Maintainer review of rules and specs
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** review
@@ -62,7 +62,7 @@ and branch protection on `master`.
 
 ## REPO-006: English artifacts
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** review
@@ -72,7 +72,7 @@ Every repository artifact MUST be written in English, except i18n resources
 
 ## REPO-007: Hardened CI
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** review
@@ -83,7 +83,7 @@ names) directly into scripts.
 
 ## REPO-008: No secrets or write access for untrusted pull requests
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** review

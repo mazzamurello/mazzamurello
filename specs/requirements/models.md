@@ -5,7 +5,7 @@ Background: ADR-0017.
 
 ## MOD-001: Provider-agnostic model gateway
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -16,7 +16,7 @@ llama.cpp) and at least one remote provider (e.g. OpenRouter).
 
 ## MOD-002: Provider credentials stay in the control plane
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
