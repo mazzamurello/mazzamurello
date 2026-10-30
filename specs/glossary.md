@@ -44,6 +44,8 @@ new entry here first (ADR-0005).
 | Sandbox | A per-user isolated execution environment with internet access and no access to local networks. |
 | Workspace | The persistent storage of a user's sandbox. |
 | Sandbox driver | The only component allowed to manage containers; exposes a minimal API to the control plane. |
+| Network sidecar | A minimal container that owns a sandbox's network namespace and enforces its egress policy (ADR-0021). Never runs user code. |
+| Canary sandbox | A short-lived sandbox the sandbox driver starts to verify isolation before accepting requests. |
 | Isolation runtime | The container runtime that enforces sandbox isolation: gVisor by default, Kata Containers optionally. |
 | Egress policy | The network rules that decide which destinations a sandbox may reach. |
 
