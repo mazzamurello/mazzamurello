@@ -21,7 +21,8 @@ belongs to exactly one tenant.
 - **Phase:** 0
 - **Verification:** design
 
-Every row of tenant-scoped data MUST carry the identifier of its tenant.
+Every row of tenant-scoped data in the application schema MUST carry the
+identifier of its tenant.
 Every row of private data MUST also carry the identifier of the user who owns
 it.
 
@@ -32,8 +33,8 @@ it.
 - **Phase:** 0
 - **Verification:** design
 
-Every tenant-scoped table MUST have PostgreSQL row-level security enabled and
-forced, with policies restricting access to the current tenant and, for
+Every tenant-scoped table of the application schema MUST have PostgreSQL
+row-level security enabled and forced, with policies restricting access to the current tenant and, for
 private data, to the owning user. A design test MUST fail when a
 tenant-scoped table lacks enabled and forced row-level security.
 
@@ -93,3 +94,16 @@ explicitly creates it in, or moves it to, a shared space they belong to.
 Stored files MUST be partitioned by tenant and user. Storage paths MUST NOT be
 built from unvalidated user input, and a user MUST NOT be able to access a
 file outside their own partition or the shared spaces they belong to.
+
+## TEN-009: Durable execution data
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** security, design
+
+Data stored by the durable execution engine outside the application schema
+(ADR-0034) MUST be reached by application code only through run identifiers
+read from row-level-secured tables, MUST be deleted together with the
+conversation it belongs to, and MUST be deleted once its run has finished and
+the retention period configured by the instance admin has passed.

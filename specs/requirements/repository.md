@@ -107,3 +107,15 @@ CI MUST run, on every pull request and on `master`, the formatter check, the
 linter, the type checker in strict mode and the test suite of the Python
 workspace, and MUST fail on any finding. Dependencies MUST be installed from
 the committed lock file only.
+
+## REPO-010: Framework upgrades reviewed against release notes
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** review
+
+A pull request that changes the version of Pydantic AI, its harness or the
+durable execution engine in the lock file MUST summarize the relevant release
+notes since the previous version, and MUST record new features that could
+replace project code or change an ADR as issues or ADR proposals (ADR-0030).
