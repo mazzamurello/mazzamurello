@@ -20,9 +20,10 @@ every component running in a container, from a documented configuration file.
 - **Phase:** 0
 - **Verification:** integration
 
-The supported platforms are Linux on x86_64 and arm64 with Docker Engine. At
-startup the system MUST check the platform and the availability of the
-isolation runtime, and MUST report unsupported configurations clearly.
+The supported platforms are Linux on x86_64 and arm64 with Docker Engine and
+gVisor. At startup the system MUST check the platform, the availability of the
+isolation runtime and the egress rules, and MUST report unsupported
+configurations clearly.
 
 ## OPS-003: Minimal exposed surface
 
@@ -85,3 +86,15 @@ accompanied by a software bill of materials.
 
 Container images MUST NOT include model weights or voice models. They MUST be
 downloaded at setup time, with their licenses shown to the instance admin.
+
+## OPS-009: Cloud VMs without hardware virtualization
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** e2e
+
+The system MUST run, with all its isolation guarantees, on a host without
+hardware virtualization support (no `/dev/kvm`), such as a cloud VM without
+nested virtualization. It MAY use hardware virtualization when available, for
+performance only.

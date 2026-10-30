@@ -20,10 +20,9 @@ users, and code run on behalf of a user MUST run only in that user's sandbox.
 - **Phase:** 0
 - **Verification:** integration
 
-Sandboxes MUST run under an isolation runtime stronger than a plain
-container: gVisor by default, Kata Containers as a supported option. The
-runtime MUST be selected through a provider interface so that new providers
-can be added without changing the control plane.
+Sandboxes MUST run under the gVisor isolation runtime (`runsc`), which is
+stronger than a plain container and does not require hardware virtualization
+(ADR-0023).
 
 ## SBX-003: Fail closed without isolation
 
@@ -59,8 +58,11 @@ can browse, download and install software.
 A sandbox MUST NOT be able to open connections to: `0.0.0.0/8`, `10.0.0.0/8`,
 `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`,
 `192.168.0.0/16`, `224.0.0.0/4`, `::1/128`, `fc00::/7`, `fe80::/10`, `ff00::/8`,
-or any address of the host. Security tests MUST verify this from inside a
-running sandbox.
+or any address of the host. These restrictions MUST be enforced outside the
+sandbox's kernel, so that they hold even for code with full control of the
+sandbox's network configuration. Security tests MUST verify this from inside a
+running sandbox, and from a test container with network administration
+privileges attached like a sandbox.
 
 ## SBX-006: No sandbox-to-sandbox traffic
 
@@ -121,8 +123,9 @@ and re-creation, so that installed software and files persist for the user.
 - **Phase:** 0
 - **Verification:** integration
 
-Each sandbox MUST be limited in CPU, memory, disk usage, number of processes
-and execution time, with limits configurable by the instance admin.
+Each sandbox MUST be limited in CPU, memory, number of processes and
+execution time, with limits configurable by the instance admin. Process limits
+MUST count the processes running inside the sandbox.
 
 ## SBX-012: No privileged sandboxes
 
@@ -165,4 +168,28 @@ work on files provided by the user and return the files it produces.
 
 A sandbox's network restrictions MUST be applied and verified before any code
 runs in the sandbox. If they cannot be applied or verified, the sandbox MUST
-NOT start.
+NOT start. If they stop being in place while sandboxes are running, the
+sandbox driver MUST stop those sandboxes.
+
+## SBX-016: Workspace disk limit
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+The disk space a sandbox can use, including its workspace, MUST be limited to
+a size configurable by the instance admin, on common host filesystems such as
+ext4.
+
+## SBX-017: Supported gVisor release
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+The sandbox driver MUST refuse to start sandboxes when the installed gVisor
+release is older than the minimum release documented by the project, and MUST
+tell the instance admin how to install a supported release from gVisor's
+official repository.
