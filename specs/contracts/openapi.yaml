@@ -1,0 +1,825 @@
+openapi: 3.1.0
+info:
+  title: Mazzamurello public API
+  version: 0.1.0-draft
+  summary: The single public HTTP API used by every Mazzamurello client (API-001).
+  description: |
+    Contract for phase 0. Requirements are referenced in `x-requirements`.
+
+    Conventions:
+    - All identifiers are UUIDs (version 7, time-ordered).
+    - All timestamps are RFC 3339 in UTC.
+    - Authentication uses opaque device session tokens (ADR-0025). In phase 0
+      clients send them as `Authorization: Bearer <token>`; the cookie
+      transport arrives with the web client in phase 1 (AUTH-005).
+    - Errors are RFC 9457 problem details with a stable `code` (API-007).
+    - Resources of other users or other tenants are reported as
+      `not_found`, never as `forbidden`, so their existence is not disclosed
+      (TEN-006).
+    - Lists are paginated with opaque cursors.
+  license:
+    name: CC-BY-4.0
+    url: https://creativecommons.org/licenses/by/4.0/
+
+servers:
+  - url: /v1
+
+security:
+  - deviceSession: []
+
+tags:
+  - name: auth
+  - name: administration
+  - name: conversations
+  - name: runs
+  - name: health
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Create a device session.
+      x-requirements: [AUTH-001, AUTH-004, AUTH-006]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "201":
+          description: Session created. The token is returned only once.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401": { $ref: "#/components/responses/InvalidCredentials" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the current device session.
+      x-requirements: [AUTH-004]
+      responses:
+        "204": { description: Session revoked. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: The authenticated user.
+      responses:
+        "200":
+          description: The authenticated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /me/sessions:
+    get:
+      tags: [auth]
+      operationId: listMySessions
+      summary: List the user's device sessions.
+      x-requirements: [AUTH-004]
+      responses:
+        "200":
+          description: Active sessions of the authenticated user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/DeviceSession" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /me/sessions/{session_id}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    delete:
+      tags: [auth]
+      operationId: revokeMySession
+      summary: Revoke one of the user's device sessions.
+      x-requirements: [AUTH-004]
+      responses:
+        "204": { description: Session revoked. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /instance/tenants:
+    post:
+      tags: [administration]
+      operationId: createTenant
+      summary: Create a tenant with its first tenant admin (instance admin only).
+      x-requirements: [TEN-001, AUTH-002]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTenantRequest" }
+      responses:
+        "201":
+          description: Tenant created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tenant" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      tags: [administration]
+      operationId: listTenants
+      summary: List tenants (instance admin only).
+      x-requirements: [TEN-001]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of tenants.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenant/users:
+    post:
+      tags: [administration]
+      operationId: createUser
+      summary: Create a user in the current tenant (tenant admin only).
+      x-requirements: [AUTH-001, AUTH-002]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateUserRequest" }
+      responses:
+        "201":
+          description: User created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      tags: [administration]
+      operationId: listUsers
+      summary: List the users of the current tenant.
+      x-requirements: [TEN-001]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of users.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /conversations:
+    post:
+      tags: [conversations]
+      operationId: createConversation
+      summary: Create a conversation.
+      x-requirements: [API-003]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateConversationRequest" }
+      responses:
+        "201":
+          description: Conversation created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      tags: [conversations]
+      operationId: listConversations
+      summary: List the user's conversations, most recently updated first.
+      x-requirements: [API-003, TEN-006]
+      parameters:
+        - name: archived
+          in: query
+          description: Return archived conversations instead of active ones.
+          schema: { type: boolean, default: false }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of conversations.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /conversations/{conversation_id}:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: [conversations]
+      operationId: getConversation
+      x-requirements: [API-003, TEN-006]
+      responses:
+        "200":
+          description: The conversation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [conversations]
+      operationId: updateConversation
+      summary: Rename, archive or unarchive a conversation.
+      x-requirements: [API-003, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateConversationRequest" }
+      responses:
+        "200":
+          description: The updated conversation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [conversations]
+      operationId: deleteConversation
+      summary: Permanently delete a conversation, its messages, runs and run events.
+      x-requirements: [API-003, TEN-006]
+      responses:
+        "204": { description: Conversation deleted. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunInProgress" }
+
+  /conversations/{conversation_id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: [conversations]
+      operationId: listMessages
+      summary: List the messages of a conversation, oldest first.
+      x-requirements: [API-003, TEN-006]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of messages.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessagePage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [conversations]
+      operationId: sendMessage
+      summary: Send a user message and start a run that produces the reply.
+      description: |
+        Returns as soon as the message is stored and the run is queued
+        (ADR-0026). Follow the run with `GET /runs/{run_id}/events`. Only one
+        run per conversation may be in progress at a time.
+      x-requirements: [AGT-009, API-003, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendMessageRequest" }
+      responses:
+        "202":
+          description: Message stored and run queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SendMessageResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunInProgress" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /runs/{run_id}:
+    parameters:
+      - $ref: "#/components/parameters/RunId"
+    get:
+      tags: [runs]
+      operationId: getRun
+      x-requirements: [AGT-009, AGT-010, TEN-006]
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Run" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /runs/{run_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/RunId"
+    get:
+      tags: [runs]
+      operationId: streamRunEvents
+      summary: Stream the events of a run as Server-Sent Events.
+      description: |
+        Sends every event with a sequence number greater than the one given in
+        `Last-Event-ID` (or `after`), then follows new events until the run
+        ends. Each SSE message has `id` = sequence number, `event` = event
+        type and `data` = the JSON-encoded `RunEvent`. The stream closes after
+        `run.completed` or `run.failed` (API-004, ADR-0026).
+      x-requirements: [API-004, AGT-009, TEN-006]
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          description: Last sequence number received, sent by SSE clients on reconnection.
+          schema: { type: integer, minimum: 0 }
+        - name: after
+          in: query
+          description: Same as `Last-Event-ID`, for clients that cannot set headers.
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: An SSE stream of run events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE messages whose `data` field is a JSON-encoded RunEvent.
+              x-event-schema: { $ref: "#/components/schemas/RunEvent" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Readiness of the instance.
+      description: |
+        Anonymous callers receive only `status`. Instance admins also receive
+        the individual checks (OPS-002).
+      x-requirements: [OPS-002, SBX-003, SBX-015, SBX-017]
+      security: [{}, { deviceSession: [] }]
+      responses:
+        "200":
+          description: The instance is ready.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: The instance is not ready; sandboxes are refused.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+components:
+  securitySchemes:
+    deviceSession:
+      type: http
+      scheme: bearer
+      description: Opaque device session token (ADR-0025, AUTH-004).
+
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    ConversationId:
+      name: conversation_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor returned as `next_cursor` by the previous page.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+
+  responses:
+    Unauthenticated:
+      description: Missing, invalid, expired or revoked session token.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Unauthenticated", status: 401, code: "auth.unauthenticated" }
+    InvalidCredentials:
+      description: Wrong username or password.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Invalid credentials", status: 401, code: "auth.invalid_credentials" }
+    RateLimited:
+      description: Too many attempts; retry after the indicated delay.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Too many attempts", status: 429, code: "auth.rate_limited" }
+    Forbidden:
+      description: The user's role does not allow this operation.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Forbidden", status: 403, code: "permission.denied" }
+    NotFound:
+      description: The resource does not exist or belongs to someone else.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Not found", status: 404, code: "resource.not_found" }
+    Conflict:
+      description: A resource with the same unique name already exists.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Conflict", status: 409, code: "resource.conflict" }
+    RunInProgress:
+      description: A run is already in progress in this conversation.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Run in progress", status: 409, code: "run.in_progress" }
+    ValidationFailed:
+      description: The request body or parameters are invalid.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Validation failed", status: 422, code: "request.validation_failed" }
+
+  schemas:
+    Id:
+      type: string
+      format: uuid
+
+    Timestamp:
+      type: string
+      format: date-time
+
+    ErrorCode:
+      type: string
+      description: Stable, machine-readable error code (API-007).
+      enum:
+        - auth.unauthenticated
+        - auth.invalid_credentials
+        - auth.rate_limited
+        - permission.denied
+        - resource.not_found
+        - resource.conflict
+        - request.validation_failed
+        - run.in_progress
+        - run.worker_lost
+        - run.timeout
+        - model.unavailable
+        - model.request_failed
+        - sandbox.unavailable
+        - sandbox.command_failed
+        - internal.error
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details with a stable `code`.
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { $ref: "#/components/schemas/ErrorCode" }
+        errors:
+          type: array
+          description: Field-level details for `request.validation_failed`.
+          items:
+            type: object
+            required: [location, code]
+            properties:
+              location: { type: string, description: "JSON pointer or parameter name." }
+              code: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [username, password, device_name]
+      additionalProperties: false
+      properties:
+        username: { type: string, minLength: 1, maxLength: 64 }
+        password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
+        device_name: { type: string, minLength: 1, maxLength: 100 }
+
+    LoginResponse:
+      type: object
+      required: [token, session, user]
+      properties:
+        token:
+          type: string
+          description: Opaque session token. Shown only once; store it securely.
+        session: { $ref: "#/components/schemas/DeviceSession" }
+        user: { $ref: "#/components/schemas/User" }
+
+    DeviceSession:
+      type: object
+      required: [id, device_name, created_at, last_used_at, expires_at, current]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        device_name: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        last_used_at: { $ref: "#/components/schemas/Timestamp" }
+        expires_at: { $ref: "#/components/schemas/Timestamp" }
+        current: { type: boolean, description: "True for the session making the request." }
+
+    Role:
+      type: string
+      enum: [member, tenant_admin]
+
+    User:
+      type: object
+      required: [id, tenant_id, username, display_name, role, instance_admin, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        tenant_id: { $ref: "#/components/schemas/Id" }
+        username: { type: string }
+        display_name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        instance_admin: { type: boolean }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+
+    UserPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+        next_cursor: { type: [string, "null"] }
+
+    CreateUserRequest:
+      type: object
+      required: [username, display_name, password, role]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9._-]{1,63}$"
+          description: Unique across the instance.
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 12, maxLength: 1024, writeOnly: true }
+        role: { $ref: "#/components/schemas/Role" }
+
+    Tenant:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+
+    TenantPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Tenant" }
+        next_cursor: { type: [string, "null"] }
+
+    CreateTenantRequest:
+      type: object
+      required: [name, admin]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        admin:
+          description: The tenant's first tenant admin.
+          allOf:
+            - $ref: "#/components/schemas/CreateUserRequest"
+
+    Conversation:
+      type: object
+      required: [id, title, archived, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        title: { type: string }
+        archived: { type: boolean }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+
+    ConversationPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Conversation" }
+        next_cursor: { type: [string, "null"] }
+
+    CreateConversationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+
+    UpdateConversationRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        archived: { type: boolean }
+
+    MessageRole:
+      type: string
+      enum: [user, assistant]
+
+    Message:
+      type: object
+      required: [id, conversation_id, role, content, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        conversation_id: { $ref: "#/components/schemas/Id" }
+        role: { $ref: "#/components/schemas/MessageRole" }
+        content: { type: string }
+        run_id:
+          description: The run that produced an assistant message.
+          oneOf:
+            - $ref: "#/components/schemas/Id"
+            - type: "null"
+        model:
+          description: Provider and model that produced an assistant message (MOD-005, phase 1).
+          oneOf:
+            - $ref: "#/components/schemas/ModelRef"
+            - type: "null"
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+
+    MessagePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Message" }
+        next_cursor: { type: [string, "null"] }
+
+    SendMessageRequest:
+      type: object
+      required: [content]
+      additionalProperties: false
+      properties:
+        content: { type: string, minLength: 1, maxLength: 100000 }
+
+    SendMessageResponse:
+      type: object
+      required: [message, run]
+      properties:
+        message: { $ref: "#/components/schemas/Message" }
+        run: { $ref: "#/components/schemas/Run" }
+
+    ModelRef:
+      type: object
+      required: [provider, model]
+      properties:
+        provider: { type: string }
+        model: { type: string }
+
+    RunStatus:
+      type: string
+      enum: [queued, running, completed, failed]
+
+    Run:
+      type: object
+      required: [id, conversation_id, status, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        conversation_id: { $ref: "#/components/schemas/Id" }
+        status: { $ref: "#/components/schemas/RunStatus" }
+        error_code:
+          description: Set when `status` is `failed`.
+          oneOf:
+            - $ref: "#/components/schemas/ErrorCode"
+            - type: "null"
+        last_event_seq: { type: integer, minimum: 0 }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        started_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
+        finished_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
+
+    RunEvent:
+      type: object
+      description: One persisted event of a run (ADR-0026). `seq` starts at 1 and has no gaps.
+      required: [seq, type, created_at, data]
+      properties:
+        seq: { type: integer, minimum: 1 }
+        type:
+          type: string
+          enum:
+            - run.started
+            - message.delta
+            - tool.call
+            - tool.result
+            - message.completed
+            - run.completed
+            - run.failed
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/RunStartedData"
+            - $ref: "#/components/schemas/MessageDeltaData"
+            - $ref: "#/components/schemas/ToolCallData"
+            - $ref: "#/components/schemas/ToolResultData"
+            - $ref: "#/components/schemas/MessageCompletedData"
+            - $ref: "#/components/schemas/RunCompletedData"
+            - $ref: "#/components/schemas/RunFailedData"
+
+    RunStartedData:
+      type: object
+      additionalProperties: false
+      properties: {}
+
+    MessageDeltaData:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text: { type: string, description: "Text to append to the assistant message being produced." }
+
+    ToolCallData:
+      type: object
+      required: [call_id, tool, arguments]
+      additionalProperties: false
+      properties:
+        call_id: { type: string }
+        tool: { type: string, description: "Tool name, e.g. `sandbox.exec` (AGT-011)." }
+        arguments: { type: object }
+
+    ToolResultData:
+      type: object
+      required: [call_id, ok]
+      additionalProperties: false
+      properties:
+        call_id: { type: string }
+        ok: { type: boolean }
+        output: { type: object, description: "Tool-specific result, e.g. stdout, stderr and exit_code for `sandbox.exec`." }
+        error_code: { $ref: "#/components/schemas/ErrorCode" }
+
+    MessageCompletedData:
+      type: object
+      required: [message_id]
+      additionalProperties: false
+      properties:
+        message_id: { $ref: "#/components/schemas/Id" }
+
+    RunCompletedData:
+      type: object
+      additionalProperties: false
+      properties: {}
+
+    RunFailedData:
+      type: object
+      required: [error_code]
+      additionalProperties: false
+      properties:
+        error_code: { $ref: "#/components/schemas/ErrorCode" }
+
+    HealthStatus:
+      type: string
+      enum: [ok, degraded, unavailable]
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/HealthStatus" }
+        checks:
+          type: object
+          description: Present only for instance admins.
+          properties:
+            database: { $ref: "#/components/schemas/HealthStatus" }
+            sandbox_driver: { $ref: "#/components/schemas/HealthStatus" }
+            isolation_runtime: { $ref: "#/components/schemas/HealthStatus" }
+            egress_table: { $ref: "#/components/schemas/HealthStatus" }
+            model_gateway: { $ref: "#/components/schemas/HealthStatus" }
