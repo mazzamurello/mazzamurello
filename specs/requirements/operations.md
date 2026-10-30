@@ -5,7 +5,7 @@ ADR-0007, ADR-0018.
 
 ## OPS-001: Docker Compose deployment
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** e2e
@@ -15,7 +15,7 @@ every component running in a container, from a documented configuration file.
 
 ## OPS-002: Supported platforms are checked
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -27,7 +27,7 @@ configurations clearly.
 
 ## OPS-003: Minimal exposed surface
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -38,7 +38,7 @@ NOT be published on host ports.
 
 ## OPS-004: No host execution
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -89,7 +89,7 @@ downloaded at setup time, with their licenses shown to the instance admin.
 
 ## OPS-009: Cloud VMs without hardware virtualization
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** e2e

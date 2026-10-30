@@ -4,7 +4,7 @@ The interface every client uses. Background: ADR-0016, ADR-0008.
 
 ## API-001: One public API for all clients
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -14,7 +14,7 @@ NOT expose client-specific private endpoints.
 
 ## API-002: Committed OpenAPI contract
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -25,7 +25,7 @@ server differs from the committed contract.
 
 ## API-003: Separate conversations
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** e2e
@@ -36,7 +36,7 @@ flow between conversations except through memory items (MEM-004).
 
 ## API-004: Streaming responses
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -68,7 +68,7 @@ subject to the data egress policy when remote services are configured.
 
 ## API-007: Stable error codes
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
