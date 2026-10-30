@@ -30,6 +30,7 @@ RULES_PATHS: tuple[str, ...] = (
     ".gitattributes",
     ".gitignore",
     ".github/",
+    ".devcontainer/",
     "tools/",
     "tests/__init__.py",
     "tests/tooling/",
