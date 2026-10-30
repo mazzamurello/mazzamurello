@@ -74,7 +74,7 @@ beyond keeping them configurable and updatable.
 | T-01 | A user reads or modifies another user's private data through the API | X2 | TEN-003, TEN-004, TEN-005, TEN-006, TEN-007 |
 | T-02 | A user of one tenant reaches data of another tenant | X2 | TEN-002, TEN-003, TEN-006, TEN-008 |
 | T-03 | Code in a sandbox escapes to the host | X3 | SBX-002, SBX-003, SBX-011, SBX-012, OPS-004 |
-| T-04 | Code in a sandbox scans or attacks the LAN, the host's services or cloud metadata endpoints | X1, X3 | SBX-005, SBX-007, OPS-003 |
+| T-04 | Code in a sandbox scans or attacks the LAN, the host's services or cloud metadata endpoints | X1, X3 | SBX-005, SBX-007, SBX-013, SBX-015, OPS-003 |
 | T-05 | Code in one sandbox reaches another user's sandbox | X3 | SBX-001, SBX-006 |
 | T-06 | Secrets are stolen from inside a sandbox | X3 | SBX-008, MOD-002 |
 | T-07 | Compromise of the control plane yields control of the container runtime (root on the host) | X4, X5 | SBX-009 |

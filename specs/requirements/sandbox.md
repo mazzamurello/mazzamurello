@@ -34,7 +34,10 @@ can be added without changing the control plane.
 
 If the configured isolation runtime is unavailable, the system MUST refuse to
 start sandboxes and MUST report the reason to the instance admin. It MUST NOT
-fall back to a weaker runtime.
+fall back to a weaker runtime. At startup, the sandbox driver MUST verify the
+isolation runtime with a canary sandbox, checking that it runs under the
+configured runtime and that a blocked address is unreachable, before
+accepting any request.
 
 ## SBX-004: Internet access
 
@@ -75,8 +78,9 @@ A sandbox MUST NOT be able to reach any other sandbox over the network.
 - **Phase:** 1
 - **Verification:** security
 
-Sandboxes SHOULD use a resolver that does not resolve names internal to the
-host or the household network.
+Sandboxes SHOULD resolve names only through a resolver chosen by the
+instance, and SHOULD NOT be able to resolve names of containers or hosts
+internal to the instance or the household network.
 
 ## SBX-008: No secrets in sandboxes
 
@@ -129,3 +133,36 @@ and execution time, with limits configurable by the instance admin.
 
 Sandboxes MUST NOT run privileged, share host namespaces or mount host paths
 other than their own workspace. Root inside the sandbox is allowed.
+
+## SBX-013: No unfiltered IPv6
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** security
+
+A sandbox MUST NOT have IPv6 connectivity unless restrictions equivalent to
+SBX-005 are enforced for IPv6.
+
+## SBX-014: File exchange with the workspace
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+The control plane MUST be able to place files into a user's workspace and
+retrieve files from it through the sandbox driver, streamed and subject to
+size limits configurable by the instance admin, so that the assistant can
+work on files provided by the user and return the files it produces.
+
+## SBX-015: Network restrictions before any code runs
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+A sandbox's network restrictions MUST be applied and verified before any code
+runs in the sandbox. If they cannot be applied or verified, the sandbox MUST
+NOT start.
