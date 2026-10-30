@@ -20,5 +20,6 @@
 /LICENSES/          @tapionx
 /REUSE.toml         @tapionx
 /.github/           @tapionx
+/.devcontainer/     @tapionx
 /tools/             @tapionx
 /tests/tooling/     @tapionx

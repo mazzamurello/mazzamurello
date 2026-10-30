@@ -1,0 +1,19 @@
+// Development container for AI agents and contributors (docs/development/workflow.md).
+//
+// By design it has NO access to the host's Docker daemon: an agent working on
+// the project must not hold root-equivalent access to the developer's machine.
+// Unit and design tests run here; integration and security tests that need
+// Docker and gVisor run in CI or, deliberately, on the maintainer's host.
+{
+  "name": "Mazzamurello",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "UV_LINK_MODE": "copy"
+  },
+  "runArgs": ["--cap-drop=ALL", "--security-opt=no-new-privileges"],
+  "postCreateCommand": "pip install --user --no-cache-dir uv==0.13.6"
+}
