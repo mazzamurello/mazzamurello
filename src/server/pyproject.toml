@@ -1,0 +1,15 @@
+[project]
+name = "mazzamurello-server"
+version = "0.0.0"
+description = "Mazzamurello control plane: API and worker (ADR-0026, ADR-0028)."
+requires-python = ">=3.13"
+license = "AGPL-3.0-or-later"
+dependencies = []
+
+[build-system]
+requires = ["uv_build==0.13.6"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "mazzamurello_server"
+module-root = ""
