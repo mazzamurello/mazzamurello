@@ -16,8 +16,9 @@ Includes: tenancy and row-level security (TEN), local accounts (AUTH), the
 sandbox and its network isolation (SBX), mediated tools (AGT-001), the model
 gateway with one local and one remote provider (MOD), the public API with
 conversations and streaming (API), privacy defaults for logs (OBS), Docker
-Compose deployment (OPS), externalized strings (I18N-001), and the repository
-governance checks (REPO).
+Compose deployment (OPS), and the repository governance checks (REPO).
+There is no user interface in phase 0: the API is exercised by end-to-end
+tests (ADR-0024).
 
 **Exit criteria:**
 
@@ -31,7 +32,8 @@ governance checks (REPO).
 **Goal:** an assistant the maintainer's family uses every day, on the web and
 on the phone (installable web app).
 
-Includes: web search and page reading, persistent workspaces, shared spaces,
+Includes: the web client as an installable web app with externalized strings
+(I18N-001), web search and page reading, persistent workspaces, shared spaces,
 transparent memory (MEM), tool permissions, provenance and approvals with the
 lethal trifecta mitigation (AGT), the data egress policy (MOD-003), backup
 and restore (OPS-006), and the first eval suite (EVL).

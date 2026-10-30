@@ -89,3 +89,25 @@ action, the data involved and its destination.
 
 Every tool invocation MUST produce an audit event (tool, time, run,
 conversation, approval outcome) that the user it acted for can view.
+
+## AGT-009: Durable runs
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+A run MUST execute independently of the client connection that started it,
+and every event of the run MUST be persisted in order, so that a client can
+disconnect and later receive everything that happened (ADR-0026).
+
+## AGT-010: Runs are never silently lost
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+If the process executing a run stops before the run completes, the run MUST
+be either resumed, retried or marked as failed with an event visible to the
+user.
