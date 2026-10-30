@@ -31,3 +31,36 @@ self-registration MUST be disabled by default.
 
 The system SHOULD support signing in through an external OpenID Connect
 provider (e.g. a self-hosted identity provider), mapped to existing accounts.
+
+## AUTH-004: Revocable device sessions
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+Authentication MUST use opaque, random session tokens of at least 256 bits,
+stored only as hashes, each bound to one user and one device and carrying an
+expiry. A user MUST be able to list their sessions and revoke any of them, and
+a revoked or expired token MUST be rejected on the next request (ADR-0025).
+
+## AUTH-005: Cookie sessions protected against CSRF
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** security
+
+When a session token is carried in a cookie, the cookie MUST be `HttpOnly`,
+`Secure` and `SameSite=Lax`, and every state-changing request authenticated by
+cookie MUST also carry a custom request header that cross-site requests cannot
+set.
+
+## AUTH-006: Login rate limiting
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+Login attempts MUST be rate-limited per account and per source address.

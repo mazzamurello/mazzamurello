@@ -65,3 +65,14 @@ version, migration notes and a deprecation period for the previous behavior.
 The API SHOULD accept spoken input (speech-to-text) and return spoken
 responses (text-to-speech), backed by local speech services by default and
 subject to the data egress policy when remote services are configured.
+
+## API-007: Stable error codes
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** design
+
+Every error response of the public API MUST carry a stable, machine-readable
+error code documented in the API contract, so that clients can present errors
+in the user's language.
