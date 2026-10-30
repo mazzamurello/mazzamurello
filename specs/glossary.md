@@ -25,8 +25,10 @@ new entry here first (ADR-0005).
 | Message | One entry in a conversation, from the user or the assistant. |
 | Agent | The component that turns a user request into model calls and tool calls. |
 | Run | One execution of the agent in response to a message, including all its model and tool calls. |
-| Run event | An ordered, persisted record of something that happened during a run (text, tool call, result, approval request, completion), streamed to clients (ADR-0026). |
-| Worker | A server process that executes runs and scheduled tasks taken from the job queue (ADR-0026). |
+| Run event | An AG-UI event produced during a run (text, tool call, result, interrupt, completion), stored durably with a sequence number and streamed to clients (ADR-0032, ADR-0034). |
+| Worker | A server process that executes runs and scheduled tasks as durable workflows (ADR-0034). |
+| Durable execution engine | The library that checkpoints runs so they survive crashes and restarts: DBOS (ADR-0034). |
+| Interrupt | The end of a run that needs the user's answer, such as an approval; the answer starts a new run (ADR-0033). |
 | Tool | A capability the agent can invoke. All tools are mediated tools. |
 | Mediated tool | A tool executed by the control plane, which checks permissions, approvals and records audit events. |
 | Capability class | A declared property of a tool used for safety decisions: `reads_private_data`, `ingests_untrusted`, `external_communication`, `irreversible`, `physical`. |
@@ -47,6 +49,7 @@ new entry here first (ADR-0005).
 | Sandbox | A per-user isolated execution environment with internet access and no access to local networks. |
 | Workspace | The persistent storage of a user's sandbox. |
 | Sandbox driver | The only component allowed to manage containers; exposes a minimal API to the control plane. |
+| Workspace backend | The control-plane component that presents a user's sandbox to Pydantic AI as a workspace, through the sandbox driver (ADR-0035). |
 | Sandbox bridge | The host network bridge, with a fixed interface name, to which all sandboxes attach; the egress table matches it (ADR-0021). |
 | Network guard | A small infrastructure container, with host networking and `NET_ADMIN`, that installs and maintains the egress table on the host (ADR-0021). Never runs user code. |
 | Egress table | The dedicated `nftables` table on the host that enforces the egress policy for traffic from the sandbox bridge (ADR-0021). |
