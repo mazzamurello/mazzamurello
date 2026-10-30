@@ -1,0 +1,297 @@
+openapi: 3.1.0
+info:
+  title: Mazzamurello sandbox driver API
+  version: 0.1.0-draft
+  summary: Internal API between the control plane and the sandbox driver (ADR-0022).
+  description: |
+    The sandbox driver is the only component with access to the container
+    runtime (SBX-009). This API is internal: it is reachable only on the
+    internal network shared with the control plane and is never published on
+    a host port (OPS-003).
+
+    The driver knows nothing about users or permissions: the control plane
+    authorizes every request before calling it. Sandboxes are addressed by
+    tenant and user identifiers, from which the driver derives container and
+    volume names. No request parameter can change the fixed sandbox policy
+    (runtime, image, network, limits, privileges, mounts) of ADR-0022.
+
+    Operations marked `x-phase: 1` are part of the contract but implemented
+    in phase 1.
+  license:
+    name: CC-BY-4.0
+    url: https://creativecommons.org/licenses/by/4.0/
+
+servers:
+  - url: /v1
+
+security:
+  - controlPlaneSecret: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Readiness of the driver and of sandbox isolation.
+      description: |
+        Healthy only when the isolation runtime is registered and recent
+        enough, the egress table is in place, and the startup canary sandbox
+        passed (SBX-003, SBX-015, SBX-017).
+      x-requirements: [SBX-003, SBX-015, SBX-017, OPS-002]
+      responses:
+        "200":
+          description: Ready to start sandboxes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Not ready; `ensure` and `exec` are refused.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /sandboxes/{tenant_id}/{user_id}/ensure:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+    post:
+      operationId: ensureSandbox
+      summary: Create or wake the user's sandbox (idempotent).
+      x-requirements: [SBX-001, SBX-002, SBX-012, SBX-015]
+      responses:
+        "200":
+          description: The sandbox is running.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sandbox" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/exec:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+    post:
+      operationId: execInSandbox
+      summary: Run a command in the user's sandbox and stream its output.
+      description: |
+        Ensures the sandbox is running, then executes `argv` inside it. The
+        response is a stream of newline-delimited JSON objects: zero or more
+        `output` chunks followed by exactly one `exit` object. Output beyond
+        `max_output_bytes` is truncated and reported in the `exit` object.
+      x-requirements: [AGT-011, SBX-001, SBX-011]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecRequest" }
+      responses:
+        "200":
+          description: The command was started; its output follows.
+          content:
+            application/x-ndjson:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ExecOutputChunk"
+                  - $ref: "#/components/schemas/ExecExit"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/files/{path}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+      - name: path
+        in: path
+        required: true
+        description: Path relative to the workspace root; `..` segments and absolute paths are rejected.
+        schema: { type: string }
+    put:
+      operationId: putFile
+      summary: Write a file into the user's workspace.
+      x-phase: 1
+      x-requirements: [SBX-014]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "201": { description: File written. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    get:
+      operationId: getFile
+      summary: Read a file from the user's workspace.
+      x-phase: 1
+      x-requirements: [SBX-014]
+      responses:
+        "200":
+          description: The file content.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /sandboxes/{tenant_id}/{user_id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+    post:
+      operationId: stopSandbox
+      summary: Stop the user's sandbox, keeping its workspace.
+      x-requirements: [SBX-001]
+      responses:
+        "204": { description: "Stopped, or was not running." }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+components:
+  securitySchemes:
+    controlPlaneSecret:
+      type: http
+      scheme: bearer
+      description: Secret shared between the control plane and the driver (ADR-0022).
+
+  parameters:
+    TenantId:
+      name: tenant_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthenticated:
+      description: Missing or wrong control plane secret.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ValidationFailed:
+      description: Invalid request.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: No such file in the workspace.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    TooLarge:
+      description: The file exceeds the configured size limit.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unavailable:
+      description: Isolation is not verified; the driver refuses to run sandboxes (fail closed).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code:
+          type: string
+          enum:
+            - driver.unauthenticated
+            - driver.validation_failed
+            - driver.not_found
+            - driver.too_large
+            - driver.isolation_unavailable
+            - driver.runtime_too_old
+            - driver.egress_rules_missing
+            - driver.internal_error
+
+    Check:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+        detail: { type: string }
+
+    Health:
+      type: object
+      required: [ready, checks]
+      properties:
+        ready: { type: boolean }
+        runtime_version: { type: string, description: "e.g. release-20261026.0" }
+        checks:
+          type: object
+          required: [isolation_runtime, runtime_version, egress_table, canary]
+          properties:
+            isolation_runtime: { $ref: "#/components/schemas/Check" }
+            runtime_version: { $ref: "#/components/schemas/Check" }
+            egress_table: { $ref: "#/components/schemas/Check" }
+            canary: { $ref: "#/components/schemas/Check" }
+
+    Sandbox:
+      type: object
+      required: [state, started_at]
+      properties:
+        state:
+          type: string
+          enum: [running]
+        started_at: { type: string, format: date-time }
+
+    ExecRequest:
+      type: object
+      required: [argv]
+      additionalProperties: false
+      properties:
+        argv:
+          type: array
+          minItems: 1
+          items: { type: string }
+          description: Program and arguments, executed without an implicit shell.
+        workdir:
+          type: string
+          description: Working directory inside the sandbox; defaults to the workspace root.
+        stdin:
+          type: string
+          description: Data written to the command's standard input (UTF-8).
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          description: Capped by the instance's configured maximum (SBX-011).
+        max_output_bytes:
+          type: integer
+          minimum: 1
+          description: Capped by the instance's configured maximum.
+
+    ExecOutputChunk:
+      type: object
+      required: [kind, stream, data]
+      additionalProperties: false
+      properties:
+        kind: { type: string, const: output }
+        stream: { type: string, enum: [stdout, stderr] }
+        data: { type: string, description: "UTF-8 text; invalid bytes are replaced." }
+
+    ExecExit:
+      type: object
+      required: [kind, exit_code, timed_out, truncated, duration_ms]
+      additionalProperties: false
+      properties:
+        kind: { type: string, const: exit }
+        exit_code:
+          type: [integer, "null"]
+          description: Null when the command was killed.
+        timed_out: { type: boolean }
+        truncated: { type: boolean }
+        duration_ms: { type: integer, minimum: 0 }
