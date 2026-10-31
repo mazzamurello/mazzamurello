@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import datetime
 
+import psycopg
 import pytest
 
-from tests.support.database import Database, uuid7
+from tests.support.database import Context, Database, app_transaction, uuid7
 from tests.support.world import ARGON2_HASH, World, disable_user
 
 
@@ -25,6 +26,28 @@ def test_login_lookup_finds_the_user(database: Database, world: World) -> None:
             (alice.username,),
         ).fetchall()
     assert rows == [(alice.id, alice.tenant_id, ARGON2_HASH, "member", False, False)]
+
+
+@pytest.mark.spec("AUTH-001")
+def test_login_lookup_ignores_the_case_of_the_username(database: Database, world: World) -> None:
+    with database.app() as conn:
+        for spelling in (world.alice.username.upper(), world.alice.username.capitalize()):
+            rows = conn.execute("SELECT user_id FROM auth_find_login(%s)", (spelling,)).fetchall()
+            assert rows == [(world.alice.id,)]
+
+
+@pytest.mark.spec("AUTH-001")
+def test_usernames_are_unique_ignoring_case(database: Database, world: World) -> None:
+    insert = (
+        "INSERT INTO users (id, tenant_id, username, display_name, password_hash, role, instance_admin, created_at)"
+        " VALUES (%s, %s, %s, 'New user', %s, 'member', false, now())"
+    )
+    with app_transaction(database, Context(world.tenant_a, world.anna.id, "tenant_admin")) as conn:
+        # Control: a new username is accepted.
+        with conn.transaction():
+            conn.execute(insert, (uuid7(), world.tenant_a, f"user-{uuid7()}", ARGON2_HASH))
+        with pytest.raises(psycopg.errors.UniqueViolation), conn.transaction():
+            conn.execute(insert, (uuid7(), world.tenant_a, world.alice.username.upper(), ARGON2_HASH))
 
 
 @pytest.mark.spec("AUTH-001")

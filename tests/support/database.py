@@ -42,6 +42,7 @@ SECURITY_DEFINER_FUNCTIONS = (
     "auth_touch_session",
     "auth_record_login_attempt",
     "bootstrap_instance",
+    "revoke_sessions_of_disabled_user",
 )
 
 
