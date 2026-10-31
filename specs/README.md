@@ -8,6 +8,7 @@ satisfy what is written here; tests exist to prove it does.
 | [`requirements/`](requirements/) | Numbered requirements, grouped by area |
 | [`adr/`](adr/) | Architecture decision records: why things are the way they are |
 | [`contracts/`](contracts/) | Interfaces that outlive the code: public API, database schema |
+| [`product.md`](product.md) | Personas and journeys that justify the user experience |
 | [`glossary.md`](glossary.md) | The canonical name of every domain concept |
 | [`threat-model.md`](threat-model.md) | Assets, adversaries, trust boundaries and mitigations |
 

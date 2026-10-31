@@ -2,7 +2,8 @@
 
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
-implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034.
+implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
+ADR-0037.
 
 ## Roles
 
@@ -137,6 +138,7 @@ No policies for `mzm_app`: accessed only through
 | `tenant_id` | uuid | not null |
 | `owner_id` | uuid | not null; (`tenant_id`, `owner_id`) references `users` |
 | `title` | text | not null |
+| `active_run_id` | uuid | the last run of the active path (ADR-0037); null before the first run; (`tenant_id`, `active_run_id`) references `runs` on delete set null |
 | `usage` | jsonb | Pydantic AI conversation usage |
 | `pending_approvals` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending (ADR-0033), else null |
 | `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
@@ -146,19 +148,21 @@ No policies for `mzm_app`: accessed only through
 
 ### `conversation_messages` (private)
 
-The source of truth of a conversation: Pydantic AI messages, in order
-(ADR-0031). History served to clients is a projection of these rows.
+The source of truth of a conversation: Pydantic AI messages, grouped by the
+run that produced them (ADR-0031, ADR-0037). The history of a path is the
+messages of its runs, from the first run, each run's messages in order.
+History served to clients is a projection of these rows.
 
 | Column | Type | Notes |
 |---|---|---|
-| `conversation_id` | uuid | (`tenant_id`, `conversation_id`) references `conversations` on delete cascade |
-| `seq` | integer | position in the conversation, starting at 1, no gaps |
+| `run_id` | uuid | (`tenant_id`, `run_id`) references `runs` on delete cascade |
+| `seq` | integer | position within the run, starting at 1, no gaps |
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
-| `run_id` | uuid | the run that produced the message |
+| `conversation_id` | uuid | (`tenant_id`, `conversation_id`) references `conversations` on delete cascade |
 | `message` | jsonb | one `ModelMessage`, serialized with Pydantic AI's `ModelMessagesTypeAdapter` |
 | `created_at` | timestamptz | not null |
 
-Primary key (`conversation_id`, `seq`).
+Primary key (`run_id`, `seq`).
 
 ### `runs` (private)
 
@@ -167,15 +171,22 @@ Primary key (`conversation_id`, `seq`).
 | `id` | uuid | primary key; also Pydantic AI's `run_id` and the DBOS workflow ID (ADR-0034) |
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
 | `conversation_id` | uuid | not null; references `conversations` on delete cascade |
-| `status` | text | `queued`, `running`, `interrupted`, `completed`, `failed` |
+| `parent_run_id` | uuid | the run this run continues (ADR-0037); null for the first run; (`tenant_id`, `parent_run_id`) references `runs` on delete cascade; indexed |
+| `kind` | text | `message` (a new turn or a version of one) or `resume` (answers to an interrupt, ADR-0033) |
+| `status` | text | `queued`, `running`, `interrupted`, `completed`, `failed`, `cancelled` |
 | `error_code` | text | stable error code when failed (API-007) |
 | `model_provider`, `model_name` | text | set when known (MOD-005) |
 | `last_event_seq` | integer | sequence number of the last event written to the run's stream |
 | `created_at`, `started_at`, `finished_at` | timestamptz | |
 
-Constraint: at most one run with status `queued` or `running` per
-conversation (partial unique index), in addition to the per-conversation
-queue partition of ADR-0034.
+Constraints:
+
+- at most one run with status `queued` or `running` per conversation (partial
+  unique index), in addition to the per-conversation queue partition of
+  ADR-0034;
+- a run's parent belongs to the same conversation;
+- a run of kind `resume` has the interrupted run as parent, and is its only
+  child.
 
 ### Policies for private tables
 
