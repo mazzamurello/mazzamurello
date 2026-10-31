@@ -87,3 +87,14 @@ Changing a user's role, and disabling or re-enabling their account, MUST
 require a tenant admin of the user's tenant. Creating an instance admin MUST
 require an instance admin. A user MUST NOT be able to raise their own
 privileges or re-enable their own account.
+
+## AUTH-009: Disabling an account ends its sessions
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** security
+
+Disabling an account MUST revoke every session of that account in the same
+change, so that none of its tokens is accepted afterwards. Re-enabling the
+account MUST NOT restore any session.
