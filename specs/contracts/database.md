@@ -3,7 +3,7 @@
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
-ADR-0037, ADR-0042, ADR-0046.
+ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048.
 
 ## Roles
 
@@ -75,11 +75,22 @@ minimum needed and nothing else.
 
 | Function | Returns | Purpose |
 |---|---|---|
-| `auth_find_login(username text)` | `user_id, tenant_id, password_hash, role, instance_admin, disabled` | Password verification (AUTH-001) |
+| `auth_find_login(username text)` | `user_id, tenant_id, password_hash, role, instance_admin, disabled` | Password verification (AUTH-001); matches the username ignoring case |
 | `auth_find_session(token_hash bytea)` | `session_id, user_id, tenant_id, role, instance_admin, expires_at, revoked` | Token verification on every request (AUTH-004) |
 | `auth_touch_session(session_id uuid)` | — | Updates `last_used_at` |
-| `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006) |
-| `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and instance admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
+| `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006), by the rules below |
+| `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
+
+Rate limiting (ADR-0047): `auth_record_login_attempt` is called once per
+login attempt, after the password is verified, with its outcome. It counts
+the failed attempts recorded in the 15 minutes before the call. The attempt
+is refused when 5 of them are for the same username, ignoring case, or 20 are
+from the same source address. A refused attempt is not recorded, and the
+server answers it the same whether or not the password was right; an allowed
+attempt is recorded with its outcome. When refused, `retry_after_seconds` is
+the time, rounded up to whole seconds, until the oldest failure counted toward
+a reached limit leaves the window (the longer, when both are reached); when
+allowed, it is 0. Each call deletes attempts older than the window.
 
 These functions run as `mzm_owner`, which forced row-level security does not
 exempt. They work through **owner policies**, created `TO mzm_owner`, and
@@ -89,12 +100,12 @@ these are the only policies for that role:
 |---|---|---|
 | `tenants` | `SELECT`, `INSERT` | `bootstrap_instance` |
 | `users` | `SELECT`, `INSERT` | `auth_find_login`, `auth_find_session`, `bootstrap_instance` |
-| `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session` |
+| `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session`, `revoke_sessions_of_disabled_user` |
 | `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
 
 Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
 by running services, so they open these tables only to the code of the
-functions above and to migrations.
+`SECURITY DEFINER` functions of this contract and to migrations.
 
 ## Tables
 
@@ -124,7 +135,7 @@ Policies: `SELECT` where `id = app_tenant_id()` or `app_is_instance_admin()`;
 |---|---|---|
 | `id` | uuid | primary key |
 | `tenant_id` | uuid | not null, references `tenants` |
-| `username` | text | not null, unique across the instance |
+| `username` | text | not null, unique across the instance ignoring case |
 | `display_name` | text | not null |
 | `password_hash` | text | not null; Argon2id encoded hash (AUTH-001) |
 | `role` | text | `member` or `tenant_admin` |
@@ -151,6 +162,15 @@ users cannot promote themselves or re-enable their account (AUTH-008). Row-level
 security cannot compare a row's old and new values, so a `BEFORE UPDATE`
 trigger on `users` enforces this rule.
 
+Disabling an account revokes its sessions (AUTH-009, ADR-0048). When
+`disabled_at` changes from null to a value, an `AFTER UPDATE` trigger on
+`users` sets `revoked_at` to the current time on every session of that user
+that is not yet revoked, in the same transaction. Its function,
+`revoke_sessions_of_disabled_user()`, is `SECURITY DEFINER`, owned by
+`mzm_owner`, with a fixed `search_path`, and not executable by `mzm_app`; it
+changes `device_sessions` through the owner policies. Re-enabling an account
+leaves its sessions revoked.
+
 ### `device_sessions` (private)
 
 | Column | Type | Notes |
@@ -174,7 +194,7 @@ from the verified credentials.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | bigint | identity |
-| `username` | text | as submitted |
+| `username` | text | as submitted; compared ignoring case |
 | `source` | inet | client address |
 | `success` | boolean | not null |
 | `created_at` | timestamptz | not null |
@@ -329,8 +349,9 @@ there is no soft delete for user content.
   owner column (TEN-002).
 - `mzm_app` is not a superuser, lacks `BYPASSRLS` and owns no table or
   function (TEN-004).
-- Every `SECURITY DEFINER` function is in the list above, owned by `mzm_owner`
-  and has a fixed `search_path`.
+- Every `SECURITY DEFINER` function is a pre-authentication function or
+  `revoke_sessions_of_disabled_user()`, is owned by `mzm_owner` and has a fixed
+  `search_path`.
 - `mzm_app` holds exactly the privileges listed in "Privileges of `mzm_app`"
   (TEN-004).
 - Policies for `mzm_owner` are exactly the owner policies listed with the
