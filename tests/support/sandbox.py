@@ -137,7 +137,9 @@ def _free_port() -> int:
 
 
 def _build(name: str, tag: str) -> None:
-    docker("build", "--quiet", "--tag", tag, str(ROOT / "deploy" / "images" / name), timeout=BUILD_TIMEOUT_SECONDS)
+    # From the repository root, so that an image may include project code.
+    dockerfile = ROOT / "deploy" / "images" / name / "Dockerfile"
+    docker("build", "--quiet", "--tag", tag, "--file", str(dockerfile), str(ROOT), timeout=BUILD_TIMEOUT_SECONDS)
 
 
 def _wait_healthy(container: str, timeout: float = 60) -> None:
