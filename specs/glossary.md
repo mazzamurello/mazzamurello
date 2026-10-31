@@ -94,5 +94,6 @@ new entry here first (ADR-0005).
 | Journey | A task a persona accomplishes with Mazzamurello, described in the product description. |
 | ADR | Architecture decision record in `specs/adr/`. |
 | Contract | An interface that outlives the code: public API, database schema, on-disk formats. |
+| Pending test | A test whose requirements are all `accepted` and not yet `implemented`; its failures are reported as expected (ADR-0045). |
 | Invariant | A property that must always hold, typically a security property, verified by tests. |
 | Eval | A repeatable scenario that measures agent behavior against one or more models. |
