@@ -1,4 +1,4 @@
-"""Command line entry points of the server: `python -m mazzamurello_server api` (ADR-0050)."""
+"""Command line entry points of the server: `api` (ADR-0050) and `worker` (ADR-0052)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import sys
 import uvicorn
 
 from mazzamurello_server.app import create_app
-from mazzamurello_server.config import ConfigurationError, load_api_configuration
+from mazzamurello_server.config import ConfigurationError, load_api_configuration, load_worker_configuration
 
 
 def _api() -> int:
@@ -30,13 +30,29 @@ def _api() -> int:
     return 0
 
 
+def _worker() -> int:
+    try:
+        configuration = load_worker_configuration(os.environ)
+    except ConfigurationError as error:
+        print(f"mazzamurello: configuration error: {error}", file=sys.stderr)
+        return 2
+    # Imported here: only the worker registers workflows with DBOS.
+    from mazzamurello_server.worker import run_worker
+
+    run_worker(configuration)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m mazzamurello_server")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("api", help="run the public API")
+    commands.add_parser("worker", help="execute runs")
     arguments = parser.parse_args(argv)
     if arguments.command == "api":
         return _api()
+    if arguments.command == "worker":
+        return _worker()
     parser.error(f"unknown command {arguments.command}")
 
 
