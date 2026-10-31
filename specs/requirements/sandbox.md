@@ -108,7 +108,7 @@ with sandboxes only through the sandbox driver's authenticated API.
 
 ## SBX-010: Persistent workspace
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
