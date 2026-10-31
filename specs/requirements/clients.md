@@ -2,7 +2,8 @@
 
 What every first-party client must offer, on the web and on the phone.
 Clients use only the public API (API-001). Background: ADR-0016, ADR-0039,
-ADR-0040, the personas and journeys of the [product description](../product.md).
+ADR-0040, ADR-0042, and the personas and journeys of the
+[product description](../product.md).
 
 ## UX-001: Installable web app
 
@@ -46,12 +47,12 @@ Rationale: personas P2 and P4 need clarity; persona P1 needs the details.
 - **Phase:** 1
 - **Verification:** integration, security
 
-The installable web app MUST be able to receive notifications, with the
-user's consent, when a run finishes while the user is away and when an
-approval is pending. Notification payloads MUST NOT contain message text,
-titles, tool arguments or other conversation content; they MUST carry only
-the kind of event and identifiers needed to open the right conversation
-(ADR-0039).
+The installable web app MUST be able to receive notifications, with the user's
+consent, when a run finishes while the user is away and when an approval or an
+answer to a question is pending. Notification payloads MUST NOT contain
+message text, titles, tool arguments or other conversation content; they MUST
+carry only the kind of event and identifiers needed to open the right
+conversation (ADR-0039).
 
 Rationale: journey J8; pending approvals expire (AGT-007), so users must learn
 about them in time.
@@ -94,13 +95,30 @@ MUST remain usable with text enlarged to 200%.
 
 Rationale: persona P4.
 
-## UX-008: Continuity across devices
+## UX-008: Live context and cost
 
 - **Status:** draft
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
 
-A conversation started on one device MUST be continuable on any other device
-of the same user, including a run in progress, whose events the second device
-receives from the start (API-004).
+While a run streams, clients MUST show how much of the model's context window
+the conversation uses, and the cost of the run so far on pay-per-token
+providers. Clients MUST show the cost of each assistant message and of each
+conversation, and the user's total spend over the current day and month
+(MOD-006, MOD-007).
+
+Rationale: journey J12.
+
+## UX-009: Progress and questions during long tasks
+
+- **Status:** draft
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e
+
+During a run, clients SHOULD show the assistant's task list as it updates,
+and MUST show the questions the assistant asks the user (AGT-015) as choices
+the user can answer.
+
+Rationale: journey J7.

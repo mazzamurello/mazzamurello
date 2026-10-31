@@ -252,12 +252,14 @@ paths:
       operationId: updateConversation
       summary: Rename, archive or unarchive a conversation, or switch the version shown.
       description: |
-        Setting `active_run_id` switches to another version (CNV-001,
-        ADR-0037): the run must belong to this conversation; the active path
-        becomes the path from the first run to that run. Refused with
+        Setting `active_run_id` switches to another version (CNV-001) or
+        rewinds to an earlier turn (CNV-004), as described in ADR-0037: the
+        run must belong to this conversation; the active path becomes the
+        path from the first run to that run. Workspace files are not
+        changed. Refused with
         `run.interrupt_pending` while an interrupt is pending, and with
         `run.in_progress` while a run is queued or running.
-      x-requirements: [API-003, CNV-001, TEN-006]
+      x-requirements: [API-003, CNV-001, CNV-004, TEN-006]
       requestBody:
         required: true
         content:
@@ -403,7 +405,7 @@ paths:
         `Last-Event-ID` (or `after`), then follows new events until the run
         ends. The stream closes after `RUN_FINISHED` (including a finish with
         an `interrupt` outcome) or `RUN_ERROR` (API-004, ADR-0032).
-      x-requirements: [API-004, AGT-009, TEN-006]
+      x-requirements: [API-004, AGT-009, CNV-015, TEN-006]
       parameters:
         - name: Last-Event-ID
           in: header

@@ -3,7 +3,7 @@
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
-ADR-0037.
+ADR-0037, ADR-0042.
 
 ## Roles
 
@@ -188,10 +188,33 @@ Constraints:
 - a run of kind `resume` has the interrupted run as parent, and is its only
   child.
 
+### `usage_ledger` (private)
+
+One entry per model request made by the model gateway (MOD-006, ADR-0042).
+It never contains content.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid | primary key |
+| `tenant_id`, `owner_id` | uuid | the user the request was made for; (`tenant_id`, `owner_id`) references `users` |
+| `conversation_id` | uuid | null for requests outside a conversation; (`tenant_id`, `conversation_id`) references `conversations` on delete set null |
+| `run_id` | uuid | null outside a run; (`tenant_id`, `run_id`) references `runs` on delete set null |
+| `purpose` | text | `run`, `title`, `compaction`, `speech` or `memory` |
+| `provider`, `model` | text | not null |
+| `input_tokens`, `cached_input_tokens`, `cache_write_tokens`, `output_tokens` | bigint | not null, default 0 |
+| `cost` | numeric(20, 10) | null when the price is unknown |
+| `currency` | text | ISO 4217 code, such as `USD`; null when `cost` is null |
+| `price_source` | text | `provider`, `admin`, `catalog`, `free` or `unknown` |
+| `created_at` | timestamptz | not null; indexed with `owner_id` |
+
+Totals per message, conversation, day and month are computed from these rows.
+Per-user totals for tenant admins arrive in phase 1, through a function that
+returns only sums per user.
+
 ### Policies for private tables
 
-`device_sessions`, `conversations`, `conversation_messages` and `runs` use the
-same policy for every operation:
+`device_sessions`, `conversations`, `conversation_messages`, `runs` and
+`usage_ledger` use the same policy for every operation:
 
 ```sql
 USING      (tenant_id = app_tenant_id() AND owner_id = app_user_id())
@@ -220,7 +243,9 @@ run events) **without row-level security**, which DBOS cannot apply. Rules
 ## Deletion
 
 Deleting a conversation deletes its messages and runs in the same transaction,
-and the DBOS workflows of those runs (API-003, TEN-009). Deletion is physical;
+and the DBOS workflows of those runs (API-003, TEN-009). Its entries in the
+cost ledger are kept, detached from the conversation and its runs, so that
+spending totals stay correct (ADR-0042). Deletion is physical;
 there is no soft delete for user content.
 
 ## Properties verified by design tests
