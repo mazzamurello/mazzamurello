@@ -52,7 +52,10 @@ default credentials (AUTH-007), and how unsupported platforms are reported
    virtualization nor `/dev/kvm` is needed: gVisor uses its `systrap`
    platform (OPS-009). The API's `/health` reports `unavailable` when the
    database is unreachable or sandboxes are refused, and `degraded` when no
-   default model is configured; instance admins also see each check.
+   default model is configured; instance admins also see each check. The
+   API learns whether a default exists, before any sign-in, from
+   `instance_default_model_configured()`, a `SECURITY DEFINER` function that
+   returns only that answer.
 6. **The end-to-end test** follows the README on a fresh copy of the
    deployment, as described in the [test harness](../contracts/test-harness.md),
    locally and in CI.

@@ -80,6 +80,7 @@ minimum needed and nothing else.
 | `auth_find_session(token_hash bytea)` | `session_id, user_id, tenant_id, role, instance_admin, expires_at, revoked` | Token verification on every request (AUTH-004) |
 | `auth_touch_session(session_id uuid)` | — | Sets `last_used_at` to now and `expires_at` to 90 days later, for a session that is neither revoked nor expired (ADR-0049) |
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006), by the rules below |
+| `instance_default_model_configured()` | `boolean` | Whether the instance has a default model, for `/health` before any sign-in (OPS-002, ADR-0054) |
 | `retention_expired_runs(days integer)` | `run_id` for every run whose `finished_at` is more than `days` days ago | Retention of durable workflows (TEN-009, ADR-0052): only identifiers, so the worker can delete their workflows across tenants |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
 
@@ -105,6 +106,7 @@ these are the only policies for that role:
 | `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session`, `revoke_sessions_of_disabled_user` |
 | `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
 | `runs` | `SELECT` | `retention_expired_runs` |
+| `instance_models` | `SELECT` | `instance_default_model_configured` |
 
 Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
 by running services, so they open these tables only to the code of the
