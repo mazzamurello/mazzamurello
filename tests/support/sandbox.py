@@ -171,9 +171,11 @@ def driver_environment(token: str, image: str, netguard: str, port: int, **overr
     }
 
 
-def _cleanup(image: str, netguard: str, driver: Process | None) -> None:
+def _cleanup(image: str, guard_image: str, netguard: str, driver: Process | None) -> None:
     if driver is not None:
         driver.close()
+    # Stopped, not killed: the guard removes its table from the host as it stops.
+    docker("stop", "--time", "15", netguard, check=False)
     docker("rm", "-f", netguard, check=False)
     ids = docker("ps", "-aq", "--filter", f"ancestor={image}", check=False).split()
     if ids:
@@ -187,6 +189,7 @@ def _cleanup(image: str, netguard: str, driver: Process | None) -> None:
         if volumes:
             docker("volume", "rm", "-f", *volumes, check=False)
     docker("network", "rm", SANDBOX_NETWORK, check=False)
+    docker("rmi", "-f", image, guard_image, check=False)
 
 
 _DRIVER = pytest.StashKey[Driver | BaseException]()
@@ -204,7 +207,7 @@ def start_sandboxes(config: pytest.Config) -> Driver:
     image, guard_image = f"mazzamurello-test/sandbox:{suffix}", f"mazzamurello-test/netguard:{suffix}"
     netguard = f"mazzamurello-test-netguard-{suffix}"
     holder: dict[str, Process] = {}
-    config.add_cleanup(lambda: _cleanup(image, netguard, holder.get("driver")))
+    config.add_cleanup(lambda: _cleanup(image, guard_image, netguard, holder.get("driver")))
     try:
         _build("sandbox", image)
         _build("netguard", guard_image)
