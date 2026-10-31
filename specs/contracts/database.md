@@ -16,6 +16,26 @@ Every table below has row-level security **enabled and forced** (TEN-003),
 including tables that are not tenant-scoped, so that no table is readable by
 `mzm_app` without an explicit policy.
 
+## Initialization
+
+The schema targets PostgreSQL 17. Roles and the database are created once per
+instance, before any migration, by a superuser: by the deployment's database
+initialization and by the test harness ([test-harness.md](test-harness.md)).
+Migrations never create roles, and the superuser is not used afterwards.
+
+```sql
+CREATE ROLE mzm_owner LOGIN PASSWORD '...'
+  NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+CREATE ROLE mzm_app LOGIN PASSWORD '...'
+  NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT;
+CREATE DATABASE mazzamurello OWNER mzm_owner;
+REVOKE ALL ON DATABASE mazzamurello FROM PUBLIC;
+GRANT CONNECT ON DATABASE mazzamurello TO mzm_app;
+```
+
+Migrations, run as `mzm_owner`, create every schema object and grant
+`mzm_app` exactly the privileges this contract lists.
+
 ## Request context
 
 At the start of every transaction, after authentication, the server sets
