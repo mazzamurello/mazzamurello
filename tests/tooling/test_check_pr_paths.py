@@ -46,6 +46,7 @@ class PullRequestPathsTest(unittest.TestCase):
             ".devcontainer/devcontainer.json",
             "tools/check_dco.py",
             "tests/tooling/test_x.py",
+            "tests/conftest.py",
             "LICENSE",
         ):
             with self.subTest(path=path):

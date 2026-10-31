@@ -39,6 +39,8 @@ The branch prefix defines what a pull request may touch. CI enforces it
 | `rules/*` | this file, `.github/`, `.devcontainer/`, `tools/`, governance files | Project rules (maintainer only) |
 
 Implementation never modifies tests. If a test looks wrong, stop and say so.
+Tests of requirements that are only `accepted` may fail without failing CI
+(pending tests); once a requirement is `implemented`, its tests must pass.
 
 ## Non-negotiable rules
 
