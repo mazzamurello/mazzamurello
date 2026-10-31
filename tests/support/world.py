@@ -17,6 +17,8 @@ from tests.support.database import PRIVATE_TABLES, Database, uuid7
 
 # A serialized Pydantic AI user message; its content does not matter here.
 MESSAGE = {"kind": "request", "parts": [{"part_kind": "user-prompt", "content": "hello"}]}
+# An Argon2id encoded hash; no password matches it.
+ARGON2_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA"
 # Primary key columns of each private table.
 KEY_COLUMNS: dict[str, tuple[str, ...]] = {
     "device_sessions": ("id",),
@@ -31,7 +33,10 @@ KEY_COLUMNS: dict[str, tuple[str, ...]] = {
 class User:
     id: uuid.UUID
     tenant_id: uuid.UUID
+    username: str
     role: str
+    # Hash of the token of the user's device session.
+    token_hash: bytes
     conversation_id: uuid.UUID
     run_id: uuid.UUID
     # Primary key value of the user's row in each private table, as a tuple.
@@ -61,15 +66,16 @@ def create_tenant(conn: psycopg.Connection) -> uuid.UUID:
 
 def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> User:
     user_id, conversation_id, run_id, session_id, ledger_id = (uuid7() for _ in range(5))
+    username, token_hash = f"user-{user_id}", user_id.bytes * 2
     conn.execute(
         "INSERT INTO users (id, tenant_id, username, display_name, password_hash, role, instance_admin, created_at)"
         " VALUES (%s, %s, %s, %s, %s, %s, false, now())",
-        (user_id, tenant_id, f"user-{user_id}", "Test user", "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA", role),
+        (user_id, tenant_id, username, "Test user", ARGON2_HASH, role),
     )
     conn.execute(
         "INSERT INTO device_sessions (id, tenant_id, user_id, token_hash, device_name, created_at, last_used_at,"
         " expires_at) VALUES (%s, %s, %s, %s, %s, now(), now(), now() + interval '1 day')",
-        (session_id, tenant_id, user_id, user_id.bytes * 2, "test device"),
+        (session_id, tenant_id, user_id, token_hash, "test device"),
     )
     conn.execute(
         "INSERT INTO conversations (id, tenant_id, owner_id, title, created_at, updated_at)"
@@ -99,7 +105,16 @@ def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> Us
         "usage_ledger": (ledger_id,),
     }
     assert set(rows) == set(PRIVATE_TABLES)
-    return User(user_id, tenant_id, role, conversation_id, run_id, rows)
+    return User(user_id, tenant_id, username, role, token_hash, conversation_id, run_id, rows)
+
+
+def disable_user(database: Database, user: User) -> None:
+    """Mark a user disabled, as a tenant admin would."""
+    with database.superuser() as conn:
+        # Triggers enforce the application's rules on changes to users, and
+        # arranging data is not subject to them.
+        conn.execute("SET session_replication_role = replica")
+        conn.execute("UPDATE users SET disabled_at = now() WHERE id = %s", (user.id,))
 
 
 def create_world(database: Database) -> World:
