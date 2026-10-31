@@ -15,6 +15,8 @@ whenever a requirement in the security-relevant areas changes.
 - Sandbox egress is enforced in the host kernel by a dedicated `nftables`
   table maintained by the network guard (ADR-0021). The host may be a cloud VM
   without hardware virtualization (OPS-009).
+- Runs are checkpointed by the durable execution engine in its own schema,
+  outside row-level security (ADR-0034); access to it is confined by TEN-009.
 - Models — local or remote — are **not trusted to behave**: any model can be
   manipulated by the content it reads (prompt injection).
 - Remote model providers receive whatever the data egress policy allows them
@@ -92,6 +94,9 @@ beyond keeping them configurable and updatable.
 | T-16 | Malicious pull request or compromised CI action injects code or steals secrets | X5 | REPO-001, REPO-005, REPO-007, REPO-008 |
 | T-17 | Tampered release images | X5 | OPS-007 |
 | T-18 | The host egress rules disappear (firewall reload, reboot, manual change) while sandboxes run, leaving them unfiltered | — | SBX-015, OPS-002 |
+| T-19 | Run data stored by the durable execution engine, outside row-level security, is read across users or tenants, or survives deletion | X2 | TEN-009 |
+| T-20 | A client forges or replays approval decisions to run tools the user did not approve | X2, X4 | AGT-012, AUTH-004 |
+| T-21 | A framework capability fetches URLs, runs commands or reaches MCP servers from the control plane, bypassing the sandbox (SSRF to the LAN or host) | X1 | AGT-013, SBX-009 |
 
 ## The lethal trifecta in Mazzamurello
 

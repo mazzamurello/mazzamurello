@@ -99,7 +99,7 @@ conversation, approval outcome) that the user it acted for can view.
 
 A run MUST execute independently of the client connection that started it,
 and every event of the run MUST be persisted in order, so that a client can
-disconnect and later receive everything that happened (ADR-0026).
+disconnect and later receive everything that happened (ADR-0034).
 
 ## AGT-010: Runs are never silently lost
 
@@ -119,6 +119,31 @@ user.
 - **Phase:** 0
 - **Verification:** integration
 
-The agent MUST have a mediated tool that runs a command in the sandbox of the
-user it acts for and returns the command's output and exit code. The tool
-MUST NOT be able to target any other user's sandbox.
+The agent MUST have mediated workspace tools that run commands and read,
+write and edit files in the sandbox of the user it acts for, returning
+command output and exit codes (ADR-0035). The tools MUST NOT be able to target
+any other user's sandbox.
+
+## AGT-012: Approvals verified against stored requests
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** security
+
+Approval decisions MUST be applied only to approval requests the server
+stored for that conversation and that are still pending. Decisions referring
+to unknown, already resolved or expired requests MUST be rejected, and the
+tool, arguments and destination shown to the user MUST come from the stored
+request (ADR-0033).
+
+## AGT-013: No host-side execution through framework capabilities
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** design
+
+Framework capabilities that execute commands, fetch URLs, search the web
+locally or connect to MCP servers MUST NOT run in the control plane. They MUST
+run in the user's sandbox or use provider-native tools (ADR-0030, ADR-0035).

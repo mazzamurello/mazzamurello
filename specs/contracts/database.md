@@ -2,7 +2,7 @@
 
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
-implement it. Background: ADR-0009, ADR-0025, ADR-0026.
+implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034.
 
 ## Roles
 
@@ -55,7 +55,6 @@ minimum needed and nothing else.
 | `auth_find_session(token_hash bytea)` | `session_id, user_id, tenant_id, role, instance_admin, expires_at, revoked` | Token verification on every request (AUTH-004) |
 | `auth_touch_session(session_id uuid)` | — | Updates `last_used_at` |
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006) |
-| `worker_claim_run(run_id uuid, worker_id text)` | `tenant_id, user_id` | Lets a worker learn the context of a run it is about to execute (ADR-0026); claims it atomically |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and instance admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
 
 ## Tables
@@ -134,63 +133,54 @@ No policies for `mzm_app`: accessed only through
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid | primary key |
+| `id` | uuid | primary key; also Pydantic AI's `conversation_id` (ADR-0031) |
 | `tenant_id` | uuid | not null |
 | `owner_id` | uuid | not null; (`tenant_id`, `owner_id`) references `users` |
 | `title` | text | not null |
+| `usage` | jsonb | Pydantic AI conversation usage |
+| `pending_approvals` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending (ADR-0033), else null |
+| `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
 | `archived_at` | timestamptz | null when active |
 | `created_at` | timestamptz | not null |
-| `updated_at` | timestamptz | not null; updated when a message is added |
+| `updated_at` | timestamptz | not null; updated when a run adds messages |
 
-### `messages` (private)
+### `conversation_messages` (private)
+
+The source of truth of a conversation: Pydantic AI messages, in order
+(ADR-0031). History served to clients is a projection of these rows.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid | primary key |
+| `conversation_id` | uuid | (`tenant_id`, `conversation_id`) references `conversations` on delete cascade |
+| `seq` | integer | position in the conversation, starting at 1, no gaps |
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
-| `conversation_id` | uuid | not null; (`tenant_id`, `conversation_id`) references `conversations` on delete cascade |
-| `role` | text | `user` or `assistant` |
-| `content` | text | not null |
-| `run_id` | uuid | the run that produced an assistant message |
+| `run_id` | uuid | the run that produced the message |
+| `message` | jsonb | one `ModelMessage`, serialized with Pydantic AI's `ModelMessagesTypeAdapter` |
 | `created_at` | timestamptz | not null |
+
+Primary key (`conversation_id`, `seq`).
 
 ### `runs` (private)
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid | primary key |
+| `id` | uuid | primary key; also Pydantic AI's `run_id` and the DBOS workflow ID (ADR-0034) |
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
 | `conversation_id` | uuid | not null; references `conversations` on delete cascade |
-| `user_message_id` | uuid | the message that started the run |
-| `status` | text | `queued`, `running`, `completed`, `failed` |
+| `status` | text | `queued`, `running`, `interrupted`, `completed`, `failed` |
 | `error_code` | text | stable error code when failed (API-007) |
 | `model_provider`, `model_name` | text | set when known (MOD-005) |
-| `worker_id` | text | worker that claimed the run |
-| `heartbeat_at` | timestamptz | refreshed by the worker while running (AGT-010) |
+| `last_event_seq` | integer | sequence number of the last event written to the run's stream |
 | `created_at`, `started_at`, `finished_at` | timestamptz | |
 
 Constraint: at most one run with status `queued` or `running` per
-conversation (partial unique index).
-
-### `run_events` (private)
-
-| Column | Type | Notes |
-|---|---|---|
-| `run_id` | uuid | (`tenant_id`, `run_id`) references `runs` on delete cascade |
-| `seq` | integer | starts at 1, no gaps within a run |
-| `tenant_id`, `owner_id` | uuid | as in `runs` |
-| `type` | text | one of the `RunEvent` types of `openapi.yaml` |
-| `data` | jsonb | the event payload |
-| `created_at` | timestamptz | not null |
-
-Primary key (`run_id`, `seq`). After inserting events, the worker sends
-`NOTIFY run_events, '<run_id>:<seq>'`; payloads never contain user content
-(ADR-0026).
+conversation (partial unique index), in addition to the per-conversation
+queue partition of ADR-0034.
 
 ### Policies for private tables
 
-`device_sessions`, `conversations`, `messages`, `runs` and `run_events` use
-the same policy for every operation:
+`device_sessions`, `conversations`, `conversation_messages` and `runs` use the
+same policy for every operation:
 
 ```sql
 USING      (tenant_id = app_tenant_id() AND owner_id = app_user_id())
@@ -199,21 +189,33 @@ WITH CHECK (tenant_id = app_tenant_id() AND owner_id = app_user_id())
 
 (`device_sessions` uses `user_id` in place of `owner_id`.)
 
-### Job queue
+## Durable execution schema (`dbos`)
 
-The procrastinate job queue lives in its own schema. Job payloads contain only
-identifiers (for example a run ID), never user content. Workers use
-`worker_claim_run` to obtain the context, then set it like the API does.
+DBOS (ADR-0034) keeps its own tables in the `dbos` schema, created and
+migrated by DBOS itself: workflow status, inputs and outputs, step outputs,
+notifications and streams. They hold user content (prompts, model responses,
+run events) **without row-level security**, which DBOS cannot apply. Rules
+(TEN-009):
+
+- Application code reads or writes DBOS data only for workflow IDs that are
+  run IDs obtained from the row-level-secured `runs` table in the same
+  request.
+- Deleting a conversation deletes the DBOS workflows of its runs.
+- Finished workflows are deleted after the retention period configured by the
+  instance admin.
+- Workflow inputs carry the tenant and user IDs of the run; the worker sets
+  the request context from them.
 
 ## Deletion
 
-Deleting a conversation deletes its messages, runs and run events in the same
-transaction (API-003). Deletion is physical; there is no soft delete for user
-content.
+Deleting a conversation deletes its messages and runs in the same transaction,
+and the DBOS workflows of those runs (API-003, TEN-009). Deletion is physical;
+there is no soft delete for user content.
 
 ## Properties verified by design tests
 
-- Every table has row-level security enabled and forced (TEN-003).
+- Every table of the application schema has row-level security enabled and
+  forced (TEN-003); the `dbos` schema is the documented exception (TEN-009).
 - Every table holding user data has `tenant_id`, and private tables have an
   owner column (TEN-002).
 - `mzm_app` is not a superuser, lacks `BYPASSRLS` and owns no table or

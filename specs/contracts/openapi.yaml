@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.1.0-draft
+  version: 0.2.0-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -17,6 +17,11 @@ info:
       `not_found`, never as `forbidden`, so their existence is not disclosed
       (TEN-006).
     - Lists are paginated with opaque cursors.
+    - Runs stream AG-UI 1.0 events over Server-Sent Events (ADR-0032). Each
+      SSE message has `id` = sequence number (from 1 within a run), `event` =
+      the AG-UI event type and `data` = the JSON-encoded AG-UI event.
+      Resuming with `GET /runs/{run_id}/events` is a Mazzamurello extension;
+      standard AG-UI clients ignore `id`.
   license:
     name: CC-BY-4.0
     url: https://creativecommons.org/licenses/by/4.0/
@@ -278,7 +283,10 @@ paths:
     get:
       tags: [conversations]
       operationId: listMessages
-      summary: List the messages of a conversation, oldest first.
+      summary: The conversation history, oldest first, as AG-UI messages.
+      description: |
+        A projection of the stored Pydantic AI messages (ADR-0031), in the AG-UI
+        message format, including tool calls and tool results.
       x-requirements: [API-003, TEN-006]
       parameters:
         - $ref: "#/components/parameters/Cursor"
@@ -291,26 +299,38 @@ paths:
               schema: { $ref: "#/components/schemas/MessagePage" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /conversations/{conversation_id}/runs:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
     post:
-      tags: [conversations]
-      operationId: sendMessage
-      summary: Send a user message and start a run that produces the reply.
+      tags: [runs]
+      operationId: startRun
+      summary: Start a run (AG-UI compatible) and stream its events.
       description: |
-        Returns as soon as the message is stored and the run is queued
-        (ADR-0026). Follow the run with `GET /runs/{run_id}/events`. Only one
-        run per conversation may be in progress at a time.
-      x-requirements: [AGT-009, API-003, TEN-006]
+        Accepts an AG-UI `RunAgentInput`. Only the last user message and the
+        `resume` answers are used; history is managed by the server
+        (ADR-0031). The run executes in a worker and continues if the client
+        disconnects (AGT-009); reconnect with `GET /runs/{run_id}/events`.
+        A `runId` that already exists in this conversation returns that run's
+        stream from the beginning, so a retried request does not start a
+        second run. Errors detected before the run starts are returned as
+        HTTP problems; errors after it starts arrive as `RUN_ERROR`.
+      x-requirements: [AGT-009, API-003, API-004, TEN-006]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/SendMessageRequest" }
+            schema: { $ref: "#/components/schemas/RunAgentInput" }
       responses:
-        "202":
-          description: Message stored and run queued.
+        "200":
+          description: The run's AG-UI events, as Server-Sent Events.
           content:
-            application/json:
-              schema: { $ref: "#/components/schemas/SendMessageResponse" }
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE messages whose `data` field is a JSON-encoded AG-UI event.
+              x-event-schema: { $ref: "#/components/schemas/AgUiEvent" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/RunInProgress" }
@@ -338,13 +358,12 @@ paths:
     get:
       tags: [runs]
       operationId: streamRunEvents
-      summary: Stream the events of a run as Server-Sent Events.
+      summary: Resume the events of a run (Mazzamurello extension to AG-UI).
       description: |
         Sends every event with a sequence number greater than the one given in
         `Last-Event-ID` (or `after`), then follows new events until the run
-        ends. Each SSE message has `id` = sequence number, `event` = event
-        type and `data` = the JSON-encoded `RunEvent`. The stream closes after
-        `run.completed` or `run.failed` (API-004, ADR-0026).
+        ends. The stream closes after `RUN_FINISHED` (including a finish with
+        an `interrupt` outcome) or `RUN_ERROR` (API-004, ADR-0032).
       x-requirements: [API-004, AGT-009, TEN-006]
       parameters:
         - name: Last-Event-ID
@@ -357,13 +376,13 @@ paths:
           schema: { type: integer, minimum: 0 }
       responses:
         "200":
-          description: An SSE stream of run events.
+          description: The run's AG-UI events after the given sequence number.
           content:
             text/event-stream:
               schema:
                 type: string
-                description: SSE messages whose `data` field is a JSON-encoded RunEvent.
-              x-event-schema: { $ref: "#/components/schemas/RunEvent" }
+                description: SSE messages whose `data` field is a JSON-encoded AG-UI event.
+              x-event-schema: { $ref: "#/components/schemas/AgUiEvent" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -463,7 +482,10 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
           example: { type: "about:blank", title: "Conflict", status: 409, code: "resource.conflict" }
     RunInProgress:
-      description: A run is already in progress in this conversation.
+      description: |
+        A run is in progress in this conversation (`run.in_progress`), or an
+        interrupt is pending and the request does not answer it
+        (`run.interrupt_pending`).
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -496,6 +518,8 @@ components:
         - resource.conflict
         - request.validation_failed
         - run.in_progress
+        - run.interrupt_pending
+        - approval.invalid
         - run.worker_lost
         - run.timeout
         - model.unavailable
@@ -653,29 +677,18 @@ components:
         title: { type: string, minLength: 1, maxLength: 200 }
         archived: { type: boolean }
 
-    MessageRole:
-      type: string
-      enum: [user, assistant]
-
-    Message:
+    AgUiMessage:
       type: object
-      required: [id, conversation_id, role, content, created_at]
+      description: |
+        A message in the AG-UI 1.0 format (roles such as `user`, `assistant`,
+        `tool`, `reasoning`), projected from the stored Pydantic AI messages.
+        See https://docs.ag-ui.com/ for the full definition.
+      required: [id, role]
+      additionalProperties: true
       properties:
-        id: { $ref: "#/components/schemas/Id" }
-        conversation_id: { $ref: "#/components/schemas/Id" }
-        role: { $ref: "#/components/schemas/MessageRole" }
-        content: { type: string }
-        run_id:
-          description: The run that produced an assistant message.
-          oneOf:
-            - $ref: "#/components/schemas/Id"
-            - type: "null"
-        model:
-          description: Provider and model that produced an assistant message (MOD-005, phase 1).
-          oneOf:
-            - $ref: "#/components/schemas/ModelRef"
-            - type: "null"
-        created_at: { $ref: "#/components/schemas/Timestamp" }
+        id: { type: string }
+        role: { type: string }
+        content: {}
 
     MessagePage:
       type: object
@@ -683,22 +696,40 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/Message" }
+          items: { $ref: "#/components/schemas/AgUiMessage" }
         next_cursor: { type: [string, "null"] }
 
-    SendMessageRequest:
+    RunAgentInput:
       type: object
-      required: [content]
-      additionalProperties: false
+      description: |
+        The AG-UI 1.0 run input. Fields not listed here are accepted and
+        ignored; in particular, client-provided history, tools, context and
+        state are never used (ADR-0031).
+      required: [threadId, runId, messages]
+      additionalProperties: true
       properties:
-        content: { type: string, minLength: 1, maxLength: 100000 }
-
-    SendMessageResponse:
-      type: object
-      required: [message, run]
-      properties:
-        message: { $ref: "#/components/schemas/Message" }
-        run: { $ref: "#/components/schemas/Run" }
+        threadId:
+          $ref: "#/components/schemas/Id"
+          description: Must equal the conversation ID in the path.
+        runId:
+          $ref: "#/components/schemas/Id"
+          description: Chosen by the client; becomes the run ID.
+        messages:
+          type: array
+          description: Only the last message is used, and it must have role `user`, unless `resume` is given.
+          items: { $ref: "#/components/schemas/AgUiMessage" }
+        resume:
+          type: array
+          description: Answers to the pending interrupts of the conversation (ADR-0033).
+          items:
+            type: object
+            required: [interruptId, status]
+            additionalProperties: false
+            properties:
+              interruptId: { type: string }
+              status: { type: string, enum: [resolved, cancelled] }
+              payload:
+                description: 'For approvals, `{"approved": true|false}`.'
 
     ModelRef:
       type: object
@@ -709,7 +740,7 @@ components:
 
     RunStatus:
       type: string
-      enum: [queued, running, completed, failed]
+      enum: [queued, running, interrupted, completed, failed]
 
     Run:
       type: object
@@ -723,87 +754,45 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ErrorCode"
             - type: "null"
+        model:
+          description: Provider and model that answered (MOD-005).
+          oneOf:
+            - $ref: "#/components/schemas/ModelRef"
+            - type: "null"
         last_event_seq: { type: integer, minimum: 0 }
         created_at: { $ref: "#/components/schemas/Timestamp" }
         started_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
         finished_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
 
-    RunEvent:
+    AgUiEvent:
       type: object
-      description: One persisted event of a run (ADR-0026). `seq` starts at 1 and has no gaps.
-      required: [seq, type, created_at, data]
+      description: |
+        An AG-UI 1.0 event (https://docs.ag-ui.com/). The types below are the
+        ones Mazzamurello emits; clients must ignore unknown types.
+      required: [type]
+      additionalProperties: true
       properties:
-        seq: { type: integer, minimum: 1 }
         type:
           type: string
           enum:
-            - run.started
-            - message.delta
-            - tool.call
-            - tool.result
-            - message.completed
-            - run.completed
-            - run.failed
-        created_at: { $ref: "#/components/schemas/Timestamp" }
-        data:
-          oneOf:
-            - $ref: "#/components/schemas/RunStartedData"
-            - $ref: "#/components/schemas/MessageDeltaData"
-            - $ref: "#/components/schemas/ToolCallData"
-            - $ref: "#/components/schemas/ToolResultData"
-            - $ref: "#/components/schemas/MessageCompletedData"
-            - $ref: "#/components/schemas/RunCompletedData"
-            - $ref: "#/components/schemas/RunFailedData"
-
-    RunStartedData:
-      type: object
-      additionalProperties: false
-      properties: {}
-
-    MessageDeltaData:
-      type: object
-      required: [text]
-      additionalProperties: false
-      properties:
-        text: { type: string, description: "Text to append to the assistant message being produced." }
-
-    ToolCallData:
-      type: object
-      required: [call_id, tool, arguments]
-      additionalProperties: false
-      properties:
-        call_id: { type: string }
-        tool: { type: string, description: "Tool name, e.g. `sandbox.exec` (AGT-011)." }
-        arguments: { type: object }
-
-    ToolResultData:
-      type: object
-      required: [call_id, ok]
-      additionalProperties: false
-      properties:
-        call_id: { type: string }
-        ok: { type: boolean }
-        output: { type: object, description: "Tool-specific result, e.g. stdout, stderr and exit_code for `sandbox.exec`." }
-        error_code: { $ref: "#/components/schemas/ErrorCode" }
-
-    MessageCompletedData:
-      type: object
-      required: [message_id]
-      additionalProperties: false
-      properties:
-        message_id: { $ref: "#/components/schemas/Id" }
-
-    RunCompletedData:
-      type: object
-      additionalProperties: false
-      properties: {}
-
-    RunFailedData:
-      type: object
-      required: [error_code]
-      additionalProperties: false
-      properties:
-        error_code: { $ref: "#/components/schemas/ErrorCode" }
+            - RUN_STARTED
+            - RUN_FINISHED
+            - RUN_ERROR
+            - STEP_STARTED
+            - STEP_FINISHED
+            - TEXT_MESSAGE_START
+            - TEXT_MESSAGE_CONTENT
+            - TEXT_MESSAGE_END
+            - TOOL_CALL_START
+            - TOOL_CALL_ARGS
+            - TOOL_CALL_END
+            - TOOL_CALL_RESULT
+            - REASONING_START
+            - REASONING_MESSAGE_START
+            - REASONING_MESSAGE_CONTENT
+            - REASONING_MESSAGE_END
+            - REASONING_END
+            - CUSTOM
 
     HealthStatus:
       type: string

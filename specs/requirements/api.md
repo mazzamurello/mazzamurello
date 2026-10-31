@@ -42,8 +42,10 @@ flow between conversations except through memory items (MEM-004).
 - **Verification:** integration
 
 Assistant responses, including tool activity, MUST be streamed to clients
-with Server-Sent Events. A client that reconnects MUST be able to resume
-receiving a response that is still in progress.
+with Server-Sent Events carrying AG-UI 1.0 events, each with a sequence
+number. A client that reconnects MUST be able to resume receiving the events
+after the last sequence number it received, while the run is in progress or
+after it has finished (ADR-0032).
 
 ## API-005: Compatibility and deprecation
 
