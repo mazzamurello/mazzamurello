@@ -598,7 +598,10 @@ paths:
       summary: Readiness of the instance.
       description: |
         Anonymous callers receive only `status`. Instance admins also receive
-        the individual checks (OPS-002).
+        the individual checks (OPS-002). The status is `unavailable` when the
+        database is unreachable or the sandbox driver refuses sandboxes, then
+        the answer is `503`; `degraded` when no instance default model is
+        configured; `ok` otherwise (ADR-0054).
       x-requirements: [OPS-002, SBX-003, SBX-015, SBX-017]
       security: [{}, { deviceSession: [] }]
       responses:
@@ -1132,6 +1135,7 @@ components:
           description: Present only for instance admins.
           properties:
             database: { $ref: "#/components/schemas/HealthStatus" }
+            platform: { $ref: "#/components/schemas/HealthStatus" }
             sandbox_driver: { $ref: "#/components/schemas/HealthStatus" }
             isolation_runtime: { $ref: "#/components/schemas/HealthStatus" }
             egress_table: { $ref: "#/components/schemas/HealthStatus" }
