@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.2.0-draft
+  version: 0.3.0-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -250,8 +250,14 @@ paths:
     patch:
       tags: [conversations]
       operationId: updateConversation
-      summary: Rename, archive or unarchive a conversation.
-      x-requirements: [API-003, TEN-006]
+      summary: Rename, archive or unarchive a conversation, or switch the version shown.
+      description: |
+        Setting `active_run_id` switches to another version (CNV-001,
+        ADR-0037): the run must belong to this conversation; the active path
+        becomes the path from the first run to that run. Refused with
+        `run.interrupt_pending` while an interrupt is pending, and with
+        `run.in_progress` while a run is queued or running.
+      x-requirements: [API-003, CNV-001, TEN-006]
       requestBody:
         required: true
         content:
@@ -283,12 +289,19 @@ paths:
     get:
       tags: [conversations]
       operationId: listMessages
-      summary: The conversation history, oldest first, as AG-UI messages.
+      summary: The history of a path, oldest first, as AG-UI messages.
       description: |
         A projection of the stored Pydantic AI messages (ADR-0031), in the AG-UI
-        message format, including tool calls and tool results.
-      x-requirements: [API-003, TEN-006]
+        message format, including tool calls and tool results. By default the
+        active path; with `run_id`, the path ending at that run, which lets a
+        client show another version without switching to it (ADR-0037). Each
+        page also describes the runs of its messages and their versions.
+      x-requirements: [API-003, CNV-001, TEN-006]
       parameters:
+        - name: run_id
+          in: query
+          description: Last run of the path to read; defaults to the active run.
+          schema: { $ref: "#/components/schemas/Id" }
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
@@ -308,15 +321,18 @@ paths:
       operationId: startRun
       summary: Start a run (AG-UI compatible) and stream its events.
       description: |
-        Accepts an AG-UI `RunAgentInput`. Only the last user message and the
-        `resume` answers are used; history is managed by the server
-        (ADR-0031). The run executes in a worker and continues if the client
+        Accepts an AG-UI `RunAgentInput`. Only the last user message, the
+        `resume` answers and `parentRunId` are used; history is managed by the
+        server (ADR-0031). Without `parentRunId` the run continues the active
+        path; with it, the run continues the path ending at that run, creating
+        a new version when that run already has children (CNV-001, ADR-0037).
+        The new run becomes the active run. The run executes in a worker and continues if the client
         disconnects (AGT-009); reconnect with `GET /runs/{run_id}/events`.
         A `runId` that already exists in this conversation returns that run's
         stream from the beginning, so a retried request does not start a
         second run. Errors detected before the run starts are returned as
         HTTP problems; errors after it starts arrive as `RUN_ERROR`.
-      x-requirements: [AGT-009, API-003, API-004, TEN-006]
+      x-requirements: [AGT-009, API-003, API-004, CNV-001, CNV-002, TEN-006]
       requestBody:
         required: true
         content:
@@ -346,6 +362,29 @@ paths:
       responses:
         "200":
           description: The run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Run" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /runs/{run_id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/RunId"
+    post:
+      tags: [runs]
+      operationId: cancelRun
+      summary: Stop a queued or running run.
+      description: |
+        No further model or tool calls start; messages produced so far are
+        kept, and the run ends with status `cancelled` (CNV-003, ADR-0037).
+        Its event stream ends with `RUN_ERROR` carrying the code
+        `run.cancelled`. Cancelling a run that has already ended returns it
+        unchanged.
+      x-requirements: [CNV-003, TEN-006]
+      responses:
+        "200":
+          description: The run, cancelled or already ended.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Run" }
@@ -519,6 +558,7 @@ components:
         - request.validation_failed
         - run.in_progress
         - run.interrupt_pending
+        - run.cancelled
         - approval.invalid
         - run.worker_lost
         - run.timeout
@@ -646,11 +686,16 @@ components:
 
     Conversation:
       type: object
-      required: [id, title, archived, created_at, updated_at]
+      required: [id, title, archived, active_run_id, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         title: { type: string }
         archived: { type: boolean }
+        active_run_id:
+          description: Last run of the active path (ADR-0037); null before the first run.
+          oneOf:
+            - $ref: "#/components/schemas/Id"
+            - type: "null"
         created_at: { $ref: "#/components/schemas/Timestamp" }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
 
@@ -676,6 +721,7 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         archived: { type: boolean }
+        active_run_id: { $ref: "#/components/schemas/Id" }
 
     AgUiMessage:
       type: object
@@ -692,12 +738,36 @@ components:
 
     MessagePage:
       type: object
-      required: [items]
+      required: [items, runs]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/AgUiMessage" }
+        runs:
+          type: array
+          description: The runs of the path that produced the messages of this page, in path order.
+          items: { $ref: "#/components/schemas/PathRun" }
         next_cursor: { type: [string, "null"] }
+
+    PathRun:
+      type: object
+      description: |
+        One run of a path and its versions (ADR-0037). `versions` lists the
+        runs of kind `message` with the same parent, oldest first, including
+        this one; a client shows "2 / 3" from it and reads another version with
+        `run_id`.
+      required: [run_id, parent_run_id, kind, message_ids, versions]
+      properties:
+        run_id: { $ref: "#/components/schemas/Id" }
+        parent_run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
+        kind: { $ref: "#/components/schemas/RunKind" }
+        message_ids:
+          type: array
+          description: IDs of the AG-UI messages, in `items`, that this run produced.
+          items: { type: string }
+        versions:
+          type: array
+          items: { $ref: "#/components/schemas/Id" }
 
     RunAgentInput:
       type: object
@@ -714,6 +784,12 @@ components:
         runId:
           $ref: "#/components/schemas/Id"
           description: Chosen by the client; becomes the run ID.
+        parentRunId:
+          $ref: "#/components/schemas/Id"
+          description: |
+            The run to continue (AG-UI branching). Omit it to continue the
+            active path; never send `null`. Ignored when `resume` is given:
+            a resume always continues the interrupted run.
         messages:
           type: array
           description: Only the last message is used, and it must have role `user`, unless `resume` is given.
@@ -740,14 +816,21 @@ components:
 
     RunStatus:
       type: string
-      enum: [queued, running, interrupted, completed, failed]
+      enum: [queued, running, interrupted, completed, failed, cancelled]
+
+    RunKind:
+      type: string
+      description: "`message` starts a turn or a version of one; `resume` answers an interrupt (ADR-0033)."
+      enum: [message, resume]
 
     Run:
       type: object
-      required: [id, conversation_id, status, created_at]
+      required: [id, conversation_id, parent_run_id, kind, status, created_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         conversation_id: { $ref: "#/components/schemas/Id" }
+        parent_run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
+        kind: { $ref: "#/components/schemas/RunKind" }
         status: { $ref: "#/components/schemas/RunStatus" }
         error_code:
           description: Set when `status` is `failed`.

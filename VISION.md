@@ -26,7 +26,10 @@ household**. One installation serves one family. Every member has:
 - private memory that they can inspect, edit and delete;
 - a private, strongly isolated sandbox where the assistant can browse,
   install software and run programs;
-- access through the web and their phone, by text and, later, by voice.
+- access through the web and their phone, by text and by voice;
+- an experience that does not ask them to give anything up compared with
+  hosted assistants: rich answers, files and photos, artifacts, versions,
+  notifications.
 
 The family can also have **shared spaces** — a shared calendar, a shopping
 list, household documents — that are explicitly shared, never by accident.
