@@ -31,6 +31,7 @@ from mazzamurello_sandboxd.sandboxes import Sandboxes
 logger = logging.getLogger("mazzamurello.sandboxd")
 
 MINIMUM_RELEASE = "release-20261026.0"
+SUPPORTED_ARCHITECTURES = frozenset({"x86_64", "aarch64"})
 MONITOR_INTERVAL_SECONDS = 2.0
 _RELEASE = re.compile(r"release-(\d{8})\.(\d+)")
 # The canary connects to an address of the host on the sandbox bridge and to
@@ -61,6 +62,7 @@ class Check:
 @dataclass
 class IsolationState:
     runtime_version: str | None = None
+    platform: Check = field(default_factory=Check)
     isolation_runtime: Check = field(default_factory=Check)
     release: Check = field(default_factory=Check)
     egress_table: Check = field(default_factory=Check)
@@ -68,7 +70,8 @@ class IsolationState:
 
     @property
     def ready(self) -> bool:
-        return all(check.ok for check in (self.isolation_runtime, self.release, self.egress_table, self.canary))
+        checks = (self.platform, self.isolation_runtime, self.release, self.egress_table, self.canary)
+        return all(check.ok for check in checks)
 
     def refusal_code(self) -> str:
         if self.isolation_runtime.ok and not self.release.ok and self.runtime_version is not None:
@@ -82,6 +85,7 @@ class IsolationState:
             "ready": self.ready,
             "runtime_version": self.runtime_version or "",
             "checks": {
+                "platform": self.platform.as_dict(),
                 "isolation_runtime": self.isolation_runtime.as_dict(),
                 "runtime_version": self.release.as_dict(),
                 "egress_table": self.egress_table.as_dict(),
@@ -149,6 +153,17 @@ class Isolation:
         finally:
             await container.delete(force=True)
 
+    async def check_platform(self) -> None:
+        """Linux on x86_64 or arm64; no hardware virtualization needed (OPS-002, OPS-009)."""
+        info = await self.docker.system.info()
+        system, architecture = str(info.get("OSType", "")), str(info.get("Architecture", ""))
+        if system == "linux" and architecture in SUPPORTED_ARCHITECTURES:
+            self.state.platform = Check(True, f"{system} {architecture}")
+        else:
+            self.state.platform = Check(
+                False, f"{system or 'unknown'} {architecture or 'unknown'} is not supported: Linux on x86_64 or arm64"
+            )
+
     async def check_runtime(self) -> None:
         path = await self._runtime_path()
         if path is None:
@@ -193,7 +208,8 @@ class Isolation:
 
     async def run_canary(self) -> None:
         """A sandbox like any other must run under gVisor and reach nothing local (SBX-003)."""
-        if not (self.state.isolation_runtime.ok and self.state.release.ok and self.state.egress_table.ok):
+        prerequisites = (self.state.platform, self.state.isolation_runtime, self.state.release, self.state.egress_table)
+        if not all(check.ok for check in prerequisites):
             self.state.canary = Check(False, "waiting for the runtime and the egress table")
             return
         name = f"mzm-canary-{secrets.token_hex(4)}"
@@ -227,6 +243,7 @@ class Isolation:
         return b"".join(chunks).decode(errors="replace")
 
     async def startup(self) -> None:
+        await self.check_platform()
         await self.check_runtime()
         await self.check_egress()
         await self.run_canary()
