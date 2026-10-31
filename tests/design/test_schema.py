@@ -21,6 +21,13 @@ EXCLUDED_SCHEMAS = (*SYSTEM_SCHEMAS, DURABLE_EXECUTION_SCHEMA)
 # sessions, conversations, messages, runs and ledger entries reference each
 # other through ten of them.
 CONTRACT_TENANT_FOREIGN_KEYS = 10
+# Of those, seven are between private tables: an active run, a message's run
+# and conversation, a run's conversation and parent, and a ledger entry's
+# conversation and run.
+CONTRACT_PRIVATE_FOREIGN_KEYS = 7
+# Three of them set null on delete: the active run and a ledger entry's
+# conversation and run.
+CONTRACT_SET_NULL_FOREIGN_KEYS = 3
 
 
 @dataclass(frozen=True)
@@ -100,13 +107,32 @@ def test_every_table_the_application_reaches_carries_its_tenant(tables: dict[str
     assert not offenders, f"tables reachable by mzm_app without a NOT NULL tenant_id: {offenders}"
 
 
-@pytest.mark.spec("TEN-002")
-def test_foreign_keys_between_tenant_scoped_tables_include_the_tenant(database: Database) -> None:
+@dataclass(frozen=True)
+class ForeignKey:
+    name: str
+    source: str
+    target: str
+    # Referencing and referenced columns, pairwise.
+    columns: tuple[tuple[str, str], ...]
+    # Referencing columns set to null (or default) on delete; empty when the
+    # delete action does not set columns.
+    set_on_delete: tuple[str, ...]
+
+
+def _tenant_foreign_keys(database: Database) -> list[ForeignKey]:
+    """Foreign keys of the application schema between tables that both carry tenant_id."""
     with database.superuser() as conn:
         rows = conn.execute(
             """
             SELECT con.conname, src.relname, dst.relname,
-                   array_agg(sa.attname ORDER BY k.ord), array_agg(da.attname ORDER BY k.ord)
+                   array_agg(sa.attname ORDER BY k.ord), array_agg(da.attname ORDER BY k.ord),
+                   CASE WHEN con.confdeltype IN ('n', 'd') THEN
+                     coalesce(
+                       (SELECT array_agg(a.attname ORDER BY a.attnum) FROM pg_attribute a
+                        WHERE a.attrelid = con.conrelid AND a.attnum = ANY(con.confdelsetcols)),
+                       (SELECT array_agg(a.attname ORDER BY a.attnum) FROM pg_attribute a
+                        WHERE a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)))
+                   ELSE '{}'::name[] END
             FROM pg_constraint con
             JOIN pg_class src ON src.oid = con.conrelid
             JOIN pg_class dst ON dst.oid = con.confrelid
@@ -117,16 +143,49 @@ def test_foreign_keys_between_tenant_scoped_tables_include_the_tenant(database: 
             WHERE con.contype = 'f' AND n.nspname = 'public'
               AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = con.conrelid AND attname = 'tenant_id')
               AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = con.confrelid AND attname = 'tenant_id')
-            GROUP BY con.conname, src.relname, dst.relname
+            GROUP BY con.oid, con.conname, src.relname, dst.relname
             """
         ).fetchall()
-    assert len(rows) >= CONTRACT_TENANT_FOREIGN_KEYS
+    return [
+        ForeignKey(name, source, target, tuple(zip(source_columns, target_columns, strict=True)), tuple(set_columns))
+        for name, source, target, source_columns, target_columns, set_columns in rows
+    ]
+
+
+@pytest.mark.spec("TEN-002")
+def test_foreign_keys_between_tenant_scoped_tables_include_the_tenant(database: Database) -> None:
+    foreign_keys = _tenant_foreign_keys(database)
+    assert len(foreign_keys) >= CONTRACT_TENANT_FOREIGN_KEYS
     offenders = sorted(
-        f"{source}.{name} -> {target}"
-        for name, source, target, source_columns, target_columns in rows
-        if ("tenant_id", "tenant_id") not in zip(source_columns, target_columns, strict=True)
+        f"{key.source}.{key.name} -> {key.target}"
+        for key in foreign_keys
+        if ("tenant_id", "tenant_id") not in key.columns
     )
     assert not offenders, f"foreign keys that do not pair tenant_id with tenant_id: {offenders}"
+
+
+@pytest.mark.spec("TEN-002", "TEN-006")
+def test_foreign_keys_between_private_tables_include_the_owner(database: Database) -> None:
+    private = [key for key in _tenant_foreign_keys(database) if {key.source, key.target} <= set(PRIVATE_TABLES)]
+    assert len(private) >= CONTRACT_PRIVATE_FOREIGN_KEYS
+    offenders = sorted(
+        f"{key.source}.{key.name} -> {key.target}"
+        for key in private
+        if (OWNER_COLUMN[key.source], OWNER_COLUMN[key.target]) not in key.columns
+    )
+    assert not offenders, f"foreign keys between private tables that do not pair the owners: {offenders}"
+
+
+@pytest.mark.spec("TEN-002")
+def test_foreign_keys_never_clear_the_tenant_or_the_owner(database: Database) -> None:
+    clearing = [key for key in _tenant_foreign_keys(database) if key.set_on_delete]
+    assert len(clearing) >= CONTRACT_SET_NULL_FOREIGN_KEYS
+    offenders = sorted(
+        f"{key.source}.{key.name} sets {list(key.set_on_delete)}"
+        for key in clearing
+        if {"tenant_id", OWNER_COLUMN.get(key.source, "tenant_id")} & set(key.set_on_delete)
+    )
+    assert not offenders, f"foreign keys that clear tenant or owner columns on delete: {offenders}"
 
 
 @pytest.mark.spec("TEN-003")
