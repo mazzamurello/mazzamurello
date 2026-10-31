@@ -232,10 +232,13 @@ def _usage() -> dict[str, int]:
     }
 
 
-def start_model_server() -> tuple[ModelServer, ThreadingHTTPServer]:
+def start_model_server(
+    host: str = "127.0.0.1", advertised: str | None = None
+) -> tuple[ModelServer, ThreadingHTTPServer]:
+    """Serve the model on `host`; its URL names `advertised`, the address clients use, or `host`."""
     model = ModelServer(url="")
-    http = ThreadingHTTPServer(("127.0.0.1", 0), _handler(model))
+    http = ThreadingHTTPServer((host, 0), _handler(model))
     http.daemon_threads = True
-    model.url = f"http://127.0.0.1:{http.server_address[1]}/v1"
+    model.url = f"http://{advertised or host}:{http.server_address[1]}/v1"
     threading.Thread(target=http.serve_forever, daemon=True).start()
     return model, http

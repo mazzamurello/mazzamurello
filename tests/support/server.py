@@ -143,7 +143,13 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
     port = _free_port()
     # Only the variables of the harness: the server refuses unknown MZM_* ones.
     base = {name: value for name, value in os.environ.items() if not name.startswith("MZM_")}
-    shared = {"MZM_DATABASE_URL": database.app_url, "MZM_SECRET_KEY": secrets.token_urlsafe(32)}
+    driver_url, driver_token = sandbox_driver
+    shared = {
+        "MZM_DATABASE_URL": database.app_url,
+        "MZM_SECRET_KEY": secrets.token_urlsafe(32),
+        "MZM_SANDBOXD_URL": driver_url,
+        "MZM_SANDBOXD_TOKEN": driver_token,
+    }
     try:
         api = Process(
             "api",
@@ -153,12 +159,7 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
             command="api",
         )
         config.add_cleanup(api.close)
-        driver_url, driver_token = sandbox_driver
-        worker = Process(
-            "worker",
-            base | shared | {"MZM_SANDBOXD_URL": driver_url, "MZM_SANDBOXD_TOKEN": driver_token},
-            command="worker",
-        )
+        worker = Process("worker", base | shared, command="worker")
         config.add_cleanup(worker.close)
         server = Server(base_url=f"http://127.0.0.1:{port}/v1", api=api, worker=worker)
         _wait_until_ready(api, worker, server.base_url)
