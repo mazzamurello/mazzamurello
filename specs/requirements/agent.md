@@ -152,7 +152,7 @@ run in the user's sandbox or use provider-native tools (ADR-0030, ADR-0035).
 
 ## AGT-014: Bounded tool output
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
