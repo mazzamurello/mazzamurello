@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PlainSerializer, UrlConstraints
 
 type Role = Literal["member", "tenant_admin"]
 
@@ -99,3 +99,141 @@ class Tenant(Response):
 class TenantPage(Response):
     items: list[Tenant]
     next_cursor: str | None
+
+
+type DecimalText = Annotated[str, Field(pattern=r"^[0-9]{1,10}(\.[0-9]{1,10})?$")]
+
+
+class ModelPrices(Request):
+    input: DecimalText
+    cached_input: DecimalText | None = None
+    output: DecimalText
+    currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
+
+
+class ModelPricesOut(Response):
+    input: str
+    cached_input: str | None = None
+    output: str
+    currency: str
+
+
+class CreateModelConfigurationRequest(Request):
+    name: Annotated[str, Field(min_length=1, max_length=100)]
+    base_url: Annotated[HttpUrl, UrlConstraints(max_length=2000)]
+    model: Annotated[str, Field(min_length=1, max_length=200)]
+    api_key: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
+    paid: bool
+    prices: ModelPrices | None = None
+    is_default: bool = False
+
+
+class UpdateModelConfigurationRequest(Request):
+    """Only the fields present change; `api_key` and `prices` set to null are removed."""
+
+    name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    base_url: Annotated[HttpUrl, UrlConstraints(max_length=2000)] | None = None
+    model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    api_key: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
+    paid: bool | None = None
+    prices: ModelPrices | None = None
+    is_default: bool | None = None
+
+
+class ModelConfiguration(Response):
+    id: uuid.UUID
+    name: str
+    base_url: str
+    model: str
+    has_api_key: bool
+    paid: bool
+    prices: ModelPricesOut | None
+    is_default: bool
+    created_at: Timestamp
+    updated_at: Timestamp
+
+
+class ModelConfigurationList(Response):
+    items: list[ModelConfiguration]
+
+
+class CreateConversationRequest(Request):
+    title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+
+
+class UpdateConversationRequest(Request):
+    title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    archived: bool | None = None
+    active_run_id: uuid.UUID | None = None
+
+
+class Conversation(Response):
+    id: uuid.UUID
+    title: str
+    archived: bool
+    active_run_id: uuid.UUID | None
+    created_at: Timestamp
+    updated_at: Timestamp
+
+
+class ConversationPage(Response):
+    items: list[Conversation]
+    next_cursor: str | None
+
+
+type RunKind = Literal["message", "resume"]
+
+
+class PathRun(Response):
+    run_id: uuid.UUID
+    parent_run_id: uuid.UUID | None
+    kind: RunKind
+    message_ids: list[str]
+    versions: list[uuid.UUID]
+
+
+class MessagePage(Response):
+    items: list[dict[str, Any]]
+    runs: list[PathRun]
+    next_cursor: str | None
+
+
+class ModelRef(Response):
+    provider: str
+    model: str
+
+
+class Run(Response):
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    parent_run_id: uuid.UUID | None
+    kind: RunKind
+    status: Literal["queued", "running", "interrupted", "completed", "failed", "cancelled"]
+    error_code: str | None
+    model: ModelRef | None
+    last_event_seq: int
+    created_at: Timestamp
+    started_at: Timestamp | None
+    finished_at: Timestamp | None
+
+
+class AgUiInputMessage(BaseModel):
+    """A message of an AG-UI run input; only the last one, from the user, is used (ADR-0031)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    role: str
+    content: Any = None
+
+
+class RunInput(BaseModel):
+    """The fields of an AG-UI `RunAgentInput` that the server uses; the others are ignored."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    thread_id: uuid.UUID = Field(alias="threadId")
+    run_id: uuid.UUID = Field(alias="runId")
+    parent_run_id: uuid.UUID | None = Field(default=None, alias="parentRunId")
+    messages: Annotated[list[AgUiInputMessage], Field(min_length=1)]
+    resume: list[dict[str, Any]] | None = None
