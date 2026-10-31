@@ -4,7 +4,11 @@ version = "0.0.0"
 description = "Mazzamurello control plane: API and worker (ADR-0026, ADR-0028)."
 requires-python = ">=3.13"
 license = "AGPL-3.0-or-later"
-dependencies = []
+dependencies = [
+    "alembic==1.20.1",
+    "asyncpg==0.32.0",
+    "sqlalchemy[asyncio]==2.1.6",
+]
 
 [build-system]
 requires = ["uv_build==0.13.6"]
