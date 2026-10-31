@@ -88,7 +88,9 @@ action, the data involved and its destination.
 - **Verification:** integration
 
 Every tool invocation MUST produce an audit event (tool, time, run,
-conversation, approval outcome) that the user it acted for can view.
+conversation, approval outcome) that the user it acted for can view. Tools
+with external effects MUST record an idempotency key for each call, so that a
+call that may have run twice after a crash (ADR-0034) is visible as such.
 
 ## AGT-009: Durable runs
 
@@ -147,3 +149,64 @@ request (ADR-0033).
 Framework capabilities that execute commands, fetch URLs, search the web
 locally or connect to MCP servers MUST NOT run in the control plane. They MUST
 run in the user's sandbox or use provider-native tools (ADR-0030, ADR-0035).
+
+## AGT-014: Bounded tool output
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+A tool result larger than a configured limit MUST NOT be sent to the model in
+full. The model MUST receive a bounded excerpt and a way to read the rest,
+which is kept in the user's workspace (ADR-0043).
+
+Rationale: command output and web pages can fill the context window in one
+call.
+
+## AGT-015: Questions to the user
+
+- **Status:** draft
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** integration
+
+The agent SHOULD be able to ask the user structured questions with choices
+during a run. A question MUST end the run with an interrupt, like an approval,
+and the answer MUST start a new run (ADR-0033, ADR-0043). Answers are user
+input, not tool output.
+
+Rationale: journey J7.
+
+## AGT-016: Automatic compaction
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, eval
+
+When a conversation approaches the context window of the model in use, the
+system MUST compact the history sent to the model, using the strategy
+configured for that model: compaction by the provider when the model supports
+it, otherwise local strategies that drop or summarize the oldest content
+first. Compaction MUST NOT change the stored conversation, which the user can
+still read, rewind and fork in full (ADR-0041).
+
+Rationale: journeys J7 and J12.
+
+## AGT-017: Skills
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+A user MUST be able to create, edit, import, enable and delete skills in the
+open Agent Skills format: a folder with a `SKILL.md` file and optional
+bundled files. Skills MUST be private to their owner. Enabled skills MUST be
+available in all the user's conversations, with only their names and
+descriptions in the context until the model loads one. Imported skills MUST
+be treated as untrusted content (AGT-003), and their scripts MUST run only in
+the user's sandbox (ADR-0044).
+
+Rationale: journey J13.

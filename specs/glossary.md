@@ -15,7 +15,7 @@ new entry here first (ADR-0005).
 | User | A person with an account in exactly one tenant. |
 | Device session | An authenticated session of one user on one device, identified by an opaque token and revocable by the user (ADR-0025). |
 | Private data | Data owned by one user and visible only to that user. The default for all data. |
-| Shared space | A container of data explicitly shared among some or all users of a tenant (e.g. family calendar, shopping list). |
+| Shared space | A container of data explicitly shared among some or all users of a tenant (e.g. household documents, family calendar, shopping list). |
 
 ## Conversations and agent
 
@@ -23,6 +23,23 @@ new entry here first (ADR-0005).
 |---|---|
 | Conversation | An independent chat between a user and the assistant, with its own history. A user has many. |
 | Message | One entry in a conversation, from the user or the assistant. |
+| Folder | A user's named group of conversations in the conversation list; carries no instructions or settings (CNV-007). |
+| Fork | A new conversation started from a turn of another conversation, which records where it came from (CNV-005). |
+| Rewind | Making an earlier turn the end of the active path, so the conversation continues from there; what followed is kept as a version (CNV-004). |
+| File library | The private collection of files a user has uploaded, usable from any of their conversations; shown as "Files" (CNV-012). |
+| Base instructions | The assistant's main instructions, which a user may replace and restore (CNV-014). |
+| Additional instructions | Instructions a user adds after the base instructions (CNV-014). |
+| Skill | A reusable package of instructions and files in the open Agent Skills format, loaded by the model when relevant (AGT-017). |
+| Compaction | Reducing the history sent to the model when it approaches the context window, without changing the stored conversation (ADR-0041). |
+| Compaction checkpoint | The stored result of a compaction for one path, attached to the run at which it happened (ADR-0041). |
+| Temporary conversation | A conversation that is not listed, does not use memory and is deleted when the user leaves it (CNV-011). |
+| Attachment | A file of the file library referenced by a message; uploading an attachment adds it to the library (CNV-012). |
+| Parent run | The run whose messages a run continues; runs form a tree within a conversation (ADR-0037). |
+| Version | One of the runs that share the same parent run, created by editing a message or asking for a new answer (CNV-001). |
+| Active path | The chain of runs, from the first to the active run, that the user sees and that new runs continue by default (ADR-0037). |
+| Artifact | An output the assistant creates and revises for the user, such as a document, code, a diagram or a web page, shown next to the conversation, with immutable versions (ADR-0038). Not to be confused with a repository artifact, a file of this repository. |
+| Voice turn | A user turn spoken instead of typed, started and ended explicitly by the user, answered in full and read aloud (ADR-0040). |
+| Notification | A content-free message pushed to a user's device when a run finishes or an approval is pending (ADR-0039). |
 | Agent | The component that turns a user request into model calls and tool calls. |
 | Run | One execution of the agent in response to a message, including all its model and tool calls. |
 | Run event | An AG-UI event produced during a run (text, tool call, result, interrupt, completion), stored durably with a sequence number and streamed to clients (ADR-0032, ADR-0034). |
@@ -65,6 +82,7 @@ new entry here first (ADR-0005).
 | Provider | A source of model inference: a local server or a remote service. |
 | Local model | A model served from inside the instance or the household's network. |
 | Remote model | A model served by a third party over the internet. |
+| Cost ledger | The record of every model request made for a user, with tokens and cost but no content (MOD-006, ADR-0042). |
 | Data egress policy | The rules that decide which data may be sent to remote models, per tenant, user and shared space. |
 
 ## Process
@@ -72,6 +90,8 @@ new entry here first (ADR-0005).
 | Term | Definition |
 |---|---|
 | Requirement | A numbered, normative statement in `specs/requirements/`. |
+| Persona | One of the kinds of user described in the product description (`specs/product.md`), used to justify user-experience requirements. |
+| Journey | A task a persona accomplishes with Mazzamurello, described in the product description. |
 | ADR | Architecture decision record in `specs/adr/`. |
 | Contract | An interface that outlives the code: public API, database schema, on-disk formats. |
 | Invariant | A property that must always hold, typically a security property, verified by tests. |
