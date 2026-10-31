@@ -55,6 +55,7 @@ EXECUTABLE_FUNCTIONS = {
     "auth_find_session(bytea)",
     "auth_touch_session(uuid)",
     "auth_record_login_attempt(text, inet, boolean)",
+    "retention_expired_runs(integer)",
 }
 
 # Owner policies of the pre-authentication functions: table -> operations.
@@ -63,6 +64,7 @@ OWNER_POLICIES = {
     "users": {"SELECT", "INSERT"},
     "device_sessions": {"SELECT", "UPDATE"},
     "login_attempts": {"SELECT", "INSERT", "DELETE"},
+    "runs": {"SELECT"},
 }
 
 

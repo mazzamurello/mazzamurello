@@ -45,6 +45,7 @@ SECURITY_DEFINER_FUNCTIONS = (
     "auth_record_login_attempt",
     "bootstrap_instance",
     "revoke_sessions_of_disabled_user",
+    "retention_expired_runs",
 )
 
 
