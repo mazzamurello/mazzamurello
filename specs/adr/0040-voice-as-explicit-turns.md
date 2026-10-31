@@ -1,6 +1,6 @@
 # ADR-0040: Voice as explicit turns, not real-time conversation
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0017, API-006, UX-005, MOD-003
