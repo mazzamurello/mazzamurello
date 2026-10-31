@@ -80,6 +80,23 @@ jobs:
       - name: Type checker (strict)
         if: steps.workspace.outputs.present == 'true'
         run: uv run --locked pyright
+      # Sandbox tests run under gVisor (ADR-0023, ADR-0053): install the
+      # release the project is tested with from gVisor's official repository
+      # and register it with Docker.
+      - name: Install gVisor
+        if: steps.workspace.outputs.present == 'true'
+        env:
+          GVISOR_RELEASE: "20261026"
+        run: |
+          curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases ${GVISOR_RELEASE} main" \
+            | sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
+          sudo apt-get update -q
+          sudo apt-get install -y runsc
+          sudo runsc install
+          sudo systemctl reload docker
+          docker run --rm --runtime=runsc hello-world >/dev/null
+          runsc --version
       - name: Tests
         if: steps.workspace.outputs.present == 'true'
         run: uv run --locked pytest
