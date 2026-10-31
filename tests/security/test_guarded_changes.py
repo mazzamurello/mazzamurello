@@ -70,7 +70,7 @@ GUARDED_COLUMNS = (
 )
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-008")
 @pytest.mark.parametrize(("column", "value"), GUARDED_COLUMNS, ids=[column for column, _ in GUARDED_COLUMNS])
 def test_members_cannot_change_their_own_role_or_account_state(
     database: Database, world: World, column: str, value: object
@@ -79,14 +79,14 @@ def test_members_cannot_change_their_own_role_or_account_state(
         assert not _update_applies(conn, world.alice, column, value)
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-008")
 def test_disabled_members_cannot_enable_themselves(database: Database, world: World) -> None:
     disable_user(database, world.alice)
     with app_transaction(database, _member(world)) as conn:
         assert not _update_applies(conn, world.alice, "disabled_at", None)
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-008")
 def test_members_change_their_own_name_and_password(database: Database, world: World) -> None:
     with app_transaction(database, _member(world)) as conn:
         assert _update_applies(conn, world.alice, "display_name", "Alice")
@@ -94,7 +94,7 @@ def test_members_change_their_own_name_and_password(database: Database, world: W
         assert _applies(conn, "UPDATE users SET password_hash = %s WHERE id = %s", (ARGON2_HASH, world.alice.id))
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-008")
 @pytest.mark.parametrize(("column", "value"), [("role", "tenant_admin"), ("disabled_at", A_TIME)])
 def test_tenant_admins_change_role_and_account_state_of_their_members(
     database: Database, world: World, column: str, value: object
@@ -112,7 +112,7 @@ IMMUTABLE_COLUMNS: tuple[tuple[str, Callable[[World], object]], ...] = (
 )
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-008", "TEN-006")
 @pytest.mark.parametrize(("column", "value"), IMMUTABLE_COLUMNS, ids=[column for column, _ in IMMUTABLE_COLUMNS])
 def test_identity_columns_never_change_through_the_application(
     database: Database, world: World, column: str, value: Callable[[World], object]
@@ -136,21 +136,21 @@ def _new_user(conn: psycopg.Connection, tenant_id: uuid.UUID, *, instance_admin:
     return conn.execute("SELECT 1 FROM users WHERE id = %s", (user_id,)).fetchone() is not None
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-002", "AUTH-008")
 def test_tenant_admins_create_users_but_not_instance_admins(database: Database, world: World) -> None:
     with app_transaction(database, _tenant_admin(world)) as conn:
         assert _new_user(conn, world.tenant_a, instance_admin=False)
         assert not _new_user(conn, world.tenant_a, instance_admin=True)
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-002", "AUTH-008")
 def test_members_create_no_users(database: Database, world: World) -> None:
     with app_transaction(database, _member(world)) as conn:
         assert not _new_user(conn, world.tenant_a, instance_admin=False)
         assert not _new_user(conn, world.tenant_a, instance_admin=True)
 
 
-@pytest.mark.spec("AUTH-002", "TEN-006")
+@pytest.mark.spec("AUTH-008")
 def test_instance_admins_create_instance_admins(database: Database, world: World) -> None:
     with app_transaction(database, Context(world.tenant_b, world.bob.id, instance_admin=True)) as conn:
         assert _new_user(conn, world.tenant_b, instance_admin=True)
