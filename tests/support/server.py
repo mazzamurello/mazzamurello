@@ -31,16 +31,24 @@ STOP_TIMEOUT_SECONDS = 10
 class Process:
     """A server process, with its output in a log file."""
 
-    def __init__(self, command: str, environment: Mapping[str, str]) -> None:
-        self.command = command
+    def __init__(
+        self,
+        name: str,
+        environment: Mapping[str, str],
+        *,
+        module: str = "mazzamurello_server",
+        command: str | None = None,
+    ) -> None:
+        self.command = name
+        self.argv = [sys.executable, "-m", module, *([] if command is None else [command])]
         self.environment = dict(environment)
-        self._log = tempfile.NamedTemporaryFile("w+", prefix=f"mzm-{command}-", suffix=".log", delete=False)  # noqa: SIM115
+        self._log = tempfile.NamedTemporaryFile("w+", prefix=f"mzm-{name}-", suffix=".log", delete=False)  # noqa: SIM115
         self._process: subprocess.Popen[str] | None = None
         self.start()
 
     def start(self) -> None:
         self._process = subprocess.Popen(  # noqa: S603 - the server entry point, not user input
-            [sys.executable, "-m", "mazzamurello_server", self.command],
+            self.argv,
             cwd=ROOT,
             env=self.environment,
             stdout=self._log,
@@ -121,8 +129,11 @@ def _wait_until_ready(api: Process, worker: Process, base_url: str) -> None:
 _SERVER = pytest.StashKey[Server | BaseException]()
 
 
-def start_server(config: pytest.Config, database: Database) -> Server:
-    """Start the API and the worker once per test session; later calls return the same server."""
+def start_server(config: pytest.Config, database: Database, sandbox_driver: tuple[str, str]) -> Server:
+    """Start the API and the worker once per test session; later calls return the same server.
+
+    `sandbox_driver` is the URL and the secret of the session's sandbox driver.
+    """
     cached = config.stash.get(_SERVER, None)
     if isinstance(cached, BaseException):
         raise cached
@@ -139,9 +150,15 @@ def start_server(config: pytest.Config, database: Database) -> Server:
             base
             | shared
             | {"MZM_HTTP_HOST": "127.0.0.1", "MZM_HTTP_PORT": str(port), "MZM_TRUSTED_PROXIES": "127.0.0.1"},
+            command="api",
         )
         config.add_cleanup(api.close)
-        worker = Process("worker", base | shared)
+        driver_url, driver_token = sandbox_driver
+        worker = Process(
+            "worker",
+            base | shared | {"MZM_SANDBOXD_URL": driver_url, "MZM_SANDBOXD_TOKEN": driver_token},
+            command="worker",
+        )
         config.add_cleanup(worker.close)
         server = Server(base_url=f"http://127.0.0.1:{port}/v1", api=api, worker=worker)
         _wait_until_ready(api, worker, server.base_url)
