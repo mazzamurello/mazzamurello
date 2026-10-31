@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
-- **Related:** ADR-0031, ADR-0032, ADR-0033, ADR-0034, CNV-001, CNV-002, CNV-003, API-003
+- **Related:** ADR-0031, ADR-0032, ADR-0033, ADR-0034, CNV-001, CNV-002, CNV-003, CNV-004, CNV-005, API-003
 
 ## Context
 
@@ -38,7 +38,9 @@ We will model a conversation's history as **a tree of runs**:
    the conversation accepts only the run that resumes it.
 4. The conversation records the **active run**: the last run of the path shown
    to the user and continued by default. Starting a run makes it active;
-   switching versions changes it.
+   switching versions changes it, and rewinding (CNV-004) makes an earlier run
+   of the path active. Forking (CNV-005) copies the runs of a path into a new
+   conversation.
 5. The agent receives the messages of the path from the first run to the
    parent, as a plain Pydantic AI `message_history` (CNV-002). Pydantic AI
    needs no branching support.

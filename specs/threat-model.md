@@ -99,7 +99,9 @@ beyond keeping them configurable and updatable.
 | T-21 | A framework capability fetches URLs, runs commands or reaches MCP servers from the control plane, bypassing the sandbox (SSRF to the LAN or host) | X1 | AGT-013, SBX-009 |
 | T-22 | Active content in an artifact (scripts in a web page or SVG), possibly derived from untrusted content, runs with the user's session and calls the API or reads other data | X1 | ART-003, UX-002 |
 | T-23 | Notifications leak conversation content to the push services of browser vendors | — | UX-004 |
-| T-24 | Content of a version the user abandoned, or of a temporary conversation, reaches the model, memory or another conversation | X1 | CNV-002, CNV-009 |
+| T-24 | Content of a version the user abandoned, or of a temporary conversation, reaches the model, memory or another conversation | X1 | CNV-002, CNV-011 |
+| T-25 | An imported skill carries injected instructions or malicious scripts | X1 | AGT-003, AGT-004, AGT-017 |
+| T-26 | A file of one user's library is read by another user or reaches another user's sandbox | X2 | CNV-012, TEN-008 |
 
 ## The lethal trifecta in Mazzamurello
 

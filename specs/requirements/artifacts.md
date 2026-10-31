@@ -48,6 +48,6 @@ must not hand that content the user's session (threat T-22).
 - **Phase:** 1
 - **Verification:** security
 
-An artifact MUST belong to the conversation that created it and be private to
-its owner, or visible to the members of the shared space that contains the
-conversation (CNV-008).
+An artifact MUST belong to the conversation that created it and be private
+to its owner. Other users of the tenant MAY receive a read-only copy only
+when the owner sends it to them (CNV-010).
