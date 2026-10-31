@@ -87,7 +87,9 @@ is read once. It refuses when any user exists.
 ## Deployment
 
 `deploy/compose.yaml` reads `deploy/.env` (ADR-0054) and gives each service
-only its own variables above. The file holds:
+only its own variables above. `init` writes the file into the directory named
+by `MZM_CONFIG_DIR` in the environment of the `docker compose` command,
+`deploy/` by default. The file holds:
 
 | Variable | Written by `init` | Meaning |
 |---|---|---|
