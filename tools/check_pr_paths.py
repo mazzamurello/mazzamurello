@@ -33,6 +33,7 @@ RULES_PATHS: tuple[str, ...] = (
     ".devcontainer/",
     "tools/",
     "tests/__init__.py",
+    "tests/conftest.py",
     "tests/tooling/",
 )
 
