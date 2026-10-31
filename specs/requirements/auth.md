@@ -75,3 +75,15 @@ Login attempts MUST be rate-limited per account and per source address.
 The first instance admin MUST be created during setup by an explicit,
 one-time command run by whoever operates the instance. The system MUST NOT
 ship or accept any default credentials.
+
+## AUTH-008: Privileges changed only by administrators
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** security
+
+Changing a user's role, and disabling or re-enabling their account, MUST
+require a tenant admin of the user's tenant. Creating an instance admin MUST
+require an instance admin. A user MUST NOT be able to raise their own
+privileges or re-enable their own account.
