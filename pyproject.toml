@@ -12,9 +12,11 @@ members = ["src/server", "src/sandboxd", "src/netguard"]
 
 [dependency-groups]
 dev = [
+  "psycopg[binary]==3.3.6",
   "pyright==1.1.414",
   "pytest==9.2.0",
   "ruff==0.17.3",
+  "testcontainers==4.15.0",
   "ty==0.0.95",
 ]
 
