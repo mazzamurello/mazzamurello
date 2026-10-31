@@ -60,13 +60,15 @@ version, migration notes and a deprecation period for the previous behavior.
 ## API-006: Voice input and output
 
 - **Status:** draft
-- **Priority:** SHOULD
-- **Phase:** 2
+- **Priority:** MUST
+- **Phase:** 1
 - **Verification:** integration
 
-The API SHOULD accept spoken input (speech-to-text) and return spoken
-responses (text-to-speech), backed by local speech services by default and
-subject to the data egress policy when remote services are configured.
+The API MUST transcribe a recorded spoken turn into text (speech-to-text) and
+synthesize an assistant message as audio (text-to-speech), for voice turns
+(UX-005). Speech services MUST be local by default; remote speech services
+MUST be subject to the data egress policy (MOD-003). Recordings MUST NOT be
+kept after transcription unless the user chooses to keep them.
 
 ## API-007: Stable error codes
 

@@ -1,7 +1,7 @@
 # MOD — Models and data egress
 
 How the assistant reaches language models, and what may leave the house.
-Background: ADR-0017.
+Background: ADR-0017, ADR-0036, ADR-0042.
 
 ## MOD-001: Provider-agnostic model gateway
 
@@ -55,3 +55,33 @@ paid providers, checked before each request.
 
 The system SHOULD record which provider and model produced each assistant
 message and show it to the user.
+
+## MOD-006: Cost ledger
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+Every model request the gateway makes MUST add an entry to the cost ledger of
+the user it was made for, with the provider, the model, the purpose (a run,
+a title, a compaction, speech), the conversation and run when there is one,
+the input, cached and output tokens, and the cost. Requests to providers that
+are not paid per token MUST be recorded with their tokens and a cost of zero.
+Ledger entries MUST NOT contain message content (ADR-0042).
+
+Rationale: journey J12.
+
+## MOD-007: Live usage reporting
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+During a run, the server MUST send clients, after each model response, the
+context window size of the model, the tokens the context uses, and the
+tokens and cost of the run so far. The API MUST provide the total cost per
+message, per conversation, per day and per month for the requesting user.
+
+Rationale: journey J12.

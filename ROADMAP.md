@@ -15,10 +15,11 @@ the user's isolated sandbox → the answer streams back.
 Includes: tenancy and row-level security (TEN), local accounts (AUTH), the
 sandbox and its network isolation (SBX), mediated tools (AGT-001), the model
 gateway with one local and one remote provider (MOD), the public API with
-conversations and streaming (API), privacy defaults for logs (OBS), Docker
-Compose deployment (OPS), and the repository governance checks (REPO).
-There is no user interface in phase 0: the API is exercised by end-to-end
-tests (ADR-0024).
+conversations, message versions, rewinding, stopping runs and streaming (API,
+CNV-001 to CNV-004, CNV-015), the cost ledger (MOD-006), privacy defaults for
+logs (OBS), Docker Compose deployment (OPS), and the repository governance
+checks (REPO). There is no user interface in phase 0: the API is exercised by
+end-to-end tests (ADR-0024).
 
 **Exit criteria:**
 
@@ -32,11 +33,16 @@ tests (ADR-0024).
 **Goal:** an assistant the maintainer's family uses every day, on the web and
 on the phone (installable web app).
 
-Includes: the web client as an installable web app with externalized strings
-(I18N-001), web search and page reading, persistent workspaces, shared spaces,
-transparent memory (MEM), tool permissions, provenance and approvals with the
-lethal trifecta mitigation (AGT), the data egress policy (MOD-003), backup
-and restore (OPS-006), and the first eval suite (EVL).
+Includes: the web client as an installable web app (UX) with externalized
+strings (I18N-001), notifications, voice turns (UX-005, API-006), live context
+and cost (UX-008, MOD-007), the conversation list with folders, forks, search,
+the file library, conversation settings, custom instructions, temporary
+conversations and sharing within the household (CNV), artifacts (ART),
+automatic compaction, skills and questions to the user (AGT), web search and
+page reading, persistent workspaces, transparent memory (MEM), tool
+permissions, provenance and approvals with the lethal trifecta mitigation
+(AGT), the data egress policy (MOD-003), backup and restore (OPS-006), and the
+first eval suite (EVL).
 
 **Exit criteria:** used daily by at least one household for a month without
 data loss; eval suite in place, including injection scenarios.
@@ -46,11 +52,11 @@ data loss; eval suite in place, including injection scenarios.
 **Goal:** the features that make it an assistant rather than a chat, and the
 release engineering to let others run it.
 
-Includes: voice (API-006), scheduled tasks, connectors over open protocols
-(calendar, mail, files, home automation through mediated tools), OpenID
-Connect (AUTH-003), budgets (MOD-004), debug mode (OBS-004), signed
-multi-architecture images, upgrade guarantees, English and Italian
-translations, release gating by evals.
+Includes: multi-step research producing reports, browser automation in the
+sandbox, scheduled tasks, connectors over open protocols (calendar, mail,
+files, home automation through mediated tools), OpenID Connect (AUTH-003),
+budgets (MOD-004), debug mode (OBS-004), signed multi-architecture images,
+upgrade guarantees, English and Italian translations, release gating by evals.
 
 **Exit criteria:** first public release `0.1.0`; installation and upgrade
 documentation verified on a clean machine; public announcement.
