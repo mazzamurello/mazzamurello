@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello sandbox driver API
-  version: 0.1.0-draft
+  version: 0.2.0-draft
   summary: Internal API between the control plane and the sandbox driver (ADR-0022).
   description: |
     The sandbox driver is the only component with access to the container
@@ -17,6 +17,11 @@ info:
 
     Operations marked `x-phase: 1` are part of the contract but implemented
     in phase 1.
+
+    The control plane presents this API to agents as a Pydantic AI workspace
+    backend (ADR-0035), so `exec` follows the workspace protocol: stdin at
+    end of file, complete output, the real exit code, timeouts, and commands
+    given either as an argv list or as a shell string.
   license:
     name: CC-BY-4.0
     url: https://creativecommons.org/licenses/by/4.0/
@@ -242,29 +247,40 @@ components:
 
     Sandbox:
       type: object
-      required: [state, started_at]
+      required: [state, started_at, working_dir]
       properties:
         state:
           type: string
           enum: [running]
         started_at: { type: string, format: date-time }
+        working_dir:
+          type: string
+          description: Absolute, stable working directory of the workspace.
 
     ExecRequest:
       type: object
-      required: [argv]
+      description: Exactly one of `argv` and `shell_command` is required.
       additionalProperties: false
+      oneOf:
+        - required: [argv]
+        - required: [shell_command]
       properties:
         argv:
           type: array
           minItems: 1
           items: { type: string }
-          description: Program and arguments, executed without an implicit shell.
+          description: Program and arguments, executed without a shell.
+        shell_command:
+          type: string
+          minLength: 1
+          description: A command line interpreted by the sandbox's POSIX shell.
+        env:
+          type: object
+          additionalProperties: { type: string }
+          description: Extra environment variables for this command. Never used to pass credentials (SBX-008).
         workdir:
           type: string
           description: Working directory inside the sandbox; defaults to the workspace root.
-        stdin:
-          type: string
-          description: Data written to the command's standard input (UTF-8).
         timeout_seconds:
           type: integer
           minimum: 1

@@ -1,6 +1,6 @@
 # ADR-0026: Durable runs executed by workers, with persisted run events
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0034
 - **Date:** 2026-10-30
 - **Deciders:** @tapionx
 - **Related:** ADR-0008, API-004, AGT-009, AGT-010
