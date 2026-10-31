@@ -48,7 +48,7 @@ paid providers, checked before each request.
 
 ## MOD-005: Model attribution
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
@@ -58,7 +58,7 @@ message and show it to the user.
 
 ## MOD-006: Cost ledger
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -74,7 +74,7 @@ Rationale: journey J12.
 
 ## MOD-008: Models configured by administrators
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
