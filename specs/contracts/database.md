@@ -136,7 +136,8 @@ Policies:
 - `SELECT` where `tenant_id = app_tenant_id()`.
 - `INSERT` where (`tenant_id = app_tenant_id()` and `app_is_tenant_admin()`
   and not `instance_admin`) or `app_is_instance_admin()` (to create a new
-  tenant's first admin). Only an instance admin creates instance admins.
+  tenant's first admin). Only an instance admin creates instance admins
+  (AUTH-008).
 - `UPDATE` where `tenant_id = app_tenant_id()` and (`id = app_user_id()` or
   `app_is_tenant_admin()`).
 
@@ -146,7 +147,7 @@ Column privileges: `mzm_app` cannot `SELECT` `password_hash`; only
 `instance_admin` never change through the application.
 
 Changing `role` or `disabled_at` requires `app_is_tenant_admin()`, so that
-users cannot promote themselves or re-enable their account. Row-level
+users cannot promote themselves or re-enable their account (AUTH-008). Row-level
 security cannot compare a row's old and new values, so a `BEFORE UPDATE`
 trigger on `users` enforces this rule.
 
@@ -337,4 +338,4 @@ there is no soft delete for user content.
 - Every foreign key between tenant-scoped tables includes `tenant_id`, and
   every foreign key between private tables also includes the owner column.
 - Users cannot change their own `role` or `disabled_at`, and only instance
-  admins create instance admins.
+  admins create instance admins (AUTH-008).
