@@ -3,18 +3,21 @@
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
-ADR-0037, ADR-0042.
+ADR-0037, ADR-0042, ADR-0046.
 
 ## Roles
 
 | Role | Used by | Properties |
 |---|---|---|
-| `mzm_owner` | Migrations only | Owns every table and function. Never used by running services. |
+| `mzm_owner` | Migrations, and the pre-authentication functions it owns | Owns every table and function. Never used by running services to connect. |
 | `mzm_app` | API and worker | `NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE`; owns nothing; granted only the privileges listed below (TEN-004). |
 
 Every table below has row-level security **enabled and forced** (TEN-003),
 including tables that are not tenant-scoped, so that no table is readable by
-`mzm_app` without an explicit policy.
+`mzm_app` without an explicit policy. Forced row-level security applies to the
+table owner too: `mzm_owner` reaches rows only through the owner policies of
+the pre-authentication functions. The policies of each table below are
+created `TO mzm_app`.
 
 ## Initialization
 
@@ -78,11 +81,31 @@ minimum needed and nothing else.
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006) |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and instance admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
 
+These functions run as `mzm_owner`, which forced row-level security does not
+exempt. They work through **owner policies**, created `TO mzm_owner`, and
+these are the only policies for that role:
+
+| Table | Operations for `mzm_owner` | Used by |
+|---|---|---|
+| `tenants` | `SELECT`, `INSERT` | `bootstrap_instance` |
+| `users` | `SELECT`, `INSERT` | `auth_find_login`, `auth_find_session`, `bootstrap_instance` |
+| `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session` |
+| `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
+
+Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
+by running services, so they open these tables only to the code of the
+functions above and to migrations.
+
 ## Tables
 
 Conventions: identifiers are `uuid` (version 7); timestamps are
 `timestamptz`; every foreign key to a tenant-scoped row also includes
-`tenant_id`, so that a row can never reference another tenant's data.
+`tenant_id`, so that a row can never reference another tenant's data; every
+foreign key from a private table to another private table also includes the
+owner column, so that a row can never be attached to another user's data. A
+foreign key that sets null on delete lists the column it sets
+(`ON DELETE SET NULL (column)`), so that the tenant and owner columns keep
+their values.
 
 ### `tenants`
 
@@ -111,13 +134,21 @@ Policies: `SELECT` where `id = app_tenant_id()` or `app_is_instance_admin()`;
 
 Policies:
 - `SELECT` where `tenant_id = app_tenant_id()`.
-- `INSERT` where (`tenant_id = app_tenant_id()` and `app_is_tenant_admin()`)
-  or `app_is_instance_admin()` (to create a new tenant's first admin).
+- `INSERT` where (`tenant_id = app_tenant_id()` and `app_is_tenant_admin()`
+  and not `instance_admin`) or `app_is_instance_admin()` (to create a new
+  tenant's first admin). Only an instance admin creates instance admins.
 - `UPDATE` where `tenant_id = app_tenant_id()` and (`id = app_user_id()` or
   `app_is_tenant_admin()`).
 
 Column privileges: `mzm_app` cannot `SELECT` `password_hash`; only
-`auth_find_login` reads it.
+`auth_find_login` reads it. `mzm_app` may `UPDATE` only `display_name`,
+`password_hash`, `role` and `disabled_at`; identifiers, `username` and
+`instance_admin` never change through the application.
+
+Changing `role` or `disabled_at` requires `app_is_tenant_admin()`, so that
+users cannot promote themselves or re-enable their account. Row-level
+security cannot compare a row's old and new values, so a `BEFORE UPDATE`
+trigger on `users` enforces this rule.
 
 ### `device_sessions` (private)
 
@@ -158,7 +189,7 @@ No policies for `mzm_app`: accessed only through
 | `tenant_id` | uuid | not null |
 | `owner_id` | uuid | not null; (`tenant_id`, `owner_id`) references `users` |
 | `title` | text | not null |
-| `active_run_id` | uuid | the last run of the active path (ADR-0037); null before the first run; (`tenant_id`, `active_run_id`) references `runs` on delete set null |
+| `active_run_id` | uuid | the last run of the active path (ADR-0037); null before the first run; (`tenant_id`, `owner_id`, `active_run_id`) references `runs` on delete set null (`active_run_id`) |
 | `usage` | jsonb | Pydantic AI conversation usage |
 | `pending_approvals` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending (ADR-0033), else null |
 | `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
@@ -175,10 +206,10 @@ History served to clients is a projection of these rows.
 
 | Column | Type | Notes |
 |---|---|---|
-| `run_id` | uuid | (`tenant_id`, `run_id`) references `runs` on delete cascade |
+| `run_id` | uuid | (`tenant_id`, `owner_id`, `run_id`) references `runs` on delete cascade |
 | `seq` | integer | position within the run, starting at 1, no gaps |
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
-| `conversation_id` | uuid | (`tenant_id`, `conversation_id`) references `conversations` on delete cascade |
+| `conversation_id` | uuid | (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete cascade |
 | `message` | jsonb | one `ModelMessage`, serialized with Pydantic AI's `ModelMessagesTypeAdapter` |
 | `created_at` | timestamptz | not null |
 
@@ -190,8 +221,8 @@ Primary key (`run_id`, `seq`).
 |---|---|---|
 | `id` | uuid | primary key; also Pydantic AI's `run_id` and the DBOS workflow ID (ADR-0034) |
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
-| `conversation_id` | uuid | not null; references `conversations` on delete cascade |
-| `parent_run_id` | uuid | the run this run continues (ADR-0037); null for the first run; (`tenant_id`, `parent_run_id`) references `runs` on delete cascade; indexed |
+| `conversation_id` | uuid | not null; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete cascade |
+| `parent_run_id` | uuid | the run this run continues (ADR-0037); null for the first run; (`tenant_id`, `owner_id`, `parent_run_id`) references `runs` on delete cascade; indexed |
 | `kind` | text | `message` (a new turn or a version of one) or `resume` (answers to an interrupt, ADR-0033) |
 | `status` | text | `queued`, `running`, `interrupted`, `completed`, `failed`, `cancelled` |
 | `error_code` | text | stable error code when failed (API-007) |
@@ -217,8 +248,8 @@ It never contains content.
 |---|---|---|
 | `id` | uuid | primary key |
 | `tenant_id`, `owner_id` | uuid | the user the request was made for; (`tenant_id`, `owner_id`) references `users` |
-| `conversation_id` | uuid | null for requests outside a conversation; (`tenant_id`, `conversation_id`) references `conversations` on delete set null |
-| `run_id` | uuid | null outside a run; (`tenant_id`, `run_id`) references `runs` on delete set null |
+| `conversation_id` | uuid | null for requests outside a conversation; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete set null (`conversation_id`) |
+| `run_id` | uuid | null outside a run; (`tenant_id`, `owner_id`, `run_id`) references `runs` on delete set null (`run_id`) |
 | `purpose` | text | `run`, `title`, `compaction`, `speech` or `memory` |
 | `provider`, `model` | text | not null |
 | `input_tokens`, `cached_input_tokens`, `cache_write_tokens`, `output_tokens` | bigint | not null, default 0 |
@@ -242,6 +273,27 @@ WITH CHECK (tenant_id = app_tenant_id() AND owner_id = app_user_id())
 ```
 
 (`device_sessions` uses `user_id` in place of `owner_id`.)
+
+## Privileges of `mzm_app`
+
+`mzm_app` holds exactly these privileges, and nothing else (TEN-004). Rows
+that a conversation's deletion removes or detaches are handled by the foreign
+keys, not by privileges of `mzm_app`.
+
+| Object | Privileges |
+|---|---|
+| `tenants` | `SELECT`, `INSERT` |
+| `users` | `SELECT` on every column except `password_hash`; `INSERT`; `UPDATE` of `display_name`, `password_hash`, `role`, `disabled_at` |
+| `device_sessions` | `SELECT`, `INSERT`, `DELETE`; `UPDATE` of `revoked_at` |
+| `login_attempts` | none |
+| `conversations` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |
+| `runs` | `SELECT`, `INSERT`, `UPDATE` |
+| `usage_ledger` | `SELECT`, `INSERT`: entries never change (ADR-0042) |
+| Helper functions | `EXECUTE` on `app_tenant_id()`, `app_user_id()`, `app_is_tenant_admin()`, `app_is_instance_admin()` |
+| Pre-authentication functions | `EXECUTE` on every function of that section except `bootstrap_instance` |
+
+`EXECUTE` on functions is revoked from `PUBLIC`.
 
 ## Durable execution schema (`dbos`)
 
@@ -278,4 +330,11 @@ there is no soft delete for user content.
   function (TEN-004).
 - Every `SECURITY DEFINER` function is in the list above, owned by `mzm_owner`
   and has a fixed `search_path`.
-- Every foreign key between tenant-scoped tables includes `tenant_id`.
+- `mzm_app` holds exactly the privileges listed in "Privileges of `mzm_app`"
+  (TEN-004).
+- Policies for `mzm_owner` are exactly the owner policies listed with the
+  pre-authentication functions; every other policy is for `mzm_app`.
+- Every foreign key between tenant-scoped tables includes `tenant_id`, and
+  every foreign key between private tables also includes the owner column.
+- Users cannot change their own `role` or `disabled_at`, and only instance
+  admins create instance admins.
