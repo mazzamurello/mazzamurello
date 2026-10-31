@@ -690,7 +690,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
         admin:
-          description: The tenant's first tenant admin.
+          description: The tenant's first tenant admin; `role` must be `tenant_admin`.
           allOf:
             - $ref: "#/components/schemas/CreateUserRequest"
 
