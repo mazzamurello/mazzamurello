@@ -3,7 +3,7 @@
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
-ADR-0037, ADR-0042, ADR-0046.
+ADR-0037, ADR-0042, ADR-0046, ADR-0048.
 
 ## Roles
 
@@ -89,12 +89,12 @@ these are the only policies for that role:
 |---|---|---|
 | `tenants` | `SELECT`, `INSERT` | `bootstrap_instance` |
 | `users` | `SELECT`, `INSERT` | `auth_find_login`, `auth_find_session`, `bootstrap_instance` |
-| `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session` |
+| `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session`, `revoke_sessions_of_disabled_user` |
 | `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
 
 Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
 by running services, so they open these tables only to the code of the
-functions above and to migrations.
+`SECURITY DEFINER` functions of this contract and to migrations.
 
 ## Tables
 
@@ -150,6 +150,15 @@ Changing `role` or `disabled_at` requires `app_is_tenant_admin()`, so that
 users cannot promote themselves or re-enable their account (AUTH-008). Row-level
 security cannot compare a row's old and new values, so a `BEFORE UPDATE`
 trigger on `users` enforces this rule.
+
+Disabling an account revokes its sessions (AUTH-009, ADR-0048). When
+`disabled_at` changes from null to a value, an `AFTER UPDATE` trigger on
+`users` sets `revoked_at` to the current time on every session of that user
+that is not yet revoked, in the same transaction. Its function,
+`revoke_sessions_of_disabled_user()`, is `SECURITY DEFINER`, owned by
+`mzm_owner`, with a fixed `search_path`, and not executable by `mzm_app`; it
+changes `device_sessions` through the owner policies. Re-enabling an account
+leaves its sessions revoked.
 
 ### `device_sessions` (private)
 
@@ -329,8 +338,9 @@ there is no soft delete for user content.
   owner column (TEN-002).
 - `mzm_app` is not a superuser, lacks `BYPASSRLS` and owns no table or
   function (TEN-004).
-- Every `SECURITY DEFINER` function is in the list above, owned by `mzm_owner`
-  and has a fixed `search_path`.
+- Every `SECURITY DEFINER` function is a pre-authentication function or
+  `revoke_sessions_of_disabled_user()`, is owned by `mzm_owner` and has a fixed
+  `search_path`.
 - `mzm_app` holds exactly the privileges listed in "Privileges of `mzm_app`"
   (TEN-004).
 - Policies for `mzm_owner` are exactly the owner policies listed with the
