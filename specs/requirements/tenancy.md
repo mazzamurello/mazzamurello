@@ -5,7 +5,7 @@ other. Background: ADR-0009, ADR-0011.
 
 ## TEN-001: Tenant hierarchy
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -16,7 +16,7 @@ belongs to exactly one tenant.
 
 ## TEN-002: Ownership columns
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -28,7 +28,7 @@ it.
 
 ## TEN-003: Row-level security on every tenant-scoped table
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -40,7 +40,7 @@ tenant-scoped table lacks enabled and forced row-level security.
 
 ## TEN-004: Unprivileged application database role
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -51,7 +51,7 @@ table. Schema migrations MUST run with a separate role.
 
 ## TEN-005: Tenant context from the authenticated identity
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -64,7 +64,7 @@ connection.
 
 ## TEN-006: No cross-user or cross-tenant access
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -97,7 +97,7 @@ file outside their own partition or the shared spaces they belong to.
 
 ## TEN-009: Durable execution data
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security, design

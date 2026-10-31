@@ -25,7 +25,7 @@ server differs from the committed contract.
 
 ## API-003: Separate conversations
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** e2e
@@ -36,7 +36,7 @@ flow between conversations except through memory items (MEM-004).
 
 ## API-004: Streaming responses
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
