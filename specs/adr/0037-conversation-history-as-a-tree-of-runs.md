@@ -1,6 +1,6 @@
 # ADR-0037: Conversation history as a tree of runs
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0031, ADR-0032, ADR-0033, ADR-0034, CNV-001, CNV-002, CNV-003, CNV-004, CNV-005, API-003

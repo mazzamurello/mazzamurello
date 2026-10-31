@@ -1,6 +1,6 @@
 # ADR-0038: Artifacts stored as versioned objects and rendered on an isolated origin
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0012, ADR-0030, ADR-0035, ART-001, ART-002, ART-003, ART-004, AGT-003

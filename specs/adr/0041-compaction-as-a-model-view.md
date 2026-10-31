@@ -1,6 +1,6 @@
 # ADR-0041: Compaction as a view for the model, chosen per model
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0030, ADR-0031, ADR-0036, ADR-0037, ADR-0042, AGT-016, CNV-002, CNV-004, CNV-005, MOD-007

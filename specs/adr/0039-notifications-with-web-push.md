@@ -1,6 +1,6 @@
 # ADR-0039: Notifications with Web Push and content-free payloads
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0016, ADR-0033, UX-001, UX-004, AGT-007, OBS-001

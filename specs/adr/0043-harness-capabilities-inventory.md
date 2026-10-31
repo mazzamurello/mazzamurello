@@ -1,6 +1,6 @@
 # ADR-0043: Which Pydantic AI harness capabilities we use
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0030, ADR-0034, ADR-0035, ADR-0041, ADR-0042, ADR-0044, AGT-011, AGT-013, AGT-014, AGT-015, AGT-016, AGT-017, REPO-010

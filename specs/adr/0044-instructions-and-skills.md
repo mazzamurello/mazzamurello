@@ -1,6 +1,6 @@
 # ADR-0044: Editable instructions and skills in the open Agent Skills format
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0012, ADR-0030, ADR-0035, ADR-0043, AGT-003, AGT-017, CNV-013, CNV-014

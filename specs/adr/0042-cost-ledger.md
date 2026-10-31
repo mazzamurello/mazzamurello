@@ -1,6 +1,6 @@
 # ADR-0042: A cost ledger for every model request
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0017, ADR-0036, ADR-0041, MOD-004, MOD-005, MOD-006, MOD-007, UX-008
