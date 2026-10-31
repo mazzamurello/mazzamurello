@@ -1,0 +1,169 @@
+# Mazzamurello on one host with Docker Compose (OPS-001, ADR-0054).
+#
+#   docker compose run --rm --no-deps init   # writes .env with fresh secrets
+#   docker compose up --detach --build --wait
+#   docker compose run --rm setup            # creates the first administrator
+#
+# Only the API is published (OPS-003). Every setting comes from .env; see
+# specs/contracts/configuration.md.
+
+name: mazzamurello
+
+x-server: &server
+  image: mazzamurello/server:local
+  build:
+    context: ..
+    dockerfile: deploy/images/server/Dockerfile
+  networks: [internal]
+  restart: unless-stopped
+
+x-app-database: &app-database
+  MZM_DATABASE_URL: postgresql://mzm_app:${MZM_APP_PASSWORD:-}@postgres:5432/mazzamurello
+
+x-owner-database: &owner-database
+  MZM_DATABASE_URL: postgresql://mzm_owner:${MZM_OWNER_PASSWORD:-}@postgres:5432/mazzamurello
+
+networks:
+  internal: {}
+
+volumes:
+  postgres: {}
+
+services:
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_PASSWORD: ${MZM_POSTGRES_PASSWORD:-}
+      MZM_OWNER_PASSWORD: ${MZM_OWNER_PASSWORD:-}
+      MZM_APP_PASSWORD: ${MZM_APP_PASSWORD:-}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./postgres/initdb.sh:/docker-entrypoint-initdb.d/10-mazzamurello.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "--username", "postgres", "--dbname", "mazzamurello"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks: [internal]
+    restart: unless-stopped
+
+  migrate:
+    <<: *server
+    command: ["alembic", "-c", "migrations/alembic.ini", "upgrade", "head"]
+    environment:
+      <<: *owner-database
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    <<: *server
+    command: ["mazzamurello_server", "api"]
+    environment:
+      <<: *app-database
+      MZM_HTTP_PORT: "8000"
+      MZM_SECRET_KEY: ${MZM_SECRET_KEY:-}
+      MZM_TRUSTED_PROXIES: ${MZM_TRUSTED_PROXIES:-}
+      MZM_SANDBOXD_URL: http://sandboxd:8100/v1
+      MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
+    # The single entry point (OPS-003); HTTPS comes from a reverse proxy.
+    ports:
+      - "${MZM_PUBLISH:-127.0.0.1:8080}:8000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      sandboxd: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5)"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+
+  worker:
+    <<: *server
+    command: ["mazzamurello_server", "worker"]
+    environment:
+      <<: *app-database
+      MZM_SECRET_KEY: ${MZM_SECRET_KEY:-}
+      MZM_RUN_RETENTION_DAYS: ${MZM_RUN_RETENTION_DAYS:-30}
+      MZM_SANDBOXD_URL: http://sandboxd:8100/v1
+      MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      sandboxd: { condition: service_healthy }
+
+  sandboxd:
+    image: mazzamurello/sandboxd:local
+    build:
+      context: ..
+      dockerfile: deploy/images/sandboxd/Dockerfile
+    environment:
+      MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
+      MZM_SANDBOX_IMAGE: mazzamurello/sandbox:local
+      MZM_NETGUARD_CONTAINER: mazzamurello-netguard
+      MZM_SANDBOX_RESOLVER: ${MZM_SANDBOX_RESOLVER:-9.9.9.9}
+      MZM_SANDBOX_CPUS: ${MZM_SANDBOX_CPUS:-1}
+      MZM_SANDBOX_MEMORY_MB: ${MZM_SANDBOX_MEMORY_MB:-1024}
+      MZM_SANDBOX_PROCESSES: ${MZM_SANDBOX_PROCESSES:-512}
+      MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS: ${MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS:-300}
+      MZM_SANDBOX_MAX_OUTPUT_BYTES: ${MZM_SANDBOX_MAX_OUTPUT_BYTES:-1048576}
+      MZM_SANDBOX_IDLE_MINUTES: ${MZM_SANDBOX_IDLE_MINUTES:-30}
+    # The only service with the container runtime (SBX-009).
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      netguard: { condition: service_healthy }
+      sandbox: { condition: service_completed_successfully }
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os, urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8100/v1/health', headers={'Authorization': 'Bearer ' + os.environ['MZM_SANDBOXD_TOKEN']}), timeout=5)"
+      interval: 3s
+      timeout: 10s
+      retries: 60
+    networks: [internal]
+    restart: unless-stopped
+
+  netguard:
+    image: mazzamurello/netguard:local
+    build:
+      context: ..
+      dockerfile: deploy/images/netguard/Dockerfile
+    # Host networking and NET_ADMIN, nothing else (ADR-0021).
+    container_name: mazzamurello-netguard
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  # Builds the sandbox image for the driver, then exits.
+  sandbox:
+    image: mazzamurello/sandbox:local
+    build:
+      context: ..
+      dockerfile: deploy/images/sandbox/Dockerfile
+    command: ["true"]
+    network_mode: none
+    restart: "no"
+
+  init:
+    <<: *server
+    command: ["mazzamurello_server", "init", "--output", "/config/.env"]
+    user: "0:0"
+    volumes:
+      - ${MZM_CONFIG_DIR:-.}:/config
+    networks: []
+    network_mode: none
+    restart: "no"
+    profiles: [operator]
+
+  setup:
+    <<: *server
+    command: ["mazzamurello_server", "setup"]
+    environment:
+      <<: *owner-database
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+    profiles: [operator]

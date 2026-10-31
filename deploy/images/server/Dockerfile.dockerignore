@@ -1,0 +1,9 @@
+# Only what the server image needs.
+*
+!pyproject.toml
+!uv.lock
+!src/server
+!src/sandboxd/pyproject.toml
+!src/netguard/pyproject.toml
+!migrations
+**/__pycache__
