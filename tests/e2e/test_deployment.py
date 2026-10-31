@@ -106,8 +106,10 @@ def deployment(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Deployment]
         deployment.compose("run", "--rm", "--no-TTY", "setup", stdin=answers)
         yield deployment
     finally:
-        compose(project, config_dir, "down", "--volumes", "--rmi", "all", "--timeout", "20", check=False, timeout=600)
+        # The driver's sandboxes first, so that nothing holds the deployment's images.
+        compose(project, config_dir, "stop", "sandboxd", check=False)
         _remove_sandboxes()
+        compose(project, config_dir, "down", "--volumes", "--rmi", "all", "--timeout", "20", check=False, timeout=600)
 
 
 @pytest.fixture(scope="module")
