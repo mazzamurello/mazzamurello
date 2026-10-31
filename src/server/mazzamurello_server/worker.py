@@ -21,6 +21,9 @@ from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import AgentStreamEvent, ModelMessage, ModelMessagesTypeAdapter
 from pydantic_ai.ui.ag_ui import AGUIEventStream
+from pydantic_ai_harness.filesystem import FileSystem
+from pydantic_ai_harness.shell import Shell
+from pydantic_ai_harness.tool_output_limits import ToolOutputLimits
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -35,11 +38,15 @@ from mazzamurello_server.durable import (
     RUN_WORKFLOW,
 )
 from mazzamurello_server.gateway import Gateway, ModelUnavailableError, RunDeps, model_reference, store_messages
+from mazzamurello_server.sandbox import SandboxWorkspace
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
 logger = logging.getLogger(__name__)
 
 RETENTION_INTERVAL_SECONDS = 3600
+# The driver caps output already; the shell tool must not cut it before the
+# output limits keep the rest in the workspace (AGT-014).
+SHELL_OUTPUT_CHARS = 64 * 1024 * 1024
 QUEUE_POLLING_SECONDS = 0.2
 # Until instructions and skills arrive (ADR-0044, ADR-0052).
 INSTRUCTIONS = (
@@ -53,6 +60,8 @@ class _Worker:
 
     engine: AsyncEngine | None = None
     secret_key: bytes = b""
+    sandboxd_url: str = ""
+    sandboxd_token: str = ""
 
 
 _WORKER = _Worker()
@@ -87,7 +96,16 @@ agent = Agent(
     name="mazzamurello",
     deps_type=RunDeps,
     instructions=INSTRUCTIONS,
-    capabilities=[Gateway(), DBOSDurability(event_stream_handler=_handle_events)],
+    capabilities=[
+        Gateway(),
+        # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
+        SandboxWorkspace(),
+        Shell(max_output_chars=SHELL_OUTPUT_CHARS),
+        FileSystem(),
+        # Large results reach the model bounded; the rest stays in the workspace (AGT-014).
+        ToolOutputLimits(),
+        DBOSDurability(event_stream_handler=_handle_events),
+    ],
 )
 
 
@@ -159,6 +177,8 @@ async def run_workflow(serialized_input: str) -> None:
         history_length=len(history),
         provider=attribution.model_provider or "",
         model=attribution.model_name or "",
+        sandboxd_url=_WORKER.sandboxd_url,
+        sandboxd_token=_WORKER.sandboxd_token,
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
     _ENCODERS[run.run_id] = encoder
@@ -257,6 +277,8 @@ def run_worker(configuration: WorkerConfiguration) -> None:
     logging.basicConfig(level=logging.INFO)
     _WORKER.engine = create_engine(configuration.database_url)
     _WORKER.secret_key = configuration.secret_key
+    _WORKER.sandboxd_url = configuration.sandboxd_url
+    _WORKER.sandboxd_token = configuration.sandboxd_token
     DBOS(
         config=DBOSConfig(
             name=APPLICATION_NAME,

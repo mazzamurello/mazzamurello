@@ -48,6 +48,9 @@ class RunDeps:
     run_id: uuid.UUID
     # Messages of the path before this run; the run's own come after them.
     history_length: int
+    # The sandbox driver, for the run's workspace (ADR-0035).
+    sandboxd_url: str = ""
+    sandboxd_token: str = ""
     provider: str = ""
     model: str = ""
     prices: dict[str, Any] = field(default_factory=dict[str, Any])
