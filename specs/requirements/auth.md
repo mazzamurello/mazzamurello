@@ -67,7 +67,7 @@ Login attempts MUST be rate-limited per account and per source address.
 
 ## AUTH-007: First administrator without default credentials
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
