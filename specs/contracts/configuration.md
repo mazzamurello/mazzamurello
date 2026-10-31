@@ -16,6 +16,8 @@ variable.
 | `MZM_HTTP_HOST` | no | `0.0.0.0` | Address the API listens on. |
 | `MZM_HTTP_PORT` | no | `8000` | Port the API listens on, from 1 to 65535. |
 | `MZM_TRUSTED_PROXIES` | no | empty | Comma-separated IP addresses or CIDR networks of trusted proxies. The source address of a request from a trusted proxy is the rightmost address of `X-Forwarded-For` that is not a trusted proxy; from any other peer, it is the peer's address. |
+| `MZM_SANDBOXD_URL` | yes | — | Base URL of the sandbox driver's API, for `/health` (ADR-0054). |
+| `MZM_SANDBOXD_TOKEN` | yes | — | The secret shared with the sandbox driver. |
 | `MZM_SECRET_KEY` | yes | — | 32 random bytes, base64url-encoded (for example `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Encrypts the API keys of model configurations (ADR-0051). The API and the worker must share it; changing it makes stored API keys unusable. |
 
 ## Worker
@@ -64,6 +66,38 @@ The minimum gVisor release is `release-20261026.0` (SBX-017, ADR-0053).
 `NET_ADMIN`, named as the driver's `MZM_NETGUARD_CONTAINER` (ADR-0021,
 ADR-0053). It reads no configuration: the table `inet mazzamurello` and the
 interface `mzmsbx0` are fixed.
+
+## Operator commands
+
+`python -m mazzamurello_server init --output PATH` writes a deployment's
+`.env` file with fresh random secrets, and refuses when `PATH` exists
+(ADR-0054). It reads no configuration.
+
+`python -m mazzamurello_server setup` creates the first tenant and its first
+user, instance admin and tenant admin, through `bootstrap_instance`
+(AUTH-007). It asks, in this order, for the tenant's name, the username, the
+display name and the password; on a terminal the password is hidden and asked
+twice, otherwise each answer is one line of standard input and the password
+is read once. It refuses when any user exists.
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `MZM_DATABASE_URL` | yes | — | The database URL, for `mzm_owner`. |
+
+## Deployment
+
+`deploy/compose.yaml` reads `deploy/.env` (ADR-0054) and gives each service
+only its own variables above. The file holds:
+
+| Variable | Written by `init` | Meaning |
+|---|---|---|
+| `MZM_POSTGRES_PASSWORD` | yes | Password of PostgreSQL's superuser, used only by the database initialization. |
+| `MZM_OWNER_PASSWORD` | yes | Password of `mzm_owner`, used by migrations and `setup`. |
+| `MZM_APP_PASSWORD` | yes | Password of `mzm_app`, used by the API and the worker. |
+| `MZM_SECRET_KEY` | yes | As above. |
+| `MZM_SANDBOXD_TOKEN` | yes | As above. |
+| `MZM_PUBLISH` | no | Where the API is published, `HOST:PORT`; default `127.0.0.1:8080`. |
+| `MZM_TRUSTED_PROXIES`, `MZM_RUN_RETENTION_DAYS`, `MZM_SANDBOX_RESOLVER`, `MZM_SANDBOX_CPUS`, `MZM_SANDBOX_MEMORY_MB`, `MZM_SANDBOX_PROCESSES`, `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS`, `MZM_SANDBOX_MAX_OUTPUT_BYTES`, `MZM_SANDBOX_IDLE_MINUTES` | no | Passed to the services that read them, with the defaults above. |
 
 ## Migrations
 
