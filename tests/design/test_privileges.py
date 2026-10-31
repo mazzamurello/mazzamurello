@@ -43,6 +43,8 @@ GRANTS: dict[str, dict[str, Columns]] = {
     "conversation_messages": {"SELECT": EVERY, "INSERT": EVERY},
     "runs": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY},
     "usage_ledger": {"SELECT": EVERY, "INSERT": EVERY},
+    "instance_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
+    "tenant_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
 }
 EXECUTABLE_FUNCTIONS = {
     "app_tenant_id()",
