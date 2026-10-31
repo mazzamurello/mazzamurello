@@ -152,10 +152,15 @@ def test_the_token_authenticates_requests(server: Server, account: Account) -> N
 
 
 @pytest.mark.spec("AUTH-004")
-@pytest.mark.parametrize("token", [None, "not-a-token", ""], ids=["missing", "unknown", "empty"])
-def test_requests_without_a_valid_token_are_refused(server: Server, token: str | None) -> None:
-    with server.client(token) as client:
-        response = client.get("/me")
+@pytest.mark.parametrize(
+    "authorization",
+    [None, "Bearer not-a-token", "Bearer", "Basic dXNlcjpwYXNzd29yZA=="],
+    ids=["missing", "unknown-token", "no-token", "other-scheme"],
+)
+def test_requests_without_a_valid_token_are_refused(server: Server, authorization: str | None) -> None:
+    headers = {} if authorization is None else {"Authorization": authorization}
+    with server.client() as client:
+        response = client.get("/me", headers=headers)
     assert_problem(response, 401, "auth.unauthenticated")
 
 
