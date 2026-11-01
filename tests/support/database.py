@@ -46,6 +46,7 @@ SECURITY_DEFINER_FUNCTIONS = (
     "bootstrap_instance",
     "revoke_sessions_of_disabled_user",
     "retention_expired_runs",
+    "instance_default_model_configured",
 )
 
 
