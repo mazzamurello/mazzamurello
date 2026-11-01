@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.5.0-draft
+  version: 0.5.1-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -430,6 +430,7 @@ paths:
               schema: { $ref: "#/components/schemas/Conversation" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunInProgress" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       tags: [conversations]
@@ -985,7 +986,14 @@ components:
       required: [id, role]
       additionalProperties: true
       properties:
-        id: { type: string }
+        id:
+          type: string
+          description: |
+            Stable: derived from the run that produced the message and its
+            position in that run, so a message has the same ID on every page
+            and in every version that contains it (CNV-001). It is neither the
+            ID a client sent in its run input nor the one in the run's events;
+            clients reload history after a run.
         role: { type: string }
         content: {}
 
