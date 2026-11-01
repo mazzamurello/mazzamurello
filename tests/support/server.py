@@ -22,6 +22,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from tests.support.contract import response_hook
 from tests.support.database import ROOT, Database, uuid7
 
 READY_TIMEOUT_SECONDS = 30
@@ -93,7 +94,9 @@ class Server:
         headers = {"X-Forwarded-For": source or fresh_source()}
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
-        return httpx.Client(base_url=self.base_url, headers=headers, timeout=30)
+        return httpx.Client(
+            base_url=self.base_url, headers=headers, timeout=30, event_hooks={"response": [response_hook]}
+        )
 
     def crash_and_restart_worker(self) -> None:
         self.worker.kill()
