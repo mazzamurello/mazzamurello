@@ -31,7 +31,7 @@ router = APIRouter()
 type Scope = Literal["instance", "tenant"]
 
 COLUMNS = (
-    "id, name, base_url, model, api_key_ciphertext IS NOT NULL AS has_api_key, paid, input_price,"
+    "id, name, api, base_url, model, api_key_ciphertext IS NOT NULL AS has_api_key, paid, input_price,"
     " cached_input_price, output_price, currency, is_default, created_at, updated_at"
 )
 TABLES: dict[Scope, LiteralString] = {"instance": "instance_models", "tenant": "tenant_models"}
@@ -79,6 +79,7 @@ def _configuration(row: Any) -> schemas.ModelConfiguration:
     return schemas.ModelConfiguration(
         id=row.id,
         name=row.name,
+        api=row.api,
         base_url=row.base_url,
         model=row.model,
         has_api_key=row.has_api_key,
@@ -131,6 +132,7 @@ async def _create(
         "id": configuration_id,
         "tenant_id": identity.tenant_id,
         "name": body.name,
+        "api": body.api,
         "base_url": base_url,
         "model": body.model,
         "api_key_ciphertext": None if body.api_key is None else encrypt(secret, configuration_id, body.api_key),
@@ -145,11 +147,11 @@ async def _create(
             row = (
                 await connection.execute(
                     text(
-                        f"INSERT INTO {TABLES[scope]} (id, {tenant_column}name, base_url, model, api_key_ciphertext,"  # noqa: S608
-                        " paid, input_price, cached_input_price, output_price, currency, is_default, created_at,"
-                        f" updated_at) VALUES (:id, {tenant_value}:name, :base_url, :model, :api_key_ciphertext,"
-                        " :paid, :input_price, :cached_input_price, :output_price, :currency, :is_default, now(),"
-                        f" now()) RETURNING {COLUMNS}"
+                        f"INSERT INTO {TABLES[scope]} (id, {tenant_column}name, api, base_url, model,"  # noqa: S608
+                        " api_key_ciphertext, paid, input_price, cached_input_price, output_price, currency,"
+                        f" is_default, created_at, updated_at) VALUES (:id, {tenant_value}:name, :api, :base_url,"
+                        " :model, :api_key_ciphertext, :paid, :input_price, :cached_input_price, :output_price,"
+                        f" :currency, :is_default, now(), now()) RETURNING {COLUMNS}"
                     ),
                     values,
                 )
@@ -181,7 +183,7 @@ async def _update(
     if not present:
         raise errors.invalid("/", "empty")
     changes: dict[str, object] = {}
-    for name in ("name", "model", "paid", "is_default"):
+    for name in ("name", "api", "model", "paid", "is_default"):
         if name in present:
             if getattr(body, name) is None:
                 raise errors.invalid(f"/{name}", "null")

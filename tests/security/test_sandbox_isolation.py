@@ -13,7 +13,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -31,6 +31,20 @@ from tests.support.sandbox import (
 CONNECT = (
     "python3 -c \"import socket,sys; s=socket.socket(socket.AF_INET6 if ':' in sys.argv[1] else socket.AF_INET);"
     " s.settimeout(3); s.connect((sys.argv[1], int(sys.argv[2]))); print('connected')\""
+)
+# Connects to every address at once, each with a 3-second timeout, and
+# prints `connected <address>` for each that answers: blocked addresses
+# time out together instead of one after another.
+PROBE = (
+    'python3 -c "import socket,sys,threading\n'
+    "def probe(host):\n"
+    "    s=socket.socket(socket.AF_INET6 if ':' in host else socket.AF_INET); s.settimeout(3)\n"
+    "    try:\n"
+    "        s.connect((host, int(sys.argv[1]))); print('connected', host, flush=True)\n"
+    "    except OSError:\n"
+    "        pass\n"
+    "threads=[threading.Thread(target=probe, args=(host,)) for host in sys.argv[2:]]\n"
+    '[thread.start() for thread in threads]; [thread.join() for thread in threads]"'
 )
 # One address from every range of SBX-005, IPv4 and IPv6.
 BLOCKED_RANGES = (
@@ -57,6 +71,12 @@ def _user() -> tuple[str, str]:
 def _connects(driver: Driver, tenant_id: str, user_id: str, host: str, port: int) -> bool:
     result = driver.sh(tenant_id, user_id, f"{CONNECT} {host} {port}", timeout_seconds=15)
     return result.exit_code == 0 and "connected" in result.stdout
+
+
+def _reachable(driver: Driver, tenant_id: str, user_id: str, hosts: list[str], port: int) -> set[str]:
+    """The hosts a sandbox connects to, probed all at once."""
+    result = driver.sh(tenant_id, user_id, f"{PROBE} {port} {' '.join(hosts)}", timeout_seconds=15)
+    return {line.split()[1] for line in result.stdout.splitlines() if line.startswith("connected ")}
 
 
 def _host_addresses() -> list[str]:
@@ -90,8 +110,8 @@ def host_listener() -> Iterator[int]:
     server.close()
 
 
-def _reachable_from_a_plain_container(image: str, host: str, port: int) -> bool:
-    command = f"{CONNECT} {host} {port}"
+def _reachable_from_a_plain_container(image: str, hosts: list[str], port: int) -> set[str]:
+    command = f"{PROBE} {port} {' '.join(hosts)}"
     result = subprocess.run(  # noqa: S603
         ["docker", "run", "--rm", image, "sh", "-c", command],  # noqa: S607
         capture_output=True,
@@ -99,7 +119,7 @@ def _reachable_from_a_plain_container(image: str, host: str, port: int) -> bool:
         timeout=60,
         check=False,
     )
-    return "connected" in result.stdout
+    return {line.split()[1] for line in result.stdout.splitlines() if line.startswith("connected ")}
 
 
 @pytest.mark.spec("SBX-002")
@@ -116,18 +136,15 @@ def test_the_host_is_unreachable_from_sandboxes(sandboxes: Driver, host_listener
     tenant_id, user_id = _user()
     addresses = _host_addresses()
     assert addresses
-    for address in addresses:
-        assert _reachable_from_a_plain_container(sandboxes.image, address, host_listener), (
-            f"negative control: {address} should be reachable without the egress rules"
-        )
-        assert not _connects(sandboxes, tenant_id, user_id, address, host_listener), f"{address} is reachable"
+    controls = _reachable_from_a_plain_container(sandboxes.image, addresses, host_listener)
+    assert controls == set(addresses), "negative control: every address is reachable without the egress rules"
+    assert _reachable(sandboxes, tenant_id, user_id, addresses, host_listener) == set()
 
 
 @pytest.mark.spec("SBX-005", "SBX-013")
-@pytest.mark.parametrize("address", BLOCKED_RANGES)
-def test_local_ranges_are_unreachable_from_sandboxes(sandboxes: Driver, host_listener: int, address: str) -> None:
+def test_local_ranges_are_unreachable_from_sandboxes(sandboxes: Driver, host_listener: int) -> None:
     tenant_id, user_id = _user()
-    assert not _connects(sandboxes, tenant_id, user_id, address, host_listener)
+    assert _reachable(sandboxes, tenant_id, user_id, list(BLOCKED_RANGES), host_listener) == set()
 
 
 @pytest.mark.spec("SBX-005")
@@ -135,8 +152,7 @@ def test_rewriting_routes_inside_the_sandbox_does_not_help(sandboxes: Driver, ho
     tenant_id, user_id = _user()
     # Root in the sandbox controls its own network configuration.
     sandboxes.sh(tenant_id, user_id, "ip route add 192.168.0.0/16 dev eth0 2>/dev/null; ip route show")
-    for address in _host_addresses():
-        assert not _connects(sandboxes, tenant_id, user_id, address, host_listener)
+    assert _reachable(sandboxes, tenant_id, user_id, _host_addresses(), host_listener) == set()
 
 
 @pytest.mark.spec("SBX-013")
@@ -242,6 +258,17 @@ def test_processes_are_limited_inside_the_sandbox(sandboxes: Driver) -> None:
     assert int(result.stdout.strip().splitlines()[-1]) < 64
 
 
+def _refused_the_runtime(health: dict[str, Any] | None) -> bool:
+    """Whether the driver has checked the runtime, or run its canary, and found it is not gVisor."""
+    if health is None:
+        return False
+    checks = cast(dict[str, dict[str, Any]], health["checks"])
+    return any(
+        checks.get(name, {}).get("ok") is False and checks[name].get("detail")
+        for name in ("isolation_runtime", "canary")
+    )
+
+
 @pytest.mark.spec("SBX-003", "SBX-002")
 @pytest.mark.parametrize("runtime", ["runc", "no-such-runtime"])
 def test_the_driver_refuses_sandboxes_without_gvisor(sandboxes: Driver, runtime: str) -> None:
@@ -251,10 +278,10 @@ def test_the_driver_refuses_sandboxes_without_gvisor(sandboxes: Driver, runtime:
     )
     process = start_driver_process(environment)
     try:
-        # Never ready, while it starts or after its canary.
+        # Never ready, while it starts and once it has checked the runtime.
         last: dict[str, Any] | None = None
         deadline = time.monotonic() + 20
-        while time.monotonic() < deadline:
+        while time.monotonic() < deadline and not _refused_the_runtime(last):
             try:
                 response = httpx.get(
                     f"http://127.0.0.1:{port}/v1/health",
