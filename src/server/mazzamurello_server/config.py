@@ -14,7 +14,15 @@ from dataclasses import dataclass
 
 PREFIX = "MZM_"
 API_VARIABLES = frozenset(
-    {"MZM_DATABASE_URL", "MZM_HTTP_HOST", "MZM_HTTP_PORT", "MZM_TRUSTED_PROXIES", "MZM_SECRET_KEY"}
+    {
+        "MZM_DATABASE_URL",
+        "MZM_HTTP_HOST",
+        "MZM_HTTP_PORT",
+        "MZM_TRUSTED_PROXIES",
+        "MZM_SECRET_KEY",
+        "MZM_SANDBOXD_URL",
+        "MZM_SANDBOXD_TOKEN",
+    }
 )
 WORKER_VARIABLES = frozenset(
     {"MZM_DATABASE_URL", "MZM_SECRET_KEY", "MZM_RUN_RETENTION_DAYS", "MZM_SANDBOXD_URL", "MZM_SANDBOXD_TOKEN"}
@@ -36,6 +44,8 @@ class ApiConfiguration:
     http_port: int
     trusted_proxies: tuple[Network, ...]
     secret_key: bytes
+    sandboxd_url: str
+    sandboxd_token: str
 
 
 @dataclass(frozen=True)
@@ -97,11 +107,7 @@ def _refuse_unknown(environment: Mapping[str, str], known: frozenset[str]) -> No
         raise ConfigurationError(f"unknown configuration variable {unknown[0]}")
 
 
-def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfiguration:
-    _refuse_unknown(environment, WORKER_VARIABLES)
-    days = environment.get("MZM_RUN_RETENTION_DAYS", "30")
-    if not days.isdigit() or not 1 <= int(days) <= 3650:
-        raise ConfigurationError("MZM_RUN_RETENTION_DAYS must be a number of days from 1 to 3650")
+def _sandbox_driver(environment: Mapping[str, str]) -> tuple[str, str]:
     url = environment.get("MZM_SANDBOXD_URL", "")
     if not url:
         raise ConfigurationError("MZM_SANDBOXD_URL is required")
@@ -110,17 +116,27 @@ def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfigura
     token = environment.get("MZM_SANDBOXD_TOKEN", "")
     if len(token) < MINIMUM_DRIVER_TOKEN_LENGTH:
         raise ConfigurationError(f"MZM_SANDBOXD_TOKEN must be at least {MINIMUM_DRIVER_TOKEN_LENGTH} characters")
+    return url.rstrip("/"), token
+
+
+def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfiguration:
+    _refuse_unknown(environment, WORKER_VARIABLES)
+    days = environment.get("MZM_RUN_RETENTION_DAYS", "30")
+    if not days.isdigit() or not 1 <= int(days) <= 3650:
+        raise ConfigurationError("MZM_RUN_RETENTION_DAYS must be a number of days from 1 to 3650")
+    url, token = _sandbox_driver(environment)
     return WorkerConfiguration(
         database_url=_database_url(environment),
         secret_key=_secret_key(environment),
         run_retention_days=int(days),
-        sandboxd_url=url.rstrip("/"),
+        sandboxd_url=url,
         sandboxd_token=token,
     )
 
 
 def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
     _refuse_unknown(environment, API_VARIABLES)
+    driver_url, driver_token = _sandbox_driver(environment)
     host = environment.get("MZM_HTTP_HOST", "0.0.0.0")  # noqa: S104 - the container's published entry point
     if not host:
         raise ConfigurationError("MZM_HTTP_HOST must not be empty")
@@ -130,4 +146,6 @@ def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
         http_port=_port(environment),
         trusted_proxies=_trusted_proxies(environment),
         secret_key=_secret_key(environment),
+        sandboxd_url=driver_url,
+        sandboxd_token=driver_token,
     )
