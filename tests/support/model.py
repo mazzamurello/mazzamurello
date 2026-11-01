@@ -14,7 +14,17 @@ last user message:
 The command tool is found among the tools the request offers, by its name or
 description, so tests do not depend on the tool's name.
 
-Every request is recorded, so that tests can check what reached the model.
+Under `/openrouter/api/v1`, the same scripts are answered as OpenRouter's
+chat completions API does, as its documentation describes (ADR-0057): a
+keep-alive comment before the first chunk, `provider` and
+`native_finish_reason` in every chunk, and a final usage chunk that repeats
+the finish reason and reports `cost`. Two more scripts apply there:
+
+- `status:402` answers OpenRouter's "insufficient credits" error;
+- `error-midstream` streams one piece, then an error event, and ends.
+
+Every request is recorded, with its headers, so that tests can check what
+reached the model.
 """
 
 from __future__ import annotations
@@ -29,12 +39,17 @@ from typing import Any, cast
 PROMPT_TOKENS = 10
 COMPLETION_TOKENS = 5
 SLOW_PIECE_SECONDS = 0.5
+OPENROUTER_PREFIX = "/openrouter"
+# The cost OpenRouter reports for every answer, in credits of one US dollar.
+OPENROUTER_COST = 0.000420
 
 
 @dataclass(frozen=True)
 class ModelRequest:
     authorization: str | None
     body: dict[str, Any]
+    headers: dict[str, str] = field(default_factory=dict[str, str])
+    openrouter: bool = False
 
     def user_texts(self) -> list[str]:
         """The text of every user message the model received, in order."""
@@ -56,6 +71,11 @@ class ModelServer:
     url: str
     requests: list[ModelRequest] = field(default_factory=list[ModelRequest])
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    @property
+    def openrouter_url(self) -> str:
+        """The base URL at which the model answers as OpenRouter."""
+        return self.url.removesuffix("/v1") + f"{OPENROUTER_PREFIX}/api/v1"
 
     def record(self, request: ModelRequest) -> None:
         with self._lock:
@@ -104,21 +124,29 @@ def _pieces(text: str) -> list[tuple[str, float]]:
 
 def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
+        # Whether this request is answered as OpenRouter's API.
+        openrouter = False
+
         def log_message(self, format: str, *args: object) -> None:
             pass
 
         def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", "0"))
             body = cast(dict[str, Any], json.loads(self.rfile.read(length) or b"{}"))
-            request = ModelRequest(self.headers.get("Authorization"), body)
+            self.openrouter = self.path.startswith(f"{OPENROUTER_PREFIX}/")
+            headers = {name.lower(): value for name, value in self.headers.items()}
+            request = ModelRequest(self.headers.get("Authorization"), body, headers, self.openrouter)
             model.record(request)
             texts = request.user_texts()
             last = texts[-1] if texts else ""
             if not self.path.endswith("/chat/completions") or last == "fail":
-                self._json(500, {"error": {"message": "scripted failure", "type": "server_error"}})
+                self._error(500, "scripted failure", "server_error")
                 return
             if last == "status:429":
-                self._json(429, {"error": {"message": "slow down", "type": "rate_limit"}}, {"Retry-After": "1"})
+                self._error(429, "slow down", "rate_limit", {"Retry-After": "1"})
+                return
+            if last == "status:402" and self.openrouter:
+                self._error(402, "Insufficient credits", "payment_required")
                 return
             if last.startswith("run:"):
                 self._tool_turn(body, last.removeprefix("run:"))
@@ -127,6 +155,14 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 self._stream(body, _pieces(last))
             else:
                 self._json(200, self._completion(body, "".join(piece for piece, _ in _pieces(last))))
+
+        def _error(self, status: int, message: str, kind: str, headers: dict[str, str] | None = None) -> None:
+            if self.openrouter:
+                # OpenRouter's errors carry the HTTP status as their code.
+                error: dict[str, Any] = {"code": status, "message": message, "metadata": {"error_type": kind}}
+            else:
+                error = {"message": message, "type": kind}
+            self._json(status, {"error": error}, headers)
 
         def _json(self, status: int, payload: dict[str, Any], headers: dict[str, str] | None = None) -> None:
             data = json.dumps(payload).encode()
@@ -159,16 +195,11 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 }
                 self._json(200, completion)
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.end_headers()
+            self._start_stream()
             base = self._chunk_base(body)
             delta = {"role": "assistant", "tool_calls": [call | {"index": 0}]}
-            self._event(base | {"choices": [{"index": 0, "delta": delta, "finish_reason": None}]})
-            self._event(base | {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
-            self._event(base | {"choices": [], "usage": _usage()})
-            self.wfile.write(b"data: [DONE]\n\n")
-            self.wfile.flush()
+            self._event(base | {"choices": [self._choice(delta, None)]})
+            self._finish(base, "tool_calls")
 
         def _answer(self, body: dict[str, Any], pieces: list[tuple[str, float]]) -> None:
             if body.get("stream"):
@@ -177,43 +208,74 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 self._json(200, self._completion(body, "".join(piece for piece, _ in pieces)))
 
         def _chunk_base(self, body: dict[str, Any]) -> dict[str, Any]:
-            return {
-                "id": "chatcmpl-test",
+            base: dict[str, Any] = {
+                "id": "gen-test" if self.openrouter else "chatcmpl-test",
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": body.get("model", "test-model"),
             }
+            return base | ({"provider": "OpenAI"} if self.openrouter else {})
 
-        def _completion(self, body: dict[str, Any], text: str) -> dict[str, Any]:
-            return {
-                "id": "chatcmpl-test",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": body.get("model", "test-model"),
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
-                "usage": _usage(),
-            }
+        def _choice(self, delta: dict[str, Any], finish_reason: str | None) -> dict[str, Any]:
+            choice: dict[str, Any] = {"index": 0, "delta": delta, "finish_reason": finish_reason}
+            return choice | ({"native_finish_reason": finish_reason} if self.openrouter else {})
 
-        def _stream(self, body: dict[str, Any], pieces: list[tuple[str, float]]) -> None:
+        def _start_stream(self) -> None:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
+            if self.openrouter:
+                self.wfile.write(b": OPENROUTER PROCESSING\n\n")
+                self.wfile.flush()
+
+        def _finish(self, base: dict[str, Any], finish_reason: str) -> None:
+            self._event(base | {"choices": [self._choice({}, finish_reason)]})
+            if self.openrouter:
+                # OpenRouter repeats the finish reason in a content-free choice of the usage chunk.
+                empty = {"content": "", "role": "assistant"}
+                self._event(base | {"choices": [self._choice(empty, finish_reason)], "usage": _openrouter_usage()})
+            else:
+                self._event(base | {"choices": [], "usage": _usage()})
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+
+        def _completion(self, body: dict[str, Any], text: str) -> dict[str, Any]:
+            choice: dict[str, Any] = {"index": 0, "message": {"role": "assistant", "content": text}}
+            choice |= {"finish_reason": "stop"} | ({"native_finish_reason": "stop"} if self.openrouter else {})
+            return {
+                "id": "gen-test" if self.openrouter else "chatcmpl-test",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": body.get("model", "test-model"),
+                "choices": [choice],
+                "usage": _openrouter_usage() if self.openrouter else _usage(),
+            }
+
+        def _stream(self, body: dict[str, Any], pieces: list[tuple[str, float]]) -> None:
+            self._start_stream()
             base = self._chunk_base(body)
+            last = _last_text(body)
             try:
                 for index, (piece, delay) in enumerate(pieces):
                     time.sleep(delay)
                     delta = {"content": piece} | ({"role": "assistant"} if index == 0 else {})
-                    self._event(base | {"choices": [{"index": 0, "delta": delta, "finish_reason": None}]})
-                if _last_text(body).startswith("drop:"):
+                    self._event(base | {"choices": [self._choice(delta, None)]})
+                    if last == "error-midstream" and self.openrouter:
+                        # A mid-stream error, after which OpenRouter ends the stream.
+                        error = {
+                            "code": 502,
+                            "message": "Provider returned error",
+                            "metadata": {"error_type": "provider_unavailable"},
+                        }
+                        self._event(base | {"error": error, "choices": [self._choice({"content": ""}, "error")]})
+                        return
+                if last.startswith("drop:"):
                     # Close the connection mid-answer, without finishing the stream.
                     self.wfile.flush()
                     self.close_connection = True
                     self.connection.shutdown(2)
                     return
-                self._event(base | {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
-                self._event(base | {"choices": [], "usage": _usage()})
-                self.wfile.write(b"data: [DONE]\n\n")
-                self.wfile.flush()
+                self._finish(base, "stop")
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
@@ -229,6 +291,20 @@ def _usage() -> dict[str, int]:
         "prompt_tokens": PROMPT_TOKENS,
         "completion_tokens": COMPLETION_TOKENS,
         "total_tokens": PROMPT_TOKENS + COMPLETION_TOKENS,
+    }
+
+
+def _openrouter_usage() -> dict[str, Any]:
+    """Usage as OpenRouter reports it, with the cost of the answer."""
+    return _usage() | {
+        "prompt_tokens_details": {"cached_tokens": 0},
+        "completion_tokens_details": {"reasoning_tokens": 0},
+        "cost": OPENROUTER_COST,
+        "cost_details": {
+            "upstream_inference_cost": None,
+            "upstream_inference_prompt_cost": 0.000300,
+            "upstream_inference_completions_cost": 0.000120,
+        },
     }
 
 

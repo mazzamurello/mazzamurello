@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
+import httpx
 import pytest
 
 from tests.support.database import uuid7
-from tests.support.sandbox import Driver
+from tests.support.sandbox import Driver, driver_environment, free_port, start_driver_process
 
 
 def _user() -> tuple[str, str]:
@@ -152,3 +153,66 @@ def test_sandboxes_are_addressed_only_by_identifiers(sandboxes: Driver, path: st
     with sandboxes.client() as client:
         response = client.post(f"/sandboxes/{path}/ensure")
     assert response.status_code in {404, 422}, response.text
+
+
+def _health_of(port: int, token: str) -> dict[str, Any] | None:
+    try:
+        response = httpx.get(
+            f"http://127.0.0.1:{port}/v1/health", headers={"Authorization": f"Bearer {token}"}, timeout=10
+        )
+    except httpx.TransportError:
+        return None
+    return cast(dict[str, Any], response.json())
+
+
+@pytest.mark.spec("SBX-017")
+def test_the_driver_refuses_a_gvisor_release_older_than_its_minimum(sandboxes: Driver) -> None:
+    port = free_port()
+    minimum = "release-29991231.0"
+    environment = driver_environment(
+        sandboxes.token, sandboxes.image, sandboxes.netguard, port, MZM_SANDBOX_MINIMUM_GVISOR_RELEASE=minimum
+    )
+    process = start_driver_process(environment)
+    try:
+        health: dict[str, Any] | None = None
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            health = _health_of(port, sandboxes.token)
+            if health is not None and health["checks"].get("runtime_version", {}).get("detail"):
+                break
+            time.sleep(0.5)
+        assert health is not None, process.output()
+        assert health["ready"] is False
+        release = health["checks"]["runtime_version"]
+        assert release["ok"] is False
+        assert minimum in release["detail"]
+        assert "https://gvisor.dev/docs/user_guide/install/" in release["detail"]
+        refused = httpx.post(
+            f"http://127.0.0.1:{port}/v1/sandboxes/{uuid7()}/{uuid7()}/ensure",
+            headers={"Authorization": f"Bearer {sandboxes.token}"},
+            timeout=30,
+        )
+        assert refused.status_code == 503
+        assert refused.json()["code"] == "driver.isolation_unavailable"
+    finally:
+        process.close()
+
+
+@pytest.mark.spec("SBX-017")
+def test_the_gvisor_minimum_cannot_be_lowered(sandboxes: Driver) -> None:
+    variable = "MZM_SANDBOX_MINIMUM_GVISOR_RELEASE"
+    environment = driver_environment(
+        sandboxes.token, sandboxes.image, sandboxes.netguard, free_port(), **{variable: "release-20200101.0"}
+    )
+    process = start_driver_process(environment)
+    try:
+        deadline = time.monotonic() + 30
+        while process.exited() is None:
+            assert time.monotonic() < deadline, "the driver accepted a lower gVisor minimum"
+            time.sleep(0.2)
+        assert process.exited() == 2
+        # The error names the setting and the built-in minimum it may not go below (ADR-0053).
+        assert variable in process.output()
+        assert "release-20261026.0" in process.output()
+    finally:
+        process.close()
