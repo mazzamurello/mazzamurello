@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 
-from tools.check_pr_paths import violations
+from tools.check_pr_paths import milestone_violations, sync_violations, target_violations, violations
 
 
 class PullRequestPathsTest(unittest.TestCase):
@@ -69,6 +73,136 @@ class PullRequestPathsTest(unittest.TestCase):
 
     def test_empty_change_is_allowed(self) -> None:
         self.assertAllowed("spec/nothing")
+
+
+class PullRequestTargetTest(unittest.TestCase):
+    def test_rules_pull_requests_target_the_default_branch(self) -> None:
+        self.assertEqual(target_violations("rules/tighten-ci", "master"), [])
+        self.assertNotEqual(target_violations("rules/tighten-ci", "next"), [])
+        self.assertNotEqual(target_violations("rules/tighten-ci", "spec/other"), [])
+
+    def test_other_pull_requests_target_the_integration_branch_or_the_default_branch(self) -> None:
+        for branch in ("spec/x", "test/x", "impl/x", "docs/x"):
+            with self.subTest(branch=branch):
+                self.assertEqual(target_violations(branch, "next"), [])
+                self.assertEqual(target_violations(branch, "master"), [])
+
+
+class MilestonePullRequestTest(unittest.TestCase):
+    """Runs the milestone check against a real temporary git repository (ADR-0055)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        self.env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "Ada",
+            "GIT_AUTHOR_EMAIL": "ada@example.org",
+            "GIT_COMMITTER_NAME": "Ada",
+            "GIT_COMMITTER_EMAIL": "ada@example.org",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+        }
+        self.git("init", "-q", "-b", "master")
+        self.git("commit", "-q", "--allow-empty", "-m", "base")
+        self.git("branch", "next")
+        self.pull_requests = 0
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def git(self, *args: str) -> str:
+        result = subprocess.run(
+            ["git", "-c", "commit.gpgsign=false", *args],
+            cwd=self.repo,
+            env=self.env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout
+
+    def commit(self, branch: str, *paths: str) -> None:
+        self.git("checkout", "-q", branch)
+        for path in paths:
+            (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / path).write_text(f"{branch}\n")
+            self.git("add", path)
+        self.git("commit", "-q", "--allow-empty", "-m", f"change on {branch}")
+
+    def merge_pull_request(self, branch: str, *paths: str) -> None:
+        """A pull request from `branch` into next, merged as GitHub merges it."""
+        self.git("checkout", "-q", "-b", branch, "next")
+        self.commit(branch, *paths)
+        self.pull_requests += 1
+        self.git("checkout", "-q", "next")
+        title = f"Merge pull request #{self.pull_requests} from mazzamurello/{branch}"
+        self.git("merge", "-q", "--no-ff", "-m", title, branch)
+
+    def problems(self) -> list[str]:
+        cwd = os.getcwd()
+        os.chdir(self.repo)
+        try:
+            return milestone_violations("master", "next")
+        finally:
+            os.chdir(cwd)
+
+    def sync_problems(self, head: str) -> list[str]:
+        cwd = os.getcwd()
+        os.chdir(self.repo)
+        try:
+            return sync_violations(head, "master")
+        finally:
+            os.chdir(cwd)
+
+    def test_the_default_branch_may_be_merged_into_next(self) -> None:
+        self.commit("master", "tools/check_x.py")
+        self.assertEqual(self.sync_problems("master"), [])
+
+    def test_a_branch_named_like_the_default_branch_must_be_its_history(self) -> None:
+        self.git("checkout", "-q", "-b", "elsewhere", "master")
+        self.commit("elsewhere", "tools/check_x.py")
+        self.assertNotEqual(self.sync_problems("elsewhere"), [])
+
+    def test_pull_requests_of_every_type_pass(self) -> None:
+        self.merge_pull_request("spec/x", "specs/adr/0001-x.md")
+        self.merge_pull_request("test/x", "tests/test_x.py")
+        self.merge_pull_request("impl/x", "src/x.py")
+        self.merge_pull_request("docs/x", "README.md")
+        self.assertEqual(self.problems(), [])
+
+    def test_each_pull_request_is_checked_against_its_own_type(self) -> None:
+        self.merge_pull_request("spec/x", "specs/adr/0001-x.md")
+        self.merge_pull_request("impl/x", "src/x.py", "tests/test_x.py")
+        problems = self.problems()
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("impl/x", problems[0])
+        self.assertIn("tests/test_x.py", problems[0])
+
+    def test_rules_pull_requests_into_next_are_rejected(self) -> None:
+        self.merge_pull_request("rules/x", "tools/check_x.py")
+        self.assertNotEqual(self.problems(), [])
+
+    def test_commits_pushed_to_next_are_rejected(self) -> None:
+        self.merge_pull_request("spec/x", "specs/adr/0001-x.md")
+        self.commit("next", "src/x.py")
+        problems = self.problems()
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("without a pull request", problems[0])
+
+    def test_merges_that_are_not_pull_requests_are_rejected(self) -> None:
+        self.git("checkout", "-q", "-b", "impl/x", "next")
+        self.commit("impl/x", "src/x.py")
+        self.git("checkout", "-q", "next")
+        self.git("merge", "-q", "--no-ff", "-m", "Merge branch 'impl/x' into next", "impl/x")
+        self.assertNotEqual(self.problems(), [])
+
+    def test_the_default_branch_merged_into_next_is_not_checked_again(self) -> None:
+        self.commit("master", "tools/check_x.py")
+        self.git("checkout", "-q", "next")
+        self.git("merge", "-q", "--no-ff", "-m", "Merge branch 'master' into next", "master")
+        self.merge_pull_request("impl/x", "src/x.py")
+        self.assertEqual(self.problems(), [])
 
 
 if __name__ == "__main__":
