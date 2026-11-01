@@ -16,11 +16,11 @@ changes files outside the paths allowed for its type. Files governing the
 project's rules MUST be changeable only by `rules/` pull requests.
 Implementation pull requests MUST NOT change tests.
 
-The pull request that brings the integration branch into `master` has no
-type of its own: CI MUST check every pull request merged into the
-integration branch against that pull request's type, and MUST reject commits
-that reached the integration branch without a pull request. `rules/` pull
-requests MUST target `master` (ADR-0055).
+A milestone pull request, from a `milestone/` branch, has no type of its
+own: each of its commits MUST have a type given by the start of its subject
+(`spec:`, `test:`, `impl:`, `docs:`), and CI MUST reject a commit without a
+type, of type `rules:`, or changing files outside the paths allowed for its
+type. `rules/` pull requests MUST target `master` (ADR-0060).
 
 ## REPO-002: DCO sign-off
 
