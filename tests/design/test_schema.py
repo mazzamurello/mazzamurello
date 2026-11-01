@@ -10,6 +10,7 @@ import pytest
 from tests.support.database import (
     CONTRACT_TABLES,
     DURABLE_EXECUTION_SCHEMA,
+    INSTANCE_TABLES,
     OWNER_COLUMN,
     PRIVATE_TABLES,
     SYSTEM_SCHEMAS,
@@ -100,8 +101,11 @@ def test_contract_tables_carry_ownership_columns(tables: dict[str, Table]) -> No
 
 @pytest.mark.spec("TEN-002")
 def test_every_table_the_application_reaches_carries_its_tenant(tables: dict[str, Table]) -> None:
-    # `tenants` is the tenant itself; every other reachable table is tenant-scoped.
-    reachable = {name: table for name, table in tables.items() if table.reachable_by_app and name != "tenants"}
+    # `tenants` and the instance's configuration have no tenant; every other
+    # reachable table is tenant-scoped.
+    reachable = {
+        name: table for name, table in tables.items() if table.reachable_by_app and name not in INSTANCE_TABLES
+    }
     assert set(PRIVATE_TABLES) <= set(reachable)
     offenders = sorted(name for name, table in reachable.items() if table.columns.get("tenant_id") is not True)
     assert not offenders, f"tables reachable by mzm_app without a NOT NULL tenant_id: {offenders}"
