@@ -115,9 +115,18 @@ curl -s http://127.0.0.1:8080/v1/instance/models \
   -d '{"name": "Local model", "base_url": "http://192.168.1.10:11434/v1", "model": "llama3.2", "paid": false, "is_default": true}'
 ```
 
-For a remote provider such as OpenRouter, use its endpoint, add `"api_key"`,
-set `"paid": true` and, optionally, its prices. API keys are stored encrypted
-and never returned.
+For OpenRouter, set `"api": "openrouter"`, so that the cost it reports for
+each answer is recorded as it is, in US dollars:
+
+```bash
+curl -s http://127.0.0.1:8080/v1/instance/models \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "OpenRouter", "api": "openrouter", "base_url": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini", "api_key": "sk-or-...", "paid": true, "is_default": true}'
+```
+
+For another remote OpenAI-compatible provider, use its endpoint, add
+`"api_key"`, set `"paid": true` and, optionally, its prices per million
+tokens. API keys are stored encrypted and never returned.
 
 **Reaching it from other devices**
 
