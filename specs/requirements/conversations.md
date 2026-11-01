@@ -20,7 +20,7 @@ Rationale: journey J2.
 
 ## CNV-002: Only the active path reaches the model
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -32,7 +32,7 @@ that run.
 
 ## CNV-003: Stopping a run
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration

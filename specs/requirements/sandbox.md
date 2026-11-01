@@ -5,7 +5,7 @@ T-03 to T-07.
 
 ## SBX-001: One sandbox per user
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -15,7 +15,7 @@ users, and code run on behalf of a user MUST run only in that user's sandbox.
 
 ## SBX-002: Strong isolation runtime
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -26,7 +26,7 @@ stronger than a plain container and does not require hardware virtualization
 
 ## SBX-003: Fail closed without isolation
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -40,7 +40,7 @@ accepting any request.
 
 ## SBX-004: Internet access
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -50,7 +50,7 @@ can browse, download and install software.
 
 ## SBX-005: No access to local networks
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -66,7 +66,7 @@ privileges attached like a sandbox.
 
 ## SBX-006: No sandbox-to-sandbox traffic
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -86,7 +86,7 @@ internal to the instance or the household network.
 
 ## SBX-008: No secrets in sandboxes
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -97,7 +97,7 @@ explicitly placed in their own workspace.
 
 ## SBX-009: Container runtime confined to the sandbox driver
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -108,7 +108,7 @@ with sandboxes only through the sandbox driver's authenticated API.
 
 ## SBX-010: Persistent workspace
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -118,7 +118,7 @@ and re-creation, so that installed software and files persist for the user.
 
 ## SBX-011: Resource limits
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -129,7 +129,7 @@ MUST count the processes running inside the sandbox.
 
 ## SBX-012: No privileged sandboxes
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -139,7 +139,7 @@ other than their own workspace. Root inside the sandbox is allowed.
 
 ## SBX-013: No unfiltered IPv6
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -161,7 +161,7 @@ work on files provided by the user and return the files it produces.
 
 ## SBX-015: Network restrictions before any code runs
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration

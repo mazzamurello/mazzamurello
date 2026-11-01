@@ -43,6 +43,8 @@ GRANTS: dict[str, dict[str, Columns]] = {
     "conversation_messages": {"SELECT": EVERY, "INSERT": EVERY},
     "runs": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY},
     "usage_ledger": {"SELECT": EVERY, "INSERT": EVERY},
+    "instance_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
+    "tenant_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
 }
 EXECUTABLE_FUNCTIONS = {
     "app_tenant_id()",
@@ -53,6 +55,8 @@ EXECUTABLE_FUNCTIONS = {
     "auth_find_session(bytea)",
     "auth_touch_session(uuid)",
     "auth_record_login_attempt(text, inet, boolean)",
+    "retention_expired_runs(integer)",
+    "instance_default_model_configured()",
 }
 
 # Owner policies of the pre-authentication functions: table -> operations.
@@ -61,6 +65,8 @@ OWNER_POLICIES = {
     "users": {"SELECT", "INSERT"},
     "device_sessions": {"SELECT", "UPDATE"},
     "login_attempts": {"SELECT", "INSERT", "DELETE"},
+    "runs": {"SELECT"},
+    "instance_models": {"SELECT"},
 }
 
 

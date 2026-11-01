@@ -6,8 +6,16 @@ requires-python = ">=3.13"
 license = "AGPL-3.0-or-later"
 dependencies = [
     "alembic==1.20.1",
+    "argon2-cffi==25.1.0",
     "asyncpg==0.32.0",
+    "cryptography==50.0.2",
+    "dbos==3.4.0",
+    "fastapi==0.162.0",
+    "httpx==0.28.1",
+    "pydantic-ai-harness==0.64.0",
+    "pydantic-ai-slim[ag-ui,dbos,openai]==2.64.0",
     "sqlalchemy[asyncio]==2.1.6",
+    "uvicorn==0.54.0",
 ]
 
 [build-system]
