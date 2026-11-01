@@ -38,7 +38,7 @@ NOT be published on host ports.
 
 ## OPS-004: No host execution
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design

@@ -5,7 +5,7 @@ Background: ADR-0014.
 
 ## OBS-001: Nothing sent to external services by default
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -25,7 +25,7 @@ items or any other user content.
 
 ## OBS-003: Content redacted in logs and traces
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit

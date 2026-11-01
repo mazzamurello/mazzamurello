@@ -5,7 +5,7 @@ model T-08 to T-10.
 
 ## AGT-001: All actions through mediated tools
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
