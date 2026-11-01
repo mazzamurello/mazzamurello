@@ -47,7 +47,6 @@ jobs:
 
   lint:
     name: Lint and types
-    if: hashFiles('pyproject.toml') != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -73,7 +72,6 @@ jobs:
   # longer than its budget. Raising a budget takes a rules/ pull request.
   tests:
     name: Tests (${{ matrix.part }})
-    if: hashFiles('pyproject.toml') != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -146,7 +144,7 @@ jobs:
         run: |
           echo "lint: $LINT, tests: $TESTS"
           for result in "$LINT" "$TESTS"; do
-            case "$result" in success|skipped) ;; *) exit 1 ;; esac
+            [ "$result" = success ] || exit 1
           done
 
   # ty runs in preview, without blocking merges, until it meets the switch
