@@ -3,7 +3,8 @@
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
-ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048.
+ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0051,
+ADR-0052.
 
 ## Roles
 
@@ -77,8 +78,10 @@ minimum needed and nothing else.
 |---|---|---|
 | `auth_find_login(username text)` | `user_id, tenant_id, password_hash, role, instance_admin, disabled` | Password verification (AUTH-001); matches the username ignoring case |
 | `auth_find_session(token_hash bytea)` | `session_id, user_id, tenant_id, role, instance_admin, expires_at, revoked` | Token verification on every request (AUTH-004) |
-| `auth_touch_session(session_id uuid)` | — | Updates `last_used_at` |
+| `auth_touch_session(session_id uuid)` | — | Sets `last_used_at` to now and `expires_at` to 90 days later, for a session that is neither revoked nor expired (ADR-0049) |
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006), by the rules below |
+| `instance_default_model_configured()` | `boolean` | Whether the instance has a default model, for `/health` before any sign-in (OPS-002, ADR-0054) |
+| `retention_expired_runs(days integer)` | `run_id` for every run whose `finished_at` is more than `days` days ago | Retention of durable workflows (TEN-009, ADR-0052): only identifiers, so the worker can delete their workflows across tenants |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
 
 Rate limiting (ADR-0047): `auth_record_login_attempt` is called once per
@@ -102,6 +105,8 @@ these are the only policies for that role:
 | `users` | `SELECT`, `INSERT` | `auth_find_login`, `auth_find_session`, `bootstrap_instance` |
 | `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session`, `revoke_sessions_of_disabled_user` |
 | `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
+| `runs` | `SELECT` | `retention_expired_runs` |
+| `instance_models` | `SELECT` | `instance_default_model_configured` |
 
 Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
 by running services, so they open these tables only to the code of the
@@ -182,7 +187,7 @@ leaves its sessions revoked.
 | `device_name` | text | not null |
 | `created_at` | timestamptz | not null |
 | `last_used_at` | timestamptz | not null |
-| `expires_at` | timestamptz | not null |
+| `expires_at` | timestamptz | not null; 90 days after the last use (ADR-0049) |
 | `revoked_at` | timestamptz | null while valid |
 
 Policies: all operations where `tenant_id = app_tenant_id()` and
@@ -209,7 +214,7 @@ No policies for `mzm_app`: accessed only through
 | `id` | uuid | primary key; also Pydantic AI's `conversation_id` (ADR-0031) |
 | `tenant_id` | uuid | not null |
 | `owner_id` | uuid | not null; (`tenant_id`, `owner_id`) references `users` |
-| `title` | text | not null |
+| `title` | text | not null; empty while untitled (ADR-0052) |
 | `active_run_id` | uuid | the last run of the active path (ADR-0037); null before the first run; (`tenant_id`, `owner_id`, `active_run_id`) references `runs` on delete set null (`active_run_id`) |
 | `usage` | jsonb | Pydantic AI conversation usage |
 | `pending_approvals` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending (ADR-0033), else null |
@@ -272,7 +277,7 @@ It never contains content.
 | `conversation_id` | uuid | null for requests outside a conversation; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete set null (`conversation_id`) |
 | `run_id` | uuid | null outside a run; (`tenant_id`, `owner_id`, `run_id`) references `runs` on delete set null (`run_id`) |
 | `purpose` | text | `run`, `title`, `compaction`, `speech` or `memory` |
-| `provider`, `model` | text | not null |
+| `provider`, `model` | text | not null; the host of the model configuration's endpoint and its model name (MOD-005) |
 | `input_tokens`, `cached_input_tokens`, `cache_write_tokens`, `output_tokens` | bigint | not null, default 0 |
 | `cost` | numeric(20, 10) | null when the price is unknown |
 | `currency` | text | ISO 4217 code, such as `USD`; null when `cost` is null |
@@ -282,6 +287,45 @@ It never contains content.
 Totals per message, conversation, day and month are computed from these rows.
 Per-user totals for tenant admins arrive in phase 1, through a function that
 returns only sums per user.
+
+### `instance_models`
+
+Model configurations of the instance, available to every tenant (MOD-008,
+ADR-0051). Like `tenants`, this is configuration of the instance, not data of
+a tenant, and has no `tenant_id`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid | primary key |
+| `name` | text | not null, unique; shown to users |
+| `base_url` | text | not null; the endpoint of an OpenAI-compatible API |
+| `model` | text | not null; the model name the endpoint expects |
+| `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `MZM_SECRET_KEY` (ADR-0051); null when the endpoint needs no key |
+| `paid` | boolean | not null; whether the provider charges per token |
+| `input_price`, `cached_input_price`, `output_price` | numeric(20, 10) | price per million tokens set by the admin, or null |
+| `currency` | text | ISO 4217 code; not null exactly when a price is set |
+| `is_default` | boolean | not null, default false; at most one row is the default |
+| `created_at`, `updated_at` | timestamptz | not null |
+
+Policies: `SELECT` when `app_user_id()` is not null; `INSERT`, `UPDATE` and
+`DELETE` when `app_is_instance_admin()`.
+
+### `tenant_models`
+
+Model configurations of one tenant (MOD-008, ADR-0051): the columns of
+`instance_models`, plus:
+
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id` | uuid | not null, references `tenants` |
+
+`name` is unique within the tenant, and at most one row per tenant is the
+default. Policies: `SELECT` where `tenant_id = app_tenant_id()`; `INSERT`,
+`UPDATE` and `DELETE` where `tenant_id = app_tenant_id()` and
+`app_is_tenant_admin()`.
+
+A run uses the default model of its tenant, or else the default instance
+model (ADR-0051).
 
 ### Policies for private tables
 
@@ -311,6 +355,8 @@ keys, not by privileges of `mzm_app`.
 | `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |
 | `runs` | `SELECT`, `INSERT`, `UPDATE` |
 | `usage_ledger` | `SELECT`, `INSERT`: entries never change (ADR-0042) |
+| `instance_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `tenant_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | Helper functions | `EXECUTE` on `app_tenant_id()`, `app_user_id()`, `app_is_tenant_admin()`, `app_is_instance_admin()` |
 | Pre-authentication functions | `EXECUTE` on every function of that section except `bootstrap_instance` |
 
@@ -319,7 +365,9 @@ keys, not by privileges of `mzm_app`.
 ## Durable execution schema (`dbos`)
 
 DBOS (ADR-0034) keeps its own tables in the `dbos` schema, created and
-migrated by DBOS itself: workflow status, inputs and outputs, step outputs,
+migrated by the DBOS system migrations, which the migration command runs as
+`mzm_owner` after the Alembic revisions, granting `mzm_app` the access DBOS
+needs (ADR-0052): workflow status, inputs and outputs, step outputs,
 notifications and streams. They hold user content (prompts, model responses,
 run events) **without row-level security**, which DBOS cannot apply. Rules
 (TEN-009):
@@ -328,8 +376,9 @@ run events) **without row-level security**, which DBOS cannot apply. Rules
   run IDs obtained from the row-level-secured `runs` table in the same
   request.
 - Deleting a conversation deletes the DBOS workflows of its runs.
-- Finished workflows are deleted after the retention period configured by the
-  instance admin.
+- Workflows of runs whose `finished_at` is more than `MZM_RUN_RETENTION_DAYS`
+  days ago (default 30) are deleted by the worker, when it starts and then
+  every hour (ADR-0052).
 - Workflow inputs carry the tenant and user IDs of the run; the worker sets
   the request context from them.
 

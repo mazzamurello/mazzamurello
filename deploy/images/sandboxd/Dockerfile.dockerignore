@@ -1,0 +1,8 @@
+# Only what the sandbox driver's image needs.
+*
+!pyproject.toml
+!uv.lock
+!src/server/pyproject.toml
+!src/sandboxd
+!src/netguard/pyproject.toml
+**/__pycache__

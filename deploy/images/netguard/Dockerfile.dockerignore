@@ -1,0 +1,4 @@
+# Only the network guard's package goes into its image.
+*
+!src/netguard/mazzamurello_netguard
+src/netguard/mazzamurello_netguard/__pycache__
