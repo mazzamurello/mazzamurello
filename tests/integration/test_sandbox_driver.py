@@ -193,7 +193,7 @@ def test_the_driver_refuses_a_gvisor_release_older_than_its_minimum(sandboxes: D
             timeout=30,
         )
         assert refused.status_code == 503
-        assert refused.json()["code"] == "driver.isolation_unavailable"
+        assert refused.json()["code"] == "driver.runtime_too_old"
     finally:
         process.close()
 
