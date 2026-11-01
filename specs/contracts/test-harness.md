@@ -53,16 +53,31 @@ database procedure (ADR-0050):
    | `MZM_HTTP_HOST` | `127.0.0.1` |
    | `MZM_HTTP_PORT` | A free port chosen by the test suite |
    | `MZM_TRUSTED_PROXIES` | `127.0.0.1` |
+   | `MZM_SECRET_KEY` | A random key chosen by the test suite |
 
 2. The server is ready when `GET /v1/me` without a token answers `401`. A
    server that is not ready within 30 seconds, or exits, fails the session,
    with its output in the failure.
-3. Tests call the API over HTTP at `http://127.0.0.1:PORT/v1` and stop the
-   process at the end of the session.
+3. Start the worker, `python -m mazzamurello_server worker`, from the
+   repository root, with `MZM_DATABASE_URL` and `MZM_SECRET_KEY` as for the
+   API (ADR-0052). The worker has no readiness signal: tests wait for the
+   outcome of runs, with a timeout.
+4. Tests call the API over HTTP at `http://127.0.0.1:PORT/v1` and stop both
+   processes at the end of the session. To check recovery (AGT-010), a test
+   may stop the worker, with `SIGKILL`, and start it again with the same
+   environment.
 
 Tests choose the source address of each request with `X-Forwarded-For`, so
 that rate limits (ADR-0047) count only the attempts of the test that made
 them. Users that a test does not create through the API are arranged in the
 database as superuser, with password hashes in the Argon2id encoded format
 (AUTH-001), which the server verifies.
+
+## Models
+
+Tests never reach a real model. The test suite serves its own model: an
+OpenAI-compatible chat completions endpoint on `127.0.0.1`, whose answers
+the tests script, and configures it through the API as an instance model
+(ADR-0051). Endpoints on the loopback address are allowed only for instance
+models, so tests use instance models for runs.
 

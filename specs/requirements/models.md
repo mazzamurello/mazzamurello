@@ -48,7 +48,7 @@ paid providers, checked before each request.
 
 ## MOD-005: Model attribution
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
@@ -58,7 +58,7 @@ message and show it to the user.
 
 ## MOD-006: Cost ledger
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -71,6 +71,18 @@ are not paid per token MUST be recorded with their tokens and a cost of zero.
 Ledger entries MUST NOT contain message content (ADR-0042).
 
 Rationale: journey J12.
+
+## MOD-008: Models configured by administrators
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** integration
+
+The instance admin MUST be able to configure models for the whole instance,
+and a tenant admin models for their tenant, through the public API, and mark
+one of them as the default. Credentials of a model configuration MUST be
+write-only in the API and stored only encrypted (MOD-002).
 
 ## MOD-007: Live usage reporting
 
