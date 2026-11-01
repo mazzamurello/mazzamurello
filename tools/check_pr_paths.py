@@ -5,14 +5,29 @@ Usage: python3 tools/check_pr_paths.py --branch BRANCH --base REF --head REF
 The branch prefix (the text before the first '/') is the pull request type.
 Each type may change only its allowed paths. Rules files can be changed only
 by 'rules' pull requests, so that a change can never relax the checks that
-gate it.
+gate it, and 'rules' pull requests target the default branch.
+
+The milestone pull request, from the integration branch into the default
+branch, has no type of its own: every pull request merged into the
+integration branch is checked against its own type, and commits that reached
+the integration branch without a pull request are rejected (ADR-0055). A
+pull request from the default branch into the integration branch may contain
+only the default branch's own history.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
+
+DEFAULT_BRANCH = "master"
+# Spec, test, impl and docs pull requests target the integration branch; a
+# milestone pull request brings it into the default branch (ADR-0055).
+INTEGRATION_BRANCH = "next"
+# The title GitHub gives the merge commit of a pull request.
+MERGE_TITLE_RE = re.compile(r"^Merge pull request #\d+ from [^/\s]+/(\S+)$")
 
 # A pattern ending with '/' matches everything below that directory;
 # any other pattern matches exactly one file.
@@ -82,6 +97,51 @@ def violations(branch: str, paths: list[str]) -> list[str]:
     return problems
 
 
+def target_violations(branch: str, base_branch: str) -> list[str]:
+    """Return a message when the pull request targets a branch its type may not."""
+    if pr_type(branch) == "rules" and base_branch != DEFAULT_BRANCH:
+        return [f"'rules/' pull requests target '{DEFAULT_BRANCH}', not '{base_branch}'"]
+    return []
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+
+
+def is_ancestor(commit: str, ref: str) -> bool:
+    return subprocess.run(["git", "merge-base", "--is-ancestor", commit, ref], check=False).returncode == 0
+
+
+def milestone_violations(base: str, head: str) -> list[str]:
+    """Check every change the integration branch brings into the default branch."""
+    problems: list[str] = []
+    log = git("log", "--first-parent", "--format=%H%x1f%P%x1f%s", f"{base}..{head}")
+    for line in log.splitlines():
+        sha, parents, title = line.split("\x1f", 2)
+        commit, parent_shas = sha[:12], parents.split()
+        if len(parent_shas) != 2:
+            problems.append(f"{commit}: reached '{INTEGRATION_BRANCH}' without a pull request")
+            continue
+        if is_ancestor(parent_shas[1], base):
+            continue  # the default branch merged into the integration branch
+        match = MERGE_TITLE_RE.match(title)
+        if match is None:
+            problems.append(f"{commit}: merged into '{INTEGRATION_BRANCH}' without a pull request")
+            continue
+        source = match.group(1)
+        found = target_violations(source, INTEGRATION_BRANCH)
+        found += violations(source, changed_paths(parent_shas[0], parent_shas[1]))
+        problems += [f"{commit} ({source}): {problem}" for problem in found]
+    return problems
+
+
+def sync_violations(head: str, default_ref: str) -> list[str]:
+    """The default branch merged into the integration branch brings only reviewed work."""
+    if is_ancestor(head, default_ref):
+        return []
+    return [f"a pull request from '{DEFAULT_BRANCH}' into '{INTEGRATION_BRANCH}' must contain only '{DEFAULT_BRANCH}'"]
+
+
 def changed_paths(base: str, head: str) -> list[str]:
     result = subprocess.run(
         ["git", "diff", "--name-only", "--no-renames", f"{base}...{head}"],
@@ -99,8 +159,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--head", default="HEAD", help="head ref")
     args = parser.parse_args(argv)
 
+    base_branch = args.base.removeprefix("origin/")
     paths = changed_paths(args.base, args.head)
-    problems = violations(args.branch, paths)
+    if args.branch == INTEGRATION_BRANCH and base_branch == DEFAULT_BRANCH:
+        problems = milestone_violations(args.base, args.head)
+    elif args.branch == DEFAULT_BRANCH and base_branch == INTEGRATION_BRANCH:
+        problems = sync_violations(args.head, f"origin/{DEFAULT_BRANCH}")
+    else:
+        problems = violations(args.branch, paths) + target_violations(args.branch, base_branch)
     if problems:
         for problem in problems:
             print(f"error: {problem}", file=sys.stderr)
