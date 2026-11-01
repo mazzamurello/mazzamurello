@@ -8,8 +8,12 @@ from psycopg import errors
 from tests.support.database import CONTRACT_TABLES, SECURITY_DEFINER_FUNCTIONS, SYSTEM_SCHEMAS, Database
 from tests.support.world import World
 
-# Functions mzm_app may call before a request context exists.
-PRE_AUTHENTICATION_FUNCTIONS = tuple(name for name in SECURITY_DEFINER_FUNCTIONS if name.startswith("auth_"))
+# Security-definer functions mzm_app may call: the pre-authentication ones, and
+# the retention lookup of the worker (ADR-0052).
+PRE_AUTHENTICATION_FUNCTIONS = (
+    *(name for name in SECURITY_DEFINER_FUNCTIONS if name.startswith("auth_")),
+    "retention_expired_runs",
+)
 
 
 def _assert_contract_tables_exist(database: Database) -> None:

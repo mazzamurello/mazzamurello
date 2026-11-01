@@ -165,7 +165,10 @@ def test_own_private_rows_cannot_be_given_to_others(
 
 
 @pytest.mark.spec("TEN-003", "TEN-006")
-@pytest.mark.parametrize("table", [table for table in CONTRACT_TABLES if table != "login_attempts"])
+# Model configurations are checked with the API tests, which create them.
+@pytest.mark.parametrize(
+    "table", [table for table in CONTRACT_TABLES if table not in ("login_attempts", "instance_models", "tenant_models")]
+)
 def test_nothing_is_visible_without_a_request_context(database: Database, world: World, table: str) -> None:
     # `users` is read through a column mzm_app may select; the others whole.
     column = "id" if table in ("tenants", "users") else "tenant_id"
