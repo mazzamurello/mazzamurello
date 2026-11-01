@@ -10,6 +10,7 @@ import pytest
 from tests.support.accounts import body, create_account, create_tenant, login
 from tests.support.database import Database, start_database, uuid7
 from tests.support.model import ModelServer, start_model_server
+from tests.support.sandbox import Driver, start_sandboxes
 from tests.support.server import Server, start_server
 from tests.support.world import World, create_world
 
@@ -25,8 +26,13 @@ def world(database: Database) -> World:
 
 
 @pytest.fixture(scope="session")
-def server(request: pytest.FixtureRequest, database: Database) -> Server:
-    return start_server(request.config, database)
+def sandboxes(request: pytest.FixtureRequest) -> Driver:
+    return start_sandboxes(request.config)
+
+
+@pytest.fixture(scope="session")
+def server(request: pytest.FixtureRequest, database: Database, sandboxes: Driver) -> Server:
+    return start_server(request.config, database, (sandboxes.url, sandboxes.token))
 
 
 @dataclass(frozen=True)
