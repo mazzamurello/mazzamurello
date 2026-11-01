@@ -37,3 +37,32 @@ Tests that need a database use this procedure, once per test session:
 Tests use psycopg 3. Each test creates its own tenants and users with fresh
 identifiers, so tests do not depend on each other or on their order, and the
 database is not reset between tests.
+
+## Server
+
+Tests that need the API use this procedure, once per test session, after the
+database procedure (ADR-0050):
+
+1. From the repository root, start the API process,
+   `python -m mazzamurello_server api`, with this environment
+   ([configuration](configuration.md)):
+
+   | Variable | Value |
+   |---|---|
+   | `MZM_DATABASE_URL` | The database of the test session, as `mzm_app` |
+   | `MZM_HTTP_HOST` | `127.0.0.1` |
+   | `MZM_HTTP_PORT` | A free port chosen by the test suite |
+   | `MZM_TRUSTED_PROXIES` | `127.0.0.1` |
+
+2. The server is ready when `GET /v1/me` without a token answers `401`. A
+   server that is not ready within 30 seconds, or exits, fails the session,
+   with its output in the failure.
+3. Tests call the API over HTTP at `http://127.0.0.1:PORT/v1` and stop the
+   process at the end of the session.
+
+Tests choose the source address of each request with `X-Forwarded-For`, so
+that rate limits (ADR-0047) count only the attempts of the test that made
+them. Users that a test does not create through the API are arranged in the
+database as superuser, with password hashes in the Argon2id encoded format
+(AUTH-001), which the server verifies.
+

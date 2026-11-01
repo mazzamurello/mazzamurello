@@ -14,6 +14,8 @@ new entry here first (ADR-0005).
 | Tenant admin | A user who manages a tenant's users, shared spaces and tool permissions. |
 | User | A person with an account in exactly one tenant. |
 | Device session | An authenticated session of one user on one device, identified by an opaque token and revocable by the user (ADR-0025). |
+| Source address | The network address a request comes from: the address of the connecting peer, or the client address reported by a trusted proxy (ADR-0050). |
+| Trusted proxy | A reverse proxy, named by the instance admin in the configuration, whose report of the client address the server believes (ADR-0050). |
 | Private data | Data owned by one user and visible only to that user. The default for all data. |
 | Shared space | A container of data explicitly shared among some or all users of a tenant (e.g. household documents, family calendar, shopping list). |
 

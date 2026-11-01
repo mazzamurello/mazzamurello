@@ -3,7 +3,7 @@
 The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
-ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048.
+ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048, ADR-0049.
 
 ## Roles
 
@@ -77,7 +77,7 @@ minimum needed and nothing else.
 |---|---|---|
 | `auth_find_login(username text)` | `user_id, tenant_id, password_hash, role, instance_admin, disabled` | Password verification (AUTH-001); matches the username ignoring case |
 | `auth_find_session(token_hash bytea)` | `session_id, user_id, tenant_id, role, instance_admin, expires_at, revoked` | Token verification on every request (AUTH-004) |
-| `auth_touch_session(session_id uuid)` | — | Updates `last_used_at` |
+| `auth_touch_session(session_id uuid)` | — | Sets `last_used_at` to now and `expires_at` to 90 days later, for a session that is neither revoked nor expired (ADR-0049) |
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006), by the rules below |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
 
@@ -182,7 +182,7 @@ leaves its sessions revoked.
 | `device_name` | text | not null |
 | `created_at` | timestamptz | not null |
 | `last_used_at` | timestamptz | not null |
-| `expires_at` | timestamptz | not null |
+| `expires_at` | timestamptz | not null; 90 days after the last use (ADR-0049) |
 | `revoked_at` | timestamptz | null while valid |
 
 Policies: all operations where `tenant_id = app_tenant_id()` and
