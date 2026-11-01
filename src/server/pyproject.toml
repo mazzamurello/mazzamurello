@@ -11,6 +11,8 @@ dependencies = [
     "cryptography==50.0.2",
     "dbos==3.4.0",
     "fastapi==0.162.0",
+    "httpx==0.28.1",
+    "pydantic-ai-harness==0.64.0",
     "pydantic-ai-slim[ag-ui,dbos,openai]==2.64.0",
     "sqlalchemy[asyncio]==2.1.6",
     "uvicorn==0.54.0",
