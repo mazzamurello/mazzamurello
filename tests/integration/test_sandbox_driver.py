@@ -100,7 +100,7 @@ def test_commands_are_stopped_at_their_timeout(sandboxes: Driver) -> None:
 def test_timeouts_are_capped_by_the_configuration(sandboxes: Driver) -> None:
     tenant_id, user_id = _user()
     started = time.monotonic()
-    # The test configuration caps commands at 20 seconds.
+    # The test configuration caps commands at 8 seconds.
     result = sandboxes.sh(tenant_id, user_id, "sleep 120", timeout_seconds=3600)
     assert result.timed_out is True
     assert time.monotonic() - started < 60
