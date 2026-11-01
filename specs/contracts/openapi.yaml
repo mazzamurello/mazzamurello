@@ -45,6 +45,11 @@ paths:
       tags: [auth]
       operationId: login
       summary: Create a device session.
+      description: |
+        The username is matched ignoring case (ADR-0047). A disabled account
+        is answered like a wrong password, and the attempt counts as failed.
+        Attempts over the rate limits are refused with `429` and a
+        `Retry-After` header, whether or not the password was right.
       x-requirements: [AUTH-001, AUTH-004, AUTH-006]
       security: []
       requestBody:
@@ -617,7 +622,10 @@ components:
         device_name: { type: string }
         created_at: { $ref: "#/components/schemas/Timestamp" }
         last_used_at: { $ref: "#/components/schemas/Timestamp" }
-        expires_at: { $ref: "#/components/schemas/Timestamp" }
+        expires_at:
+          description: 90 days after the last use (ADR-0049).
+          allOf:
+            - $ref: "#/components/schemas/Timestamp"
         current: { type: boolean, description: "True for the session making the request." }
 
     Role:
@@ -682,7 +690,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
         admin:
-          description: The tenant's first tenant admin.
+          description: The tenant's first tenant admin; `role` must be `tenant_admin`.
           allOf:
             - $ref: "#/components/schemas/CreateUserRequest"
 
