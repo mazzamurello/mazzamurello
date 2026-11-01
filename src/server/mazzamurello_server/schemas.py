@@ -113,13 +113,19 @@ class ModelPrices(Request):
 
 class ModelPricesOut(Response):
     input: str
-    cached_input: str | None = None
+    # Left out when not set: the contract has no null price.
+    cached_input: Annotated[str | None, Field(exclude_if=lambda value: value is None)] = None
     output: str
     currency: str
 
 
+# The API of a model's endpoint (ADR-0057).
+type ModelApi = Literal["openai", "openrouter"]
+
+
 class CreateModelConfigurationRequest(Request):
     name: Annotated[str, Field(min_length=1, max_length=100)]
+    api: ModelApi = "openai"
     base_url: Annotated[HttpUrl, UrlConstraints(max_length=2000)]
     model: Annotated[str, Field(min_length=1, max_length=200)]
     api_key: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
@@ -132,6 +138,7 @@ class UpdateModelConfigurationRequest(Request):
     """Only the fields present change; `api_key` and `prices` set to null are removed."""
 
     name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    api: ModelApi | None = None
     base_url: Annotated[HttpUrl, UrlConstraints(max_length=2000)] | None = None
     model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     api_key: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
@@ -143,6 +150,7 @@ class UpdateModelConfigurationRequest(Request):
 class ModelConfiguration(Response):
     id: uuid.UUID
     name: str
+    api: ModelApi
     base_url: str
     model: str
     has_api_key: bool
