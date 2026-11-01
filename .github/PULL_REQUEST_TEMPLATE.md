@@ -26,3 +26,4 @@ Refs:
 - [ ] Tests and checks pass locally.
 - [ ] For `impl/*`: no test was modified.
 - [ ] For `spec/*`: new concepts are in `specs/glossary.md`; new decisions have an ADR.
+- [ ] If the lock file changes the version of Pydantic AI, its harness or DBOS: the release notes since the previous version are summarized here, and new features that could replace project code or change an ADR are recorded as issues or ADR proposals (REPO-010).

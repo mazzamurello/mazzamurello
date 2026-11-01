@@ -8,6 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 
+from tests.tooling.marks import mark
 from tools.check_test_durations import main, parse_report, problems
 
 REPORT = """<?xml version="1.0" encoding="utf-8"?>
@@ -21,6 +22,7 @@ REPORT = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
+@mark.spec("REPO-011")
 class ParseReportTest(unittest.TestCase):
     def test_session_and_test_times(self) -> None:
         report = parse_report(REPORT)
@@ -40,6 +42,7 @@ class ParseReportTest(unittest.TestCase):
         self.assertEqual(len(report.tests), 1)
 
 
+@mark.spec("REPO-011")
 class ProblemsTest(unittest.TestCase):
     def test_within_limits(self) -> None:
         self.assertEqual(problems(parse_report(REPORT), max_test_seconds=40, max_session_seconds=100), [])
@@ -55,6 +58,7 @@ class ProblemsTest(unittest.TestCase):
         self.assertIn("budget", found[0])
 
 
+@mark.spec("REPO-011")
 class MainTest(unittest.TestCase):
     def run_main(self, *limits: str) -> tuple[int, str]:
         with tempfile.TemporaryDirectory() as directory:

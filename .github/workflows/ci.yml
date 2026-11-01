@@ -34,6 +34,8 @@ jobs:
           persist-credentials: false
       - name: Run tooling tests
         run: python3 -m unittest discover -s tests/tooling -t . -v
+      - name: Check the workflows (REPO-007, REPO-008, REPO-009)
+        run: python3 tools/check_workflows.py
 
   traceability:
     name: Traceability

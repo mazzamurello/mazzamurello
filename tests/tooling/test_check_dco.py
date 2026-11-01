@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.tooling.marks import mark
 from tools import check_dco
 from tools.check_dco import Commit, problem
 
@@ -16,6 +17,7 @@ def commit(message: str, email: str = "ada@example.org", name: str = "Ada", pare
     return Commit("a" * 40, tuple("b" * 40 for _ in range(parents)), name, email, message)
 
 
+@mark.spec("REPO-002")
 class DcoProblemTest(unittest.TestCase):
     def test_signed_off_commit_passes(self) -> None:
         self.assertIsNone(problem(commit("feat: x\n\nSigned-off-by: Ada <ada@example.org>\n")))
@@ -42,6 +44,7 @@ class DcoProblemTest(unittest.TestCase):
         self.assertIsNone(problem(commit("chore: bump\n", name="dependabot[bot]", email="bot@example.org")))
 
 
+@mark.spec("REPO-002")
 class DcoGitIntegrationTest(unittest.TestCase):
     """Runs the check against a real temporary git repository."""
 
