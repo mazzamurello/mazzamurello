@@ -6,12 +6,18 @@ missing, invalid or unknown stops the process before it listens.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import ipaddress
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 PREFIX = "MZM_"
-API_VARIABLES = frozenset({"MZM_DATABASE_URL", "MZM_HTTP_HOST", "MZM_HTTP_PORT", "MZM_TRUSTED_PROXIES"})
+API_VARIABLES = frozenset(
+    {"MZM_DATABASE_URL", "MZM_HTTP_HOST", "MZM_HTTP_PORT", "MZM_TRUSTED_PROXIES", "MZM_SECRET_KEY"}
+)
+WORKER_VARIABLES = frozenset({"MZM_DATABASE_URL", "MZM_SECRET_KEY", "MZM_RUN_RETENTION_DAYS"})
+SECRET_KEY_BYTES = 32
 
 type Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
@@ -26,6 +32,14 @@ class ApiConfiguration:
     http_host: str
     http_port: int
     trusted_proxies: tuple[Network, ...]
+    secret_key: bytes
+
+
+@dataclass(frozen=True)
+class WorkerConfiguration:
+    database_url: str
+    secret_key: bytes
+    run_retention_days: int
 
 
 def _database_url(environment: Mapping[str, str]) -> str:
@@ -59,10 +73,37 @@ def _trusted_proxies(environment: Mapping[str, str]) -> tuple[Network, ...]:
     return tuple(networks)
 
 
-def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
-    unknown = sorted(name for name in environment if name.startswith(PREFIX) and name not in API_VARIABLES)
+def _secret_key(environment: Mapping[str, str]) -> bytes:
+    value = environment.get("MZM_SECRET_KEY", "")
+    if not value:
+        raise ConfigurationError("MZM_SECRET_KEY is required")
+    try:
+        key = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    except (binascii.Error, ValueError):
+        key = b""
+    if len(key) != SECRET_KEY_BYTES:
+        raise ConfigurationError("MZM_SECRET_KEY must be 32 random bytes, base64url-encoded")
+    return key
+
+
+def _refuse_unknown(environment: Mapping[str, str], known: frozenset[str]) -> None:
+    unknown = sorted(name for name in environment if name.startswith(PREFIX) and name not in known)
     if unknown:
         raise ConfigurationError(f"unknown configuration variable {unknown[0]}")
+
+
+def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfiguration:
+    _refuse_unknown(environment, WORKER_VARIABLES)
+    days = environment.get("MZM_RUN_RETENTION_DAYS", "30")
+    if not days.isdigit() or not 1 <= int(days) <= 3650:
+        raise ConfigurationError("MZM_RUN_RETENTION_DAYS must be a number of days from 1 to 3650")
+    return WorkerConfiguration(
+        database_url=_database_url(environment), secret_key=_secret_key(environment), run_retention_days=int(days)
+    )
+
+
+def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
+    _refuse_unknown(environment, API_VARIABLES)
     host = environment.get("MZM_HTTP_HOST", "0.0.0.0")  # noqa: S104 - the container's published entry point
     if not host:
         raise ConfigurationError("MZM_HTTP_HOST must not be empty")
@@ -71,4 +112,5 @@ def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
         http_host=host,
         http_port=_port(environment),
         trusted_proxies=_trusted_proxies(environment),
+        secret_key=_secret_key(environment),
     )

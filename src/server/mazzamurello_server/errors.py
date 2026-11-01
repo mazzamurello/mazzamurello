@@ -19,12 +19,15 @@ PROBLEM_MEDIA_TYPE = "application/problem+json"
 class ApiError(Exception):
     """An error with a status and a code of the API contract."""
 
-    def __init__(self, status: int, code: str, title: str, headers: Mapping[str, str] | None = None) -> None:
+    def __init__(
+        self, status: int, code: str, title: str, headers: Mapping[str, str] | None = None, **extra: Any
+    ) -> None:
         super().__init__(code)
         self.status = status
         self.code = code
         self.title = title
         self.headers = dict(headers or {})
+        self.extra = extra
 
 
 def unauthenticated() -> ApiError:
@@ -51,6 +54,13 @@ def conflict() -> ApiError:
     return ApiError(409, "resource.conflict", "Conflict")
 
 
+def invalid(location: str, code: str) -> ApiError:
+    """A request rejected for one field, as `request.validation_failed`."""
+    return ApiError(
+        422, "request.validation_failed", "Validation failed", errors=[{"location": location, "code": code}]
+    )
+
+
 def validation_failed(errors: list[dict[str, str]]) -> JSONResponse:
     return problem(422, "request.validation_failed", "Validation failed", errors=errors)
 
@@ -70,7 +80,7 @@ def _location(location: tuple[int | str, ...]) -> str:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def api_error(request: Request, error: ApiError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
-        return problem(error.status, error.code, error.title, error.headers)
+        return problem(error.status, error.code, error.title, error.headers, **error.extra)
 
     @app.exception_handler(RequestValidationError)
     async def request_validation(  # pyright: ignore[reportUnusedFunction]
