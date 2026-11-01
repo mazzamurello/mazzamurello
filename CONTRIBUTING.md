@@ -30,11 +30,13 @@ declined — this is not a judgment of the idea, just of the project's scope.
 
 ## Pull request types
 
-The default branch is `master`; work is integrated on `next` first
-([ADR-0055](specs/adr/0055-an-integration-branch-before-master.md)). Each
-pull request has exactly one type, given by its branch prefix. CI rejects
-files outside the allowed paths. `rules/` pull requests target `master`; all
-others target `next`.
+The default branch is `master`. Each pull request has exactly one type,
+given by its branch prefix, and CI rejects files outside the paths allowed
+for it. A milestone pull request, from a `milestone/` branch, has no type of
+its own: each of its commits has one, at the start of its subject, and is
+checked the same way
+([ADR-0060](specs/adr/0060-milestone-branches.md)). Every pull request
+targets `master`.
 
 | Branch prefix | May change |
 |---|---|
