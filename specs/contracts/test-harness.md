@@ -60,7 +60,8 @@ database procedure (ADR-0050):
    with its output in the failure.
 3. Start the worker, `python -m mazzamurello_server worker`, from the
    repository root, with `MZM_DATABASE_URL` and `MZM_SECRET_KEY` as for the
-   API (ADR-0052). The worker has no readiness signal: tests wait for the
+   API (ADR-0052), and `MZM_SANDBOXD_URL` and `MZM_SANDBOXD_TOKEN` of the
+   sandbox driver below. The worker has no readiness signal: tests wait for the
    outcome of runs, with a timeout.
 4. Tests call the API over HTTP at `http://127.0.0.1:PORT/v1` and stop both
    processes at the end of the session. To check recovery (AGT-010), a test
@@ -80,4 +81,30 @@ OpenAI-compatible chat completions endpoint on `127.0.0.1`, whose answers
 the tests script, and configures it through the API as an instance model
 (ADR-0051). Endpoints on the loopback address are allowed only for instance
 models, so tests use instance models for runs.
+
+## Sandboxes
+
+Tests that need sandboxes, and the server, which needs the sandbox driver,
+use this procedure once per test session, before starting the worker
+(ADR-0053). It needs Docker with gVisor registered as the `runsc` runtime;
+where it is missing, these tests fail; they never skip.
+
+1. Build the images `deploy/images/sandbox` and `deploy/images/netguard`,
+   with tags chosen by the test suite.
+2. Start the network guard: the `netguard` image as a container named by the
+   test suite, with `--network host` and `--cap-add NET_ADMIN`, and nothing
+   else. Wait until Docker reports it healthy.
+3. From the repository root, start the sandbox driver,
+   `python -m mazzamurello_sandboxd`, with `MZM_SANDBOXD_HOST` `127.0.0.1`, a
+   free port, a random `MZM_SANDBOXD_TOKEN`, `MZM_SANDBOX_IMAGE` and
+   `MZM_NETGUARD_CONTAINER` from the steps above, and limits small enough for
+   tests to reach them. It is ready when `GET /v1/health` with the token
+   answers `200`, within 120 seconds.
+4. At the end of the session, stop the driver, then the network guard, which
+   removes its table, and remove every container and volume the session's
+   driver created, and the sandbox bridge.
+
+Security tests check isolation from inside sandboxes, through the driver's
+`exec`, and may remove the table with `nft` inside the network guard's
+container to check that sandboxes stop (SBX-015).
 
