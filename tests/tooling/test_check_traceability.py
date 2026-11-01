@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.tooling.marks import mark
 from tools import check_traceability
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +61,7 @@ The system SHOULD be nice.
 """
 
 
+@mark.spec("REPO-004")
 class TraceabilityTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

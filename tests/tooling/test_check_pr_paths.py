@@ -8,9 +8,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.tooling.marks import mark
 from tools.check_pr_paths import milestone_violations, sync_violations, target_violations, violations
 
 
+@mark.spec("REPO-001")
 class PullRequestPathsTest(unittest.TestCase):
     def assertAllowed(self, branch: str, *paths: str) -> None:
         self.assertEqual(violations(branch, list(paths)), [])
@@ -75,6 +77,7 @@ class PullRequestPathsTest(unittest.TestCase):
         self.assertAllowed("spec/nothing")
 
 
+@mark.spec("REPO-001")
 class PullRequestTargetTest(unittest.TestCase):
     def test_rules_pull_requests_target_the_default_branch(self) -> None:
         self.assertEqual(target_violations("rules/tighten-ci", "master"), [])
@@ -88,6 +91,7 @@ class PullRequestTargetTest(unittest.TestCase):
                 self.assertEqual(target_violations(branch, "master"), [])
 
 
+@mark.spec("REPO-001")
 class MilestonePullRequestTest(unittest.TestCase):
     """Runs the milestone check against a real temporary git repository (ADR-0055)."""
 
