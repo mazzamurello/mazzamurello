@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.3.0-draft
+  version: 0.4.0-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -161,6 +161,82 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /instance/models:
+    post:
+      tags: [administration]
+      operationId: createInstanceModel
+      summary: Configure a model for the instance (instance admin only).
+      x-requirements: [MOD-008, MOD-002]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateModelConfigurationRequest" }
+      responses:
+        "201":
+          description: Model configured.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelConfiguration" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      tags: [administration]
+      operationId: listInstanceModels
+      summary: List the model configurations of the instance (instance admin only).
+      x-requirements: [MOD-008, MOD-002]
+      responses:
+        "200":
+          description: Every model configuration of this scope, by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModelConfiguration" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /instance/models/{model_id}:
+    parameters:
+      - $ref: "#/components/parameters/ModelId"
+    patch:
+      tags: [administration]
+      operationId: updateInstanceModel
+      summary: Change a model configuration (instance admin only).
+      x-requirements: [MOD-008, MOD-002]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateModelConfigurationRequest" }
+      responses:
+        "200":
+          description: The updated model configuration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelConfiguration" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [administration]
+      operationId: deleteInstanceModel
+      summary: Remove a model configuration (instance admin only). Removing the default leaves the scope without one.
+      x-requirements: [MOD-008, MOD-002]
+      responses:
+        "204": { description: Model configuration removed. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /tenant/users:
     post:
       tags: [administration]
@@ -197,6 +273,82 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UserPage" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /tenant/models:
+    post:
+      tags: [administration]
+      operationId: createTenantModel
+      summary: Configure a model for the current tenant (tenant admin only).
+      x-requirements: [MOD-008, MOD-002, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateModelConfigurationRequest" }
+      responses:
+        "201":
+          description: Model configured.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelConfiguration" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      tags: [administration]
+      operationId: listTenantModels
+      summary: List the model configurations of the current tenant (tenant admin only).
+      x-requirements: [MOD-008, MOD-002, TEN-006]
+      responses:
+        "200":
+          description: Every model configuration of this scope, by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModelConfiguration" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenant/models/{model_id}:
+    parameters:
+      - $ref: "#/components/parameters/ModelId"
+    patch:
+      tags: [administration]
+      operationId: updateTenantModel
+      summary: Change a model configuration (tenant admin only).
+      x-requirements: [MOD-008, MOD-002, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateModelConfigurationRequest" }
+      responses:
+        "200":
+          description: The updated model configuration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelConfiguration" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [administration]
+      operationId: deleteTenantModel
+      summary: Remove a model configuration (tenant admin only). Removing the default leaves the scope without one.
+      x-requirements: [MOD-008, MOD-002, TEN-006]
+      responses:
+        "204": { description: Model configuration removed. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /conversations:
     post:
@@ -356,7 +508,14 @@ paths:
               x-event-schema: { $ref: "#/components/schemas/AgUiEvent" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/RunInProgress" }
+        "409":
+          description: |
+            A run is in progress (`run.in_progress`), an interrupt is pending
+            (`run.interrupt_pending`), or neither the tenant nor the instance
+            has a default model (`model.unavailable`, ADR-0052).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /runs/{run_id}:
@@ -464,6 +623,11 @@ components:
   parameters:
     SessionId:
       name: session_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    ModelId:
+      name: model_id
       in: path
       required: true
       schema: { $ref: "#/components/schemas/Id" }
@@ -694,12 +858,79 @@ components:
           allOf:
             - $ref: "#/components/schemas/CreateUserRequest"
 
+    Decimal:
+      type: string
+      pattern: "^[0-9]{1,10}(\\.[0-9]{1,10})?$"
+      description: A non-negative decimal number, as a string so that no precision is lost.
+    ModelPrices:
+      type: object
+      description: Prices per million tokens, in one currency (ADR-0042).
+      required: [input, output, currency]
+      additionalProperties: false
+      properties:
+        input: { $ref: "#/components/schemas/Decimal" }
+        cached_input: { $ref: "#/components/schemas/Decimal" }
+        output: { $ref: "#/components/schemas/Decimal" }
+        currency: { type: string, pattern: "^[A-Z]{3}$", description: "ISO 4217 code." }
+    ModelConfiguration:
+      type: object
+      description: |
+        A model of a provider made available by an admin (ADR-0051). The API key
+        is never returned; `has_api_key` says whether one is set.
+      required: [id, name, base_url, model, has_api_key, paid, prices, is_default, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        base_url: { type: string, format: uri }
+        model: { type: string }
+        has_api_key: { type: boolean }
+        paid: { type: boolean, description: "Whether the provider charges per token." }
+        prices:
+          oneOf:
+            - $ref: "#/components/schemas/ModelPrices"
+            - type: "null"
+        is_default: { type: boolean }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    CreateModelConfigurationRequest:
+      type: object
+      description: |
+        Tenant models must use an `https` endpoint that resolves only to public
+        addresses; anything else is rejected with `request.validation_failed`
+        at `/base_url` (ADR-0051). Making a configuration the default makes the
+        previous default of the same scope a plain configuration.
+      required: [name, base_url, model, paid]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        base_url: { type: string, format: uri, maxLength: 2000, description: "Endpoint of an OpenAI-compatible API, such as `http://192.168.1.10:11434/v1`." }
+        model: { type: string, minLength: 1, maxLength: 200 }
+        api_key: { type: string, minLength: 1, maxLength: 1000, writeOnly: true }
+        paid: { type: boolean }
+        prices: { $ref: "#/components/schemas/ModelPrices" }
+        is_default: { type: boolean, default: false }
+    UpdateModelConfigurationRequest:
+      type: object
+      description: Fields to change. `api_key` and `prices` set to `null` remove them.
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        base_url: { type: string, format: uri, maxLength: 2000 }
+        model: { type: string, minLength: 1, maxLength: 200 }
+        api_key: { oneOf: [{ type: string, minLength: 1, maxLength: 1000 }, { type: "null" }], writeOnly: true }
+        paid: { type: boolean }
+        prices: { oneOf: [{ $ref: "#/components/schemas/ModelPrices" }, { type: "null" }] }
+        is_default: { type: boolean }
+
     Conversation:
       type: object
       required: [id, title, archived, active_run_id, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
-        title: { type: string }
+        title:
+          type: string
+          description: Empty while the conversation is untitled; clients show their own placeholder (ADR-0052).
         archived: { type: boolean }
         active_run_id:
           description: Last run of the active path (ADR-0037); null before the first run.

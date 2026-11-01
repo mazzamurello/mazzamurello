@@ -82,6 +82,8 @@ new entry here first (ADR-0005).
 |---|---|
 | Model gateway | The component through which every model call passes; applies routing, budgets and the data egress policy. |
 | Provider | A source of model inference: a local server or a remote service. |
+| Model configuration | A model of a provider made available by an admin: its endpoint, credentials, model name and prices, for the whole instance or for one tenant (ADR-0051). |
+| Default model | The model configuration that answers runs: the tenant's default, or else the instance's (ADR-0051). |
 | Local model | A model served from inside the instance or the household's network. |
 | Remote model | A model served by a third party over the internet. |
 | Cost ledger | The record of every model request made for a user, with tokens and cost but no content (MOD-006, ADR-0042). |
