@@ -30,8 +30,11 @@ declined — this is not a judgment of the idea, just of the project's scope.
 
 ## Pull request types
 
-The default branch is `master`. Each pull request has exactly one type,
-given by its branch prefix. CI rejects files outside the allowed paths.
+The default branch is `master`; work is integrated on `next` first
+([ADR-0055](specs/adr/0055-an-integration-branch-before-master.md)). Each
+pull request has exactly one type, given by its branch prefix. CI rejects
+files outside the allowed paths. `rules/` pull requests target `master`; all
+others target `next`.
 
 | Branch prefix | May change |
 |---|---|
