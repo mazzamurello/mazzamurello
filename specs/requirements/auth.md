@@ -14,7 +14,7 @@ Passwords MUST never be logged or stored in reversible form.
 
 ## AUTH-002: Accounts created by administrators
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -34,7 +34,7 @@ provider (e.g. a self-hosted identity provider), mapped to existing accounts.
 
 ## AUTH-004: Revocable device sessions
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -58,7 +58,7 @@ set.
 
 ## AUTH-006: Login rate limiting
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -67,7 +67,7 @@ Login attempts MUST be rate-limited per account and per source address.
 
 ## AUTH-007: First administrator without default credentials
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -78,7 +78,7 @@ ship or accept any default credentials.
 
 ## AUTH-008: Privileges changed only by administrators
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
@@ -90,7 +90,7 @@ privileges or re-enable their own account.
 
 ## AUTH-009: Disabling an account ends its sessions
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
