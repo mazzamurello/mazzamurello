@@ -253,6 +253,11 @@ async def stored_messages(connection: AsyncConnection, run_ids: Sequence[uuid.UU
     return by_run
 
 
+def message_id(run_id: uuid.UUID, position: int) -> uuid.UUID:
+    """The ID of a run's message in history, from the run and its position in it (CNV-001)."""
+    return uuid.uuid5(run_id, f"message-{position}")
+
+
 @router.get("/conversations/{conversation_id}/messages", response_model=schemas.MessagePage)
 async def list_messages(
     conversation_id: uuid.UUID,
@@ -290,8 +295,11 @@ async def list_messages(
     flattened: list[tuple[Any, dict[str, Any]]] = []
     for run in path:
         model_messages = ModelMessagesTypeAdapter.validate_python(stored[run.id])
-        for message in AGUIAdapter.dump_messages(model_messages):
-            flattened.append((run, message.model_dump(mode="json", by_alias=True, exclude_none=True)))
+        for position, message in enumerate(AGUIAdapter.dump_messages(model_messages)):
+            dumped = message.model_dump(mode="json", by_alias=True, exclude_none=True)
+            # The same ID on every read, and in every version that contains the message.
+            dumped["id"] = str(message_id(run.id, position))
+            flattened.append((run, dumped))
     page = flattened[start : start + limit]
     runs: list[schemas.PathRun] = []
     for run, message in page:
