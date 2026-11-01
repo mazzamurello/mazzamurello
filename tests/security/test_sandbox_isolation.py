@@ -238,7 +238,23 @@ def test_processes_are_limited_inside_the_sandbox(sandboxes: Driver) -> None:
         "print(started)\n"
     )
     result = sandboxes.exec(tenant_id, user_id, {"argv": ["python3", "-c", script], "timeout_seconds": 20})
-    assert int(result.stdout.strip().splitlines()[-1]) < 64
+    probe = sandboxes.sh(tenant_id, user_id, "id; ulimit -u; ulimit -a; cat /proc/self/limits; nproc; free -m; ps -e | wc -l", timeout_seconds=20)
+    verbose = (
+        "import os, sys, time\n"
+        "started = 0\n"
+        "for _ in range(200):\n"
+        "    try:\n"
+        "        if os.fork() == 0:\n"
+        "            time.sleep(5); os._exit(0)\n"
+        "        started += 1\n"
+        "        print(started, flush=True)\n"
+        "    except BaseException as error:\n"
+        "        print('stopped', type(error).__name__, error, flush=True)\n"
+        "        break\n"
+        "print('final', started, flush=True)\n"
+    )
+    second = sandboxes.exec(tenant_id, user_id, {"argv": ["python3", "-c", verbose], "timeout_seconds": 20})
+    raise AssertionError(f"DIAG first={result!r}\nprobe={probe!r}\nsecond={second!r}")
 
 
 @pytest.mark.spec("SBX-003", "SBX-002")
