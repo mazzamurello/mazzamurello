@@ -6,10 +6,10 @@ journeys J1 to J5, J10 and J13 of the [product description](../product.md).
 
 ## CNV-001: Message versions
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
-- **Verification:** e2e
+- **Verification:** integration
 
 A user MUST be able to edit one of their earlier messages, or ask for a new
 answer to it, without losing what followed it. The earlier continuation MUST
@@ -45,15 +45,15 @@ Rationale: journey J1.
 
 ## CNV-004: Rewinding
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
-- **Verification:** e2e
+- **Verification:** integration
 
 A user MUST be able to rewind a conversation to any earlier turn of its
 active path and continue from there. What followed that turn MUST be kept as
 another version (CNV-001). Rewinding MUST NOT change files in the user's
-workspace, and clients MUST say so when the user rewinds.
+workspace, and the API contract MUST say so; clients tell the user (UX-010).
 
 Rationale: journey J2.
 
@@ -211,10 +211,10 @@ Rationale: journey J13.
 
 ## CNV-015: Continuity across devices
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 0
-- **Verification:** e2e
+- **Verification:** integration
 
 A conversation MUST be continuable from any device where its owner is signed
 in, including a run in progress, whose events a second device receives from
