@@ -38,18 +38,19 @@ The branch prefix defines what a pull request may touch. CI enforces it
 | `docs/*` | `docs/`, `README.md`, `CHANGELOG.md` | Documentation |
 | `rules/*` | this file, `.github/`, `.devcontainer/`, `tools/`, governance files | Project rules (maintainer only) |
 
-Where pull requests go ([ADR-0055](specs/adr/0055-an-integration-branch-before-master.md)):
+Milestones ([ADR-0060](specs/adr/0060-milestone-branches.md)):
 
-- `spec/`, `test/`, `impl/` and `docs/` pull requests target `next`, the
-  integration branch. Once CI passes, whoever opened one merges it, with a
-  merge commit and without waiting for an approval. To update one, merge
-  `next` into it, never `master`.
-- `rules/` pull requests target `master` and wait for a maintainer's
-  approval; afterwards a pull request from `master` brings them into `next`.
-- At a milestone, one pull request brings `next` into `master`. It gets an
-  automated review and a maintainer's approval, and merges with a merge
-  commit; then `master` is merged back into `next`.
-- Never push to `next` directly.
+- A milestone is one branch, `milestone/<name>`, from `master`. Commit to it
+  locally, one change at a time; push it when the milestone is ready, after
+  running every CI check locally.
+- Each commit has one type, at the start of its subject: `spec:`, `test:`,
+  `impl:` or `docs:`, and changes only the paths of that type. CI checks
+  every commit of the milestone pull request this way.
+- The milestone pull request goes into `master`, gets an automated review and
+  a maintainer's approval, and merges with a merge commit. To update the
+  branch, merge `master` into it; no other merges.
+- `rules/` pull requests, and the `spec/` pull requests they depend on, go to
+  `master` separately and wait for a maintainer's approval.
 
 Implementation never modifies tests. If a test looks wrong, stop and say so.
 Tests of requirements that are only `accepted` may fail without failing CI
