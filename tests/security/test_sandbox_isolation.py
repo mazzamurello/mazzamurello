@@ -238,7 +238,12 @@ def test_processes_are_limited_inside_the_sandbox(sandboxes: Driver) -> None:
         "print(started)\n"
     )
     result = sandboxes.exec(tenant_id, user_id, {"argv": ["python3", "-c", script], "timeout_seconds": 20})
-    probe = sandboxes.sh(tenant_id, user_id, "id; ulimit -u; ulimit -a; cat /proc/self/limits; nproc; free -m; ps -e | wc -l", timeout_seconds=20)
+    probe = sandboxes.sh(
+        tenant_id,
+        user_id,
+        "id; ulimit -u; ulimit -a; cat /proc/self/limits; nproc; free -m; ps -e | wc -l",
+        timeout_seconds=20,
+    )
     verbose = (
         "import os, sys, time\n"
         "started = 0\n"
