@@ -70,6 +70,10 @@ Tests of requirements that are only `accepted` may fail without failing CI
   `asyncio.to_thread`.
 - **Do not weaken rules to pass checks:** never edit tests, CI, `tools/` or this
   file to make your change pass.
+- **Framework upgrades:** a change that moves Pydantic AI, its harness or DBOS
+  to another version in the lock file summarizes their release notes since
+  the previous version, and records new features that could replace project
+  code or change an ADR as issues or ADR proposals (REPO-010, ADR-0030).
 
 ## Definition of done
 
