@@ -94,7 +94,7 @@ call that may have run twice after a crash (ADR-0034) is visible as such.
 
 ## AGT-009: Durable runs
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -105,7 +105,7 @@ disconnect and later receive everything that happened (ADR-0034).
 
 ## AGT-010: Runs are never silently lost
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -116,7 +116,7 @@ user.
 
 ## AGT-011: Command execution tool
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -141,7 +141,7 @@ request (ADR-0033).
 
 ## AGT-013: No host-side execution through framework capabilities
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -152,7 +152,7 @@ run in the user's sandbox or use provider-native tools (ADR-0030, ADR-0035).
 
 ## AGT-014: Bounded tool output
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
