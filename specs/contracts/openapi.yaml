@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.4.0-draft
+  version: 0.5.0-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -875,15 +875,22 @@ components:
         cached_input: { $ref: "#/components/schemas/Decimal" }
         output: { $ref: "#/components/schemas/Decimal" }
         currency: { type: string, pattern: "^[A-Z]{3}$", description: "ISO 4217 code." }
+    ModelApi:
+      type: string
+      description: |
+        The API of the endpoint (ADR-0057): `openai` for any OpenAI-compatible
+        chat completions endpoint, `openrouter` for OpenRouter's.
+      enum: [openai, openrouter]
     ModelConfiguration:
       type: object
       description: |
         A model of a provider made available by an admin (ADR-0051). The API key
         is never returned; `has_api_key` says whether one is set.
-      required: [id, name, base_url, model, has_api_key, paid, prices, is_default, created_at, updated_at]
+      required: [id, name, api, base_url, model, has_api_key, paid, prices, is_default, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         name: { type: string }
+        api: { $ref: "#/components/schemas/ModelApi" }
         base_url: { type: string, format: uri }
         model: { type: string }
         has_api_key: { type: boolean }
@@ -906,7 +913,8 @@ components:
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
-        base_url: { type: string, format: uri, maxLength: 2000, description: "Endpoint of an OpenAI-compatible API, such as `http://192.168.1.10:11434/v1`." }
+        api: { allOf: [{ $ref: "#/components/schemas/ModelApi" }], default: openai }
+        base_url: { type: string, format: uri, maxLength: 2000, description: "Endpoint of the API, such as `http://192.168.1.10:11434/v1` or `https://openrouter.ai/api/v1`." }
         model: { type: string, minLength: 1, maxLength: 200 }
         api_key: { type: string, minLength: 1, maxLength: 1000, writeOnly: true }
         paid: { type: boolean }
@@ -919,6 +927,7 @@ components:
       minProperties: 1
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
+        api: { $ref: "#/components/schemas/ModelApi" }
         base_url: { type: string, format: uri, maxLength: 2000 }
         model: { type: string, minLength: 1, maxLength: 200 }
         api_key: { oneOf: [{ type: string, minLength: 1, maxLength: 1000 }, { type: "null" }], writeOnly: true }

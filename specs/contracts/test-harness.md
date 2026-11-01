@@ -69,6 +69,13 @@ database procedure (ADR-0050):
    may stop the worker, with `SIGKILL`, and start it again with the same
    environment.
 
+Every exchange through the harness's HTTP client is checked against the
+[API contract](openapi.yaml) (ADR-0056): the response's status, content type
+and body, every event of an event stream, and the body of every request the
+server accepted with a `2xx` status. A mismatch fails the test. The harness
+keeps the output of every process it starts, the API, the worker and the
+sandbox driver, for tests that check what they log (ADR-0058).
+
 Tests choose the source address of each request with `X-Forwarded-For`, so
 that rate limits (ADR-0047) count only the attempts of the test that made
 them. Users that a test does not create through the API are arranged in the
@@ -82,6 +89,13 @@ OpenAI-compatible chat completions endpoint on `127.0.0.1`, whose answers
 the tests script, and configures it through the API as an instance model
 (ADR-0051). Endpoints on the loopback address are allowed only for instance
 models, so tests use instance models for runs.
+
+The served model also answers as OpenRouter's chat completions API does, for
+configurations whose `api` is `openrouter` (ADR-0057): keep-alive comments,
+a final usage chunk that repeats the finish reason and reports `cost`, and
+errors before and during a stream, as OpenRouter's documentation describes
+them. It records the headers of each request, so tests can check what the
+gateway sends.
 
 ## Sandboxes
 
@@ -104,6 +118,10 @@ where it is missing, these tests fail; they never skip.
 4. At the end of the session, stop the driver, then the network guard, which
    removes its table, and remove every container and volume the session's
    driver created, and the sandbox bridge.
+
+To check the gVisor minimum (SBX-017), a test starts a second driver, with
+the same environment, its own port, and `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE`
+newer than the installed release (ADR-0058).
 
 Security tests check isolation from inside sandboxes, through the driver's
 `exec`, and may remove the table with `nft` inside the network guard's
