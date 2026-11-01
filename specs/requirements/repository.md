@@ -5,7 +5,7 @@ ADR-0003, ADR-0004, ADR-0002.
 
 ## REPO-001: Pull request types and allowed paths
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -24,7 +24,7 @@ type. `rules/` pull requests MUST target `master` (ADR-0060).
 
 ## REPO-002: DCO sign-off
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -35,7 +35,7 @@ update bots are exempt.
 
 ## REPO-003: Spec format and cross-references
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -46,7 +46,7 @@ requirement ID or ADR that does not exist.
 
 ## REPO-004: Traceability
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
@@ -61,7 +61,7 @@ requirement is marked `implemented`.
 
 ## REPO-005: Maintainer review of rules and specs
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** review
@@ -72,7 +72,7 @@ and branch protection on `master`.
 
 ## REPO-006: English artifacts
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** review
@@ -82,10 +82,10 @@ Every repository artifact MUST be written in English, except i18n resources
 
 ## REPO-007: Hardened CI
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
-- **Verification:** review
+- **Verification:** unit
 
 CI workflows MUST pin third-party actions to full commit SHAs, MUST declare
 minimal permissions, and MUST NOT interpolate untrusted input (such as branch
@@ -93,10 +93,10 @@ names) directly into scripts.
 
 ## REPO-008: No secrets or write access for untrusted pull requests
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
-- **Verification:** review
+- **Verification:** unit
 
 Workflows triggered by pull requests from forks, including AI review agents,
 MUST run without secrets and without write permissions. Automation that needs
@@ -104,10 +104,10 @@ secrets MUST be triggered explicitly by a maintainer.
 
 ## REPO-009: Code quality gates
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
-- **Verification:** review
+- **Verification:** unit
 
 CI MUST run, on every pull request and on `master`, the formatter check, the
 linter, the type checker in strict mode and the test suite of the Python
@@ -116,7 +116,7 @@ the committed lock file only.
 
 ## REPO-010: Framework upgrades reviewed against release notes
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** review
@@ -128,7 +128,7 @@ replace project code or change an ADR as issues or ADR proposals (ADR-0030).
 
 ## REPO-011: CI time budget
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** unit
