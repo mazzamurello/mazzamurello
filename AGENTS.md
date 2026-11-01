@@ -78,6 +78,11 @@ A change is done only when all of these hold:
 - it references the requirement IDs it implements or verifies;
 - tests, type checks (strict), linters and design tests pass;
 - spec format and traceability checks pass (`python3 tools/check_specs.py`);
+- CI stays within its time budget: no test takes longer than 30 seconds, and
+  each test job stays within its budget in `.github/workflows/ci.yml`
+  ([ADR-0059](specs/adr/0059-a-time-budget-for-ci.md)). When a change needs
+  more, make the tests faster first; a budget is raised only by a `rules/`
+  pull request that says why;
 - every commit is signed off (`git commit -s`) by a human who takes
   responsibility for it.
 
