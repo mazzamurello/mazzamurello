@@ -298,7 +298,8 @@ a tenant, and has no `tenant_id`.
 |---|---|---|
 | `id` | uuid | primary key |
 | `name` | text | not null, unique; shown to users |
-| `base_url` | text | not null; the endpoint of an OpenAI-compatible API |
+| `api` | text | not null, default `openai`; `openai` or `openrouter` (ADR-0057) |
+| `base_url` | text | not null; the endpoint of the API |
 | `model` | text | not null; the model name the endpoint expects |
 | `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `MZM_SECRET_KEY` (ADR-0051); null when the endpoint needs no key |
 | `paid` | boolean | not null; whether the provider charges per token |
