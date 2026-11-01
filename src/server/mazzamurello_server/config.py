@@ -16,7 +16,10 @@ PREFIX = "MZM_"
 API_VARIABLES = frozenset(
     {"MZM_DATABASE_URL", "MZM_HTTP_HOST", "MZM_HTTP_PORT", "MZM_TRUSTED_PROXIES", "MZM_SECRET_KEY"}
 )
-WORKER_VARIABLES = frozenset({"MZM_DATABASE_URL", "MZM_SECRET_KEY", "MZM_RUN_RETENTION_DAYS"})
+WORKER_VARIABLES = frozenset(
+    {"MZM_DATABASE_URL", "MZM_SECRET_KEY", "MZM_RUN_RETENTION_DAYS", "MZM_SANDBOXD_URL", "MZM_SANDBOXD_TOKEN"}
+)
+MINIMUM_DRIVER_TOKEN_LENGTH = 32
 SECRET_KEY_BYTES = 32
 
 type Network = ipaddress.IPv4Network | ipaddress.IPv6Network
@@ -40,6 +43,8 @@ class WorkerConfiguration:
     database_url: str
     secret_key: bytes
     run_retention_days: int
+    sandboxd_url: str
+    sandboxd_token: str
 
 
 def _database_url(environment: Mapping[str, str]) -> str:
@@ -97,8 +102,20 @@ def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfigura
     days = environment.get("MZM_RUN_RETENTION_DAYS", "30")
     if not days.isdigit() or not 1 <= int(days) <= 3650:
         raise ConfigurationError("MZM_RUN_RETENTION_DAYS must be a number of days from 1 to 3650")
+    url = environment.get("MZM_SANDBOXD_URL", "")
+    if not url:
+        raise ConfigurationError("MZM_SANDBOXD_URL is required")
+    if not url.startswith(("http://", "https://")):
+        raise ConfigurationError("MZM_SANDBOXD_URL must be an http:// or https:// URL")
+    token = environment.get("MZM_SANDBOXD_TOKEN", "")
+    if len(token) < MINIMUM_DRIVER_TOKEN_LENGTH:
+        raise ConfigurationError(f"MZM_SANDBOXD_TOKEN must be at least {MINIMUM_DRIVER_TOKEN_LENGTH} characters")
     return WorkerConfiguration(
-        database_url=_database_url(environment), secret_key=_secret_key(environment), run_retention_days=int(days)
+        database_url=_database_url(environment),
+        secret_key=_secret_key(environment),
+        run_retention_days=int(days),
+        sandboxd_url=url.rstrip("/"),
+        sandboxd_token=token,
     )
 
 
