@@ -15,7 +15,7 @@ def _user() -> tuple[str, str]:
     return str(uuid7()), str(uuid7())
 
 
-@pytest.mark.spec("SBX-003", "SBX-015", "SBX-017")
+@pytest.mark.spec("SBX-003", "SBX-015", "SBX-017", "OPS-002", "OPS-009")
 def test_the_driver_reports_verified_isolation(sandboxes: Driver) -> None:
     with sandboxes.client() as client:
         response = client.get("/health")
@@ -23,7 +23,7 @@ def test_the_driver_reports_verified_isolation(sandboxes: Driver) -> None:
     health = response.json()
     assert health["ready"] is True
     assert health["runtime_version"].startswith("release-")
-    assert set(health["checks"]) >= {"isolation_runtime", "runtime_version", "egress_table", "canary"}
+    assert set(health["checks"]) >= {"platform", "isolation_runtime", "runtime_version", "egress_table", "canary"}
     assert all(check["ok"] is True for check in health["checks"].values())
 
 
