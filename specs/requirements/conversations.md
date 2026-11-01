@@ -6,7 +6,7 @@ journeys J1 to J5, J10 and J13 of the [product description](../product.md).
 
 ## CNV-001: Message versions
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -45,7 +45,7 @@ Rationale: journey J1.
 
 ## CNV-004: Rewinding
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -211,7 +211,7 @@ Rationale: journey J13.
 
 ## CNV-015: Continuity across devices
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
