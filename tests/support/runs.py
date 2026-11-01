@@ -11,6 +11,7 @@ from typing import Any, cast
 import httpx
 
 from tests.support.accounts import body
+from tests.support.contract import check_event
 from tests.support.database import uuid7
 from tests.support.server import Server
 
@@ -34,6 +35,7 @@ def parse_events(lines: list[str]) -> list[Event]:
         if line == "":
             if "data" in fields:
                 data = cast(dict[str, Any], json.loads(fields["data"]))
+                check_event(data, f"event {fields.get('id')} ({fields.get('event', '')})")
                 events.append(Event(int(fields["id"]), fields.get("event", ""), data))
             fields = {}
         elif not line.startswith(":"):
