@@ -986,7 +986,14 @@ components:
       required: [id, role]
       additionalProperties: true
       properties:
-        id: { type: string }
+        id:
+          type: string
+          description: |
+            Stable: derived from the run that produced the message and its
+            position in that run, so a message has the same ID on every page
+            and in every version that contains it (CNV-001). It is neither the
+            ID a client sent in its run input nor the one in the run's events;
+            clients reload history after a run.
         role: { type: string }
         content: {}
 
