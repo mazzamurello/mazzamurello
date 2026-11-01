@@ -125,3 +125,15 @@ A pull request that changes the version of Pydantic AI, its harness or the
 durable execution engine in the lock file MUST summarize the relevant release
 notes since the previous version, and MUST record new features that could
 replace project code or change an ADR as issues or ADR proposals (ADR-0030).
+
+## REPO-011: CI time budget
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** unit
+
+CI MUST fail when a single test takes longer than the per-test limit, or when
+a CI test job's test session takes longer than that job's budget. The limit
+and the budgets MUST be written in the CI configuration, and only `rules/`
+pull requests MAY raise them (ADR-0059).
