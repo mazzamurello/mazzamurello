@@ -1,7 +1,8 @@
 """The model gateway, as a capability of the agent (MOD-001, MOD-002, MOD-005, MOD-006, ADR-0036).
 
-It turns the model reference of a run into an OpenAI-compatible model,
-decrypting the configuration's API key only to make the request, records
+It turns the model reference of a run into a model of the configuration's
+API, OpenAI-compatible or OpenRouter (ADR-0057), decrypting the
+configuration's API key only to make the request, records
 every model request in the cost ledger, and stores the run's messages as
 they are produced (ADR-0052).
 """
@@ -14,12 +15,15 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from openai import AsyncOpenAI
 from pydantic_ai import RunContext
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse
 from pydantic_ai.models import Model, ModelRequestContext, ModelResolutionContext
 from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -77,7 +81,7 @@ class Gateway(AbstractCapability[RunDeps]):
             row = (
                 await connection.execute(
                     text(
-                        f"SELECT id, base_url, model, api_key_ciphertext, paid, input_price, cached_input_price,"  # noqa: S608
+                        f"SELECT id, api, base_url, model, api_key_ciphertext, paid, input_price, cached_input_price,"  # noqa: S608
                         f" output_price, currency FROM {TABLES['tenant' if scope == 'tenant' else 'instance']}"
                         " WHERE id = :id"
                     ),
@@ -99,6 +103,10 @@ class Gateway(AbstractCapability[RunDeps]):
             "output": row.output_price,
             "currency": row.currency,
         }
+        if row.api == "openrouter":
+            # A client of our own: the provider would add attribution headers from the environment.
+            client = AsyncOpenAI(base_url=row.base_url, api_key=api_key)
+            return OpenRouterModel(row.model, provider=OpenRouterProvider(openai_client=client))
         return OpenAIChatModel(row.model, provider=OpenAIProvider(base_url=row.base_url, api_key=api_key))
 
     async def before_model_request(
@@ -124,6 +132,10 @@ def _cost(deps: RunDeps, response: ModelResponse) -> tuple[Decimal | None, str |
     if not prices.get("paid", False):
         # A cost of zero still names a currency; any one will do.
         return Decimal(0), configured_currency or "USD", "free"
+    reported = (response.provider_details or {}).get("cost")
+    if isinstance(reported, int | float) and not isinstance(reported, bool):
+        # OpenRouter reports the cost in credits of one US dollar each (ADR-0057).
+        return Decimal(str(reported)), "USD", "provider"
     usage = response.usage
     if configured_currency is not None:
         cached = usage.cache_read_tokens or 0
