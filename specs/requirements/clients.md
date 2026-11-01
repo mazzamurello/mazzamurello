@@ -122,3 +122,15 @@ and MUST show the questions the assistant asks the user (AGT-015) as choices
 the user can answer.
 
 Rationale: journey J7.
+
+## UX-010: Rewinding says the files stay
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+When the user rewinds a conversation (CNV-004), clients MUST tell them that
+files in their workspace are not changed by rewinding.
+
+Rationale: journey J2.
