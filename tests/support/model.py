@@ -5,7 +5,14 @@ last user message:
 
 - `slow:N` streams `N` pieces of text, half a second apart;
 - `fail` answers with a server error;
+- `status:429` answers "too many requests", with `Retry-After`;
+- `drop:N` streams `N` pieces of text, then closes the connection mid-answer;
+- `run:<command>` calls the agent's command tool with `<command>`, then, once
+  the tool's result arrives, answers `Tool said: <result>`;
 - anything else streams `Echo: <message>`.
+
+The command tool is found among the tools the request offers, by its name or
+description, so tests do not depend on the tool's name.
 
 Every request is recorded, so that tests can check what reached the model.
 """
@@ -60,7 +67,33 @@ class ModelServer:
             return [request for request in self.requests if request.user_texts()[-1:] == [text]]
 
 
+def _last_text(body: dict[str, Any]) -> str:
+    texts = ModelRequest(None, body).user_texts()
+    return texts[-1] if texts else ""
+
+
+def _command_tool(tools: list[dict[str, Any]]) -> tuple[str, str]:
+    """The name of the tool that runs a command, and the name of its command argument."""
+    functions = [cast(dict[str, Any], tool.get("function", {})) for tool in tools]
+    # A tool that runs a command and waits for it, rather than one that
+    # starts, checks or stops a background command.
+    functions.sort(key=lambda function: "run" not in str(function.get("name", "")))
+    for function in functions:
+        text = f"{function.get('name', '')} {function.get('description', '')}".lower()
+        if "command" not in text or any(word in str(function.get("name", "")) for word in ("start", "check", "stop")):
+            continue
+        parameters = cast(dict[str, Any], function.get("parameters", {}))
+        properties = cast(dict[str, Any], parameters.get("properties", {}))
+        for argument in cast(list[str], parameters.get("required", [])):
+            if cast(dict[str, Any], properties.get(argument, {})).get("type") == "string":
+                return str(function["name"]), argument
+    raise AssertionError(f"no command tool among {[t.get('function', {}).get('name') for t in tools]}")
+
+
 def _pieces(text: str) -> list[tuple[str, float]]:
+    if text.startswith("drop:"):
+        count = int(text.removeprefix("drop:") or "1")
+        return [(f"piece {index} ", 0.1) for index in range(count)]
     if text.startswith("slow:"):
         count = int(text.removeprefix("slow:") or "1")
         return [(f"piece {index} ", SLOW_PIECE_SECONDS) for index in range(count)]
@@ -84,18 +117,72 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if not self.path.endswith("/chat/completions") or last == "fail":
                 self._json(500, {"error": {"message": "scripted failure", "type": "server_error"}})
                 return
+            if last == "status:429":
+                self._json(429, {"error": {"message": "slow down", "type": "rate_limit"}}, {"Retry-After": "1"})
+                return
+            if last.startswith("run:"):
+                self._tool_turn(body, last.removeprefix("run:"))
+                return
             if body.get("stream"):
                 self._stream(body, _pieces(last))
             else:
                 self._json(200, self._completion(body, "".join(piece for piece, _ in _pieces(last))))
 
-        def _json(self, status: int, payload: dict[str, Any]) -> None:
+        def _json(self, status: int, payload: dict[str, Any], headers: dict[str, str] | None = None) -> None:
             data = json.dumps(payload).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(data)
+
+        def _tool_turn(self, body: dict[str, Any], command: str) -> None:
+            messages = cast(list[dict[str, Any]], body.get("messages", []))
+            if messages and messages[-1].get("role") == "tool":
+                result = str(messages[-1].get("content", ""))
+                self._answer(body, [(f"Tool said: {result[:2000]}", 0.0)])
+                return
+            name, argument = _command_tool(cast(list[dict[str, Any]], body.get("tools", [])))
+            call = {
+                "id": f"call-{len(messages)}",
+                "type": "function",
+                "function": {"name": name, "arguments": json.dumps({argument: command})},
+            }
+            if not body.get("stream"):
+                completion = self._completion(body, "")
+                completion["choices"][0] = {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": None, "tool_calls": [call]},
+                    "finish_reason": "tool_calls",
+                }
+                self._json(200, completion)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            base = self._chunk_base(body)
+            delta = {"role": "assistant", "tool_calls": [call | {"index": 0}]}
+            self._event(base | {"choices": [{"index": 0, "delta": delta, "finish_reason": None}]})
+            self._event(base | {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+            self._event(base | {"choices": [], "usage": _usage()})
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+
+        def _answer(self, body: dict[str, Any], pieces: list[tuple[str, float]]) -> None:
+            if body.get("stream"):
+                self._stream(body, pieces)
+            else:
+                self._json(200, self._completion(body, "".join(piece for piece, _ in pieces)))
+
+        def _chunk_base(self, body: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "id": "chatcmpl-test",
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": body.get("model", "test-model"),
+            }
 
         def _completion(self, body: dict[str, Any], text: str) -> dict[str, Any]:
             return {
@@ -111,17 +198,18 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
-            base = {
-                "id": "chatcmpl-test",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": body.get("model", "test-model"),
-            }
+            base = self._chunk_base(body)
             try:
                 for index, (piece, delay) in enumerate(pieces):
                     time.sleep(delay)
                     delta = {"content": piece} | ({"role": "assistant"} if index == 0 else {})
                     self._event(base | {"choices": [{"index": 0, "delta": delta, "finish_reason": None}]})
+                if _last_text(body).startswith("drop:"):
+                    # Close the connection mid-answer, without finishing the stream.
+                    self.wfile.flush()
+                    self.close_connection = True
+                    self.connection.shutdown(2)
+                    return
                 self._event(base | {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
                 self._event(base | {"choices": [], "usage": _usage()})
                 self.wfile.write(b"data: [DONE]\n\n")
