@@ -50,6 +50,7 @@ it listens.
 | `MZM_SANDBOX_IMAGE` | yes | — | The sandbox image, built from `deploy/images/sandbox`. |
 | `MZM_SANDBOX_RUNTIME` | no | `runsc` | The Docker runtime name of gVisor; the canary checks that it is gVisor (SBX-002, SBX-003). |
 | `MZM_NETGUARD_CONTAINER` | no | `mazzamurello-netguard` | The network guard's container, whose health the driver follows (ADR-0053). |
+| `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE` | no | the built-in minimum | A gVisor release such as `release-20261101.0`, newer than the built-in minimum, that the driver requires instead; an older one is an error (ADR-0058, SBX-017). |
 | `MZM_SANDBOX_RESOLVER` | no | `9.9.9.9` | IPv4 address of the resolver written into sandboxes (ADR-0021, ADR-0053). |
 | `MZM_SANDBOX_CPUS` | no | `1` | CPUs per sandbox, from 0.1 to 64 (SBX-011). |
 | `MZM_SANDBOX_MEMORY_MB` | no | `1024` | Memory per sandbox in MiB, from 64 to 262144. |
@@ -99,7 +100,7 @@ by `MZM_CONFIG_DIR` in the environment of the `docker compose` command,
 | `MZM_SECRET_KEY` | yes | As above. |
 | `MZM_SANDBOXD_TOKEN` | yes | As above. |
 | `MZM_PUBLISH` | no | Where the API is published, `HOST:PORT`; default `127.0.0.1:8080`. |
-| `MZM_TRUSTED_PROXIES`, `MZM_RUN_RETENTION_DAYS`, `MZM_SANDBOX_RESOLVER`, `MZM_SANDBOX_CPUS`, `MZM_SANDBOX_MEMORY_MB`, `MZM_SANDBOX_PROCESSES`, `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS`, `MZM_SANDBOX_MAX_OUTPUT_BYTES`, `MZM_SANDBOX_IDLE_MINUTES` | no | Passed to the services that read them, with the defaults above. |
+| `MZM_TRUSTED_PROXIES`, `MZM_RUN_RETENTION_DAYS`, `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE`, `MZM_SANDBOX_RESOLVER`, `MZM_SANDBOX_CPUS`, `MZM_SANDBOX_MEMORY_MB`, `MZM_SANDBOX_PROCESSES`, `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS`, `MZM_SANDBOX_MAX_OUTPUT_BYTES`, `MZM_SANDBOX_IDLE_MINUTES` | no | Passed to the services that read them, with the defaults above. |
 
 ## Migrations
 

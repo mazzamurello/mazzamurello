@@ -184,7 +184,7 @@ ext4.
 
 ## SBX-017: Supported gVisor release
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
