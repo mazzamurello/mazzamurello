@@ -24,13 +24,12 @@ from typing import Any
 import aiodocker
 from aiodocker.exceptions import DockerError
 
-from mazzamurello_sandboxd.config import DriverConfiguration
+from mazzamurello_sandboxd.config import DriverConfiguration, release_key
 from mazzamurello_sandboxd.policy import LABEL
 from mazzamurello_sandboxd.sandboxes import Sandboxes
 
 logger = logging.getLogger("mazzamurello.sandboxd")
 
-MINIMUM_RELEASE = "release-20261026.0"
 SUPPORTED_ARCHITECTURES = frozenset({"x86_64", "aarch64"})
 MONITOR_INTERVAL_SECONDS = 2.0
 _RELEASE = re.compile(r"release-(\d{8})\.(\d+)")
@@ -183,15 +182,16 @@ class Isolation:
             return
         self.state.runtime_version = f"release-{key[0]}.{key[1]}"
         self.state.isolation_runtime = Check(True, f"{self.configuration.runtime} ({path})")
-        minimum = _release_key(MINIMUM_RELEASE)
+        minimum_release = self.configuration.minimum_release
+        minimum = release_key(minimum_release)
         if minimum is not None and key < minimum:
             self.state.release = Check(
                 False,
-                f"{self.state.runtime_version} is older than {MINIMUM_RELEASE}: install a supported release from "
+                f"{self.state.runtime_version} is older than {minimum_release}: install a supported release from "
                 "gVisor's official repository, https://gvisor.dev/docs/user_guide/install/",
             )
         else:
-            self.state.release = Check(True, f"{self.state.runtime_version} >= {MINIMUM_RELEASE}")
+            self.state.release = Check(True, f"{self.state.runtime_version} >= {minimum_release}")
 
     async def check_egress(self) -> bool:
         try:
