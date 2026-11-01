@@ -225,13 +225,14 @@ def test_memory_is_limited(sandboxes: Driver) -> None:
 @pytest.mark.spec("SBX-011")
 def test_processes_are_limited_inside_the_sandbox(sandboxes: Driver) -> None:
     tenant_id, user_id = _user()
+    # Small processes, so that the process limit is reached before memory
+    # runs out: forked copies of the interpreter exhaust a small sandbox first.
     script = (
-        "import os, time\n"
+        "import os\n"
         "started = 0\n"
         "for _ in range(200):\n"
         "    try:\n"
-        "        if os.fork() == 0:\n"
-        "            time.sleep(5); os._exit(0)\n"
+        "        os.posix_spawn('/bin/sleep', ['sleep', '5'], {})\n"
         "        started += 1\n"
         "    except OSError:\n"
         "        break\n"
