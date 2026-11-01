@@ -1,6 +1,6 @@
 # ADR-0055: An integration branch before `master`
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0060
 - **Date:** 2026-11-01
 - **Deciders:** @tapionx
 - **Related:** ADR-0004, REPO-001, REPO-002, REPO-005
