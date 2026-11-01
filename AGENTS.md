@@ -38,6 +38,19 @@ The branch prefix defines what a pull request may touch. CI enforces it
 | `docs/*` | `docs/`, `README.md`, `CHANGELOG.md` | Documentation |
 | `rules/*` | this file, `.github/`, `.devcontainer/`, `tools/`, governance files | Project rules (maintainer only) |
 
+Where pull requests go ([ADR-0055](specs/adr/0055-an-integration-branch-before-master.md)):
+
+- `spec/`, `test/`, `impl/` and `docs/` pull requests target `next`, the
+  integration branch. Once CI passes, whoever opened one merges it, with a
+  merge commit and without waiting for an approval. To update one, merge
+  `next` into it, never `master`.
+- `rules/` pull requests target `master` and wait for a maintainer's
+  approval; afterwards a pull request from `master` brings them into `next`.
+- At a milestone, one pull request brings `next` into `master`. It gets an
+  automated review and a maintainer's approval, and merges with a merge
+  commit; then `master` is merged back into `next`.
+- Never push to `next` directly.
+
 Implementation never modifies tests. If a test looks wrong, stop and say so.
 Tests of requirements that are only `accepted` may fail without failing CI
 (pending tests); once a requirement is `implemented`, its tests must pass.
