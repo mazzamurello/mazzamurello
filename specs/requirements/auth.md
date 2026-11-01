@@ -4,7 +4,7 @@ How people sign in and how accounts are created.
 
 ## AUTH-001: Local accounts
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
