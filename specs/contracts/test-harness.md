@@ -54,6 +54,7 @@ database procedure (ADR-0050):
    | `MZM_HTTP_PORT` | A free port chosen by the test suite |
    | `MZM_TRUSTED_PROXIES` | `127.0.0.1` |
    | `MZM_SECRET_KEY` | A random key chosen by the test suite |
+   | `MZM_SANDBOXD_URL`, `MZM_SANDBOXD_TOKEN` | Those of the sandbox driver below |
 
 2. The server is ready when `GET /v1/me` without a token answers `401`. A
    server that is not ready within 30 seconds, or exits, fails the session,
@@ -107,4 +108,24 @@ where it is missing, these tests fail; they never skip.
 Security tests check isolation from inside sandboxes, through the driver's
 `exec`, and may remove the table with `nft` inside the network guard's
 container to check that sandboxes stop (SBX-015).
+
+## End-to-end
+
+The end-to-end test follows the README on a fresh deployment (ADR-0054).
+It runs before the tests that use the procedures above, because the
+deployment's network guard and sandbox bridge are those of the host.
+
+1. Run the README's commands on `deploy/compose.yaml`, with a Compose project
+   name chosen by the test suite and an env file in a temporary directory, so
+   that an operator's own `deploy/.env` is never used: `init` with
+   `MZM_CONFIG_DIR` set to that directory, then `docker compose up` with
+   `--env-file` and `MZM_PUBLISH` set to a free port of `127.0.0.1`, then
+   `setup`, with the answers on standard input.
+2. Sign in as the first administrator, configure the model the tests serve
+   as the instance's default model, at an address of the host that the
+   deployment's containers reach, and hold a conversation that runs a command
+   in the sandbox.
+3. At the end, stop the sandbox driver, remove the sandboxes it created with
+   their volumes and the sandbox bridge, then `docker compose down` with its
+   volumes and images, and remove the temporary directory.
 

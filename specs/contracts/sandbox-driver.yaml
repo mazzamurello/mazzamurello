@@ -41,7 +41,7 @@ paths:
         Healthy only when the isolation runtime is registered and recent
         enough, the egress table is in place, and the startup canary sandbox
         passed (SBX-003, SBX-015, SBX-017).
-      x-requirements: [SBX-003, SBX-015, SBX-017, OPS-002]
+      x-requirements: [SBX-003, SBX-015, SBX-017, OPS-002, OPS-009]
       responses:
         "200":
           description: Ready to start sandboxes.
@@ -238,8 +238,11 @@ components:
         runtime_version: { type: string, description: "e.g. release-20261026.0" }
         checks:
           type: object
-          required: [isolation_runtime, runtime_version, egress_table, canary]
+          required: [platform, isolation_runtime, runtime_version, egress_table, canary]
           properties:
+            platform:
+              $ref: "#/components/schemas/Check"
+              description: Docker runs on Linux, on x86_64 or aarch64 (OPS-002, ADR-0054).
             isolation_runtime: { $ref: "#/components/schemas/Check" }
             runtime_version: { $ref: "#/components/schemas/Check" }
             egress_table: { $ref: "#/components/schemas/Check" }
