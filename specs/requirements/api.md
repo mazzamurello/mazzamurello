@@ -4,7 +4,7 @@ The interface every client uses. Background: ADR-0016, ADR-0008.
 
 ## API-001: One public API for all clients
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
@@ -14,7 +14,7 @@ NOT expose client-specific private endpoints.
 
 ## API-002: Committed OpenAPI contract
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -74,7 +74,7 @@ kept after transcription unless the user chooses to keep them.
 
 ## API-007: Stable error codes
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** design
