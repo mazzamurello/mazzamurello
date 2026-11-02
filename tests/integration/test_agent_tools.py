@@ -105,3 +105,15 @@ def test_model_failures_end_the_run_visibly(server: Server, token: str, script: 
     if run["status"] == "failed":
         assert run["error_code"] in {"model.request_failed", "model.unavailable"}
         assert events[-1].data.get("code") == run["error_code"]
+
+
+@pytest.mark.spec("AGT-011")
+def test_the_agent_can_delete_files_in_its_workspace(server: Server, token: str, default_model: HarnessModel) -> None:
+    conversation = create_conversation(server, token)
+    name = f"delete-{uuid7()}.txt"
+    command = f"run:echo gone > {name} && rm {name} && ls {name} || echo removed-{name}"
+    run_id, _ = start_run(server, token, conversation["id"], command)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    (result,) = _tool_results(default_model, command)
+    # The sandbox, not a list of command names, decides what a command can do (ADR-0062).
+    assert f"removed-{name}" in result, result
