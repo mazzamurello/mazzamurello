@@ -84,6 +84,20 @@ and a tenant admin models for their tenant, through the public API, and mark
 one of them as the default. Credentials of a model configuration MUST be
 write-only in the API and stored only encrypted (MOD-002).
 
+## MOD-009: Tenant model endpoints reach only public addresses
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 0
+- **Verification:** security
+
+A request of the model gateway for a tenant model MUST connect only to public
+internet addresses, over `https`, checked when the connection is made and not
+only when the endpoint is saved, and MUST NOT follow redirects. A tenant admin
+can choose the endpoint, and the request leaves from the control plane, so
+anything else would let them reach the household's network (ADR-0051,
+ADR-0061).
+
 ## MOD-007: Live usage reporting
 
 - **Status:** draft

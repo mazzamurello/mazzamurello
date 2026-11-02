@@ -131,7 +131,10 @@ container to check that sandboxes stop (SBX-015).
 
 The end-to-end test follows the README on a fresh deployment (ADR-0054).
 It runs before the tests that use the procedures above, because the
-deployment's network guard and sandbox bridge are those of the host.
+deployment's network guard and sandbox bridge are those of the host. For the
+same reason, and because it removes the deployment's images when it ends, it
+must not run on a host where Mazzamurello is deployed: one deployment per
+host (ADR-0054).
 
 1. Run the README's commands on `deploy/compose.yaml`, with a Compose project
    name chosen by the test suite and an env file in a temporary directory, so
