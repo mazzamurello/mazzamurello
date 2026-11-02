@@ -21,6 +21,13 @@ from mazzamurello_server.network import source_address
 
 router = APIRouter()
 
+# The web app's session cookie, and the header its changes carry (AUTH-005, ADR-0067).
+SESSION_COOKIE = "mzm_session"
+REQUEST_HEADER = "x-mazzamurello-request"
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+# Browsers keep a cookie at most 400 days; the session's own expiry still applies.
+COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60
+
 USER_COLUMNS = "id, tenant_id, username, display_name, role, instance_admin, created_at"
 
 
@@ -34,10 +41,28 @@ def engine_of(request: Request) -> AsyncEngine:
 type Engine = Annotated[AsyncEngine, Depends(engine_of)]
 
 
+def _presented_token(request: Request) -> str | None:
+    """The session token of a request: its bearer token, or else its session cookie.
+
+    A change authenticated by the cookie must carry the request header, which a
+    cross-site request cannot set (AUTH-005).
+    """
+    header = request.headers.get("authorization")
+    if header is not None:
+        scheme, _, token = header.partition(" ")
+        return token.strip() if scheme.lower() == "bearer" and token.strip() else None
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if not cookie:
+        return None
+    if request.method not in SAFE_METHODS and REQUEST_HEADER not in request.headers:
+        return None
+    return cookie
+
+
 async def authenticate(request: Request, engine: Engine) -> Identity:
     """The identity of the request's device session; anything else is unauthenticated."""
-    scheme, _, token = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
+    token = _presented_token(request)
+    if token is None:
         raise errors.unauthenticated()
     async with transaction(engine, None) as connection:
         row = (
@@ -72,7 +97,9 @@ def user_response(row: Any) -> schemas.User:
 
 
 @router.post("/auth/login", status_code=status.HTTP_201_CREATED, response_model=schemas.LoginResponse)
-async def login(body: schemas.LoginRequest, request: Request, engine: Engine) -> schemas.LoginResponse:
+async def login(
+    body: schemas.LoginRequest, request: Request, response: Response, engine: Engine
+) -> schemas.LoginResponse:
     async with transaction(engine, None) as connection:
         account = (
             await connection.execute(
@@ -130,8 +157,18 @@ async def login(body: schemas.LoginRequest, request: Request, engine: Engine) ->
         user = (
             await connection.execute(text(f"SELECT {USER_COLUMNS} FROM users WHERE id = :id"), {"id": identity.user_id})  # noqa: S608
         ).one()
+    if body.session_delivery == "cookie":
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            max_age=COOKIE_MAX_AGE_SECONDS,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
     return schemas.LoginResponse(
-        token=token,
+        token=token if body.session_delivery == "token" else None,
         session=schemas.DeviceSession(
             id=session.id,
             device_name=session.device_name,
@@ -150,7 +187,9 @@ async def logout(identity: Authenticated, engine: Engine) -> Response:
         await connection.execute(
             text("UPDATE device_sessions SET revoked_at = now() WHERE id = :id"), {"id": identity.session_id}
         )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+    return response
 
 
 @router.get("/me", response_model=schemas.User)
