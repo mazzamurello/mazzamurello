@@ -95,6 +95,7 @@ def test_history_is_served_as_ag_ui_messages(server: Server, token: str) -> None
             "kind": "message",
             "message_ids": [m["id"] for m in page["items"]],
             "versions": [run_id],
+            "version_tips": [run_id],
         }
     ]
 
