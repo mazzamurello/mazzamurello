@@ -491,8 +491,10 @@ paths:
         A `runId` that already exists in this conversation returns that run's
         stream from the beginning, so a retried request does not start a
         second run. Errors detected before the run starts are returned as
-        HTTP problems; errors after it starts arrive as `RUN_ERROR`.
-      x-requirements: [AGT-009, API-003, API-004, CNV-001, CNV-002, TEN-006]
+        HTTP problems; errors after it starts arrive as `RUN_ERROR`. A run
+        whose workflow cannot be queued fails at once with `internal.error`,
+        so the conversation accepts new runs.
+      x-requirements: [AGT-009, AGT-010, API-003, API-004, CNV-001, CNV-002, TEN-006]
       requestBody:
         required: true
         content:
@@ -546,9 +548,10 @@ paths:
         No further model or tool calls start; messages produced so far are
         kept, and the run ends with status `cancelled` (CNV-003, ADR-0037).
         Its event stream ends with `RUN_ERROR` carrying the code
-        `run.cancelled`. Cancelling a run that has already ended returns it
-        unchanged.
-      x-requirements: [CNV-003, TEN-006]
+        `run.cancelled`. A queued run whose workflow is gone is cancelled
+        too, so a conversation is never stuck behind it. Cancelling a run that
+        has already ended returns it unchanged.
+      x-requirements: [CNV-003, AGT-010, TEN-006]
       responses:
         "200":
           description: The run, cancelled or already ended.
