@@ -86,7 +86,7 @@ write-only in the API and stored only encrypted (MOD-002).
 
 ## MOD-009: Tenant model endpoints reach only public addresses
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** security
