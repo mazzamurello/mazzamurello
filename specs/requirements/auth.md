@@ -46,7 +46,7 @@ a revoked or expired token MUST be rejected on the next request (ADR-0025).
 
 ## AUTH-005: Cookie sessions protected against CSRF
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security
