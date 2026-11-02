@@ -7,9 +7,6 @@ role checks here only choose between `403` and trying.
 
 from __future__ import annotations
 
-import asyncio
-import ipaddress
-import socket
 import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal, LiteralString
@@ -25,6 +22,7 @@ from mazzamurello_server.auth import Authenticated, Engine
 from mazzamurello_server.credentials import uuid7
 from mazzamurello_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
 from mazzamurello_server.encryption import encrypt
+from mazzamurello_server.endpoints import is_public, resolve
 
 router = APIRouter()
 
@@ -46,19 +44,11 @@ async def endpoint_refusal(base_url: str) -> str | None:
     parts = urlsplit(base_url)
     if parts.scheme != "https" or not parts.hostname:
         return "endpoint_must_use_https"
-    try:
-        literal = ipaddress.ip_address(parts.hostname)
-    except ValueError:
-        literal = None
-    if literal is not None:
-        addresses = [literal]
-    else:
-        try:
-            resolved = await asyncio.get_running_loop().getaddrinfo(parts.hostname, parts.port or 443)
-        except (socket.gaierror, UnicodeError):
-            return "endpoint_not_resolvable"
-        addresses = [ipaddress.ip_address(info[4][0]) for info in resolved]
-    if not addresses or not all(address.is_global for address in addresses):
+    addresses = await resolve(parts.hostname, parts.port or 443)
+    if not addresses:
+        return "endpoint_not_resolvable"
+    # The same check runs again on every connection (ADR-0061).
+    if not all(is_public(address) for address in addresses):
         return "endpoint_not_public"
     return None
 
