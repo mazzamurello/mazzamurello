@@ -12,10 +12,12 @@ import ipaddress
 import threading
 from collections.abc import Awaitable, Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, cast
 
 import httpx
 import openai
 import pytest
+
 from mazzamurello_server.endpoints import Address, PublicEndpointTransport, is_public, tenant_http_client
 
 
@@ -129,8 +131,10 @@ def test_the_connection_goes_to_the_checked_address_with_the_endpoints_name(loca
 @pytest.mark.spec("MOD-009")
 def test_redirects_are_not_followed(local_server: _Server) -> None:
     client = tenant_http_client(resolve=_resolver({"model.invalid": ["127.0.0.1"]}), allowed=_loopback_allowed)
+    # The SDK's signature names httpx2; it also accepts the legacy httpx client the gateway uses.
+    legacy_client = cast("Any", client)
     model = openai.AsyncOpenAI(
-        base_url=f"http://model.invalid:{local_server.port}/redirect", api_key="sk-test", http_client=client
+        base_url=f"http://model.invalid:{local_server.port}/redirect", api_key="sk-test", http_client=legacy_client
     )
 
     async def request() -> None:
