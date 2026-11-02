@@ -31,7 +31,9 @@ def _locked_packages() -> set[str]:
 
 
 def _trees() -> list[tuple[Path, ast.Module]]:
-    return [(path, ast.parse(path.read_text(), filename=str(path))) for path in sorted(SOURCES.rglob("*.py"))]
+    # The web app's dependencies are not components, and never run.
+    paths = [path for path in sorted(SOURCES.rglob("*.py")) if "node_modules" not in path.parts]
+    return [(path, ast.parse(path.read_text(), filename=str(path))) for path in paths]
 
 
 @pytest.mark.spec("OBS-001")
