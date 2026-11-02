@@ -201,6 +201,8 @@ class PathRun(Response):
     kind: RunKind
     message_ids: list[str]
     versions: list[uuid.UUID]
+    # The most recent run continuing each version, in the same order.
+    version_tips: list[uuid.UUID]
 
 
 class MessagePage(Response):
