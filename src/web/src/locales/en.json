@@ -1,0 +1,106 @@
+{
+  "app": {
+    "name": "Mazzamurello"
+  },
+  "signIn": {
+    "title": "Sign in to Mazzamurello",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalid": "Wrong username or password.",
+    "rateLimited": "Too many attempts. Try again in a few minutes.",
+    "failed": "Signing in failed. Try again."
+  },
+  "shell": {
+    "newChat": "New chat",
+    "conversations": "Conversations",
+    "openMenu": "Open the conversation list",
+    "closeMenu": "Close the conversation list",
+    "settings": "Model settings",
+    "signOut": "Sign out",
+    "untitled": "New conversation",
+    "empty": "No conversations yet."
+  },
+  "conversationMenu": {
+    "label": "Options for {{title}}",
+    "rename": "Rename",
+    "archive": "Archive",
+    "delete": "Delete",
+    "renamePrompt": "New name",
+    "deleteTitle": "Delete this conversation?",
+    "deleteBody": "Its messages are deleted for good. Files in your workspace stay.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "confirmDelete": "Delete"
+  },
+  "welcome": {
+    "title": "How can I help?",
+    "hint": "Ask anything. Commands run in your own sandbox."
+  },
+  "composer": {
+    "label": "Message",
+    "placeholder": "Write a message",
+    "send": "Send",
+    "stop": "Stop"
+  },
+  "message": {
+    "you": "You",
+    "assistant": "Assistant",
+    "edit": "Edit",
+    "editLabel": "Edit your message",
+    "saveEdit": "Send",
+    "cancelEdit": "Cancel",
+    "regenerate": "New answer",
+    "rewind": "Go back to here",
+    "copy": "Copy",
+    "copied": "Copied",
+    "previousVersion": "Previous version",
+    "nextVersion": "Next version",
+    "version": "Version {{current}} of {{total}}",
+    "thinking": "Thinking…",
+    "stopped": "Stopped.",
+    "failed": "The answer failed ({{code}}).",
+    "tool": "Used {{name}}",
+    "toolRunning": "Using {{name}}…",
+    "toolArguments": "Arguments",
+    "toolResult": "Result",
+    "image": "image"
+  },
+  "rewind": {
+    "title": "Go back to this point?",
+    "body": "The conversation continues from here. What came after is kept as another version.",
+    "files": "Files in your workspace are not changed by going back.",
+    "confirm": "Go back",
+    "cancel": "Cancel"
+  },
+  "settings": {
+    "title": "Models",
+    "instance": "Models for the whole instance",
+    "household": "Models for your household",
+    "none": "No models yet.",
+    "add": "Add a model",
+    "edit": "Edit",
+    "delete": "Delete",
+    "default": "Default",
+    "makeDefault": "Make default",
+    "name": "Name",
+    "api": "API",
+    "apiOpenai": "OpenAI-compatible",
+    "apiOpenrouter": "OpenRouter",
+    "baseUrl": "Endpoint",
+    "model": "Model name",
+    "apiKey": "API key",
+    "apiKeySet": "An API key is set. Leave empty to keep it.",
+    "paid": "Paid per token",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saved": "Saved.",
+    "failed": "Saving failed ({{code}}).",
+    "notAllowed": "Only administrators can configure models."
+  },
+  "errors": {
+    "generic": "Something went wrong ({{code}}).",
+    "notFound": "This conversation does not exist."
+  }
+}
