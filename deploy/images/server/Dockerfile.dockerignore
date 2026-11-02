@@ -6,4 +6,9 @@
 !src/sandboxd/pyproject.toml
 !src/netguard/pyproject.toml
 !migrations
+!specs/contracts/openapi.yaml
+!src/web
+src/web/node_modules
+src/web/dist
+src/web/src/api/schema.d.ts
 **/__pycache__

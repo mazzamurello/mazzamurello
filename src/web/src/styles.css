@@ -1,0 +1,40 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+@theme {
+  --color-paper: #faf9f6;
+  --color-ink: #1f2937;
+  --color-accent: #b45309;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1c1917;
+    color: #f5f5f4;
+  }
+}
+
+/* Shiki's two themes follow the system's color scheme. */
+.shiki-block pre {
+  background: transparent !important;
+}
+.shiki-block span {
+  color: var(--shiki-light);
+}
+@media (prefers-color-scheme: dark) {
+  .shiki-block span {
+    color: var(--shiki-dark);
+  }
+}
