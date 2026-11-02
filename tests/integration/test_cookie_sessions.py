@@ -56,6 +56,7 @@ def _sign_in(browser: httpx.Client, account: Account) -> httpx.Response:
     assert response.status_code == 201, response.text
     cookie = response.cookies.get(COOKIE)
     assert cookie
+    browser.cookies.clear()
     browser.cookies.set(COOKIE, cookie)
     return response
 
@@ -94,6 +95,8 @@ def test_sign_out_clears_the_cookie_and_ends_the_session(browser: httpx.Client, 
     cleared = response.headers.get("set-cookie", "").lower()
     assert cleared.startswith(f"{COOKIE}=")
     assert "max-age=0" in cleared or "expires=" in cleared
+    # The old cookie, sent again: its session is over.
+    browser.cookies.clear()
     browser.cookies.set(COOKIE, cookie or "")
     assert_problem(browser.get("/me"), 401, "auth.unauthenticated")
 
