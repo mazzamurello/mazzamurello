@@ -1106,7 +1106,14 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ModelRef"
             - type: "null"
-        last_event_seq: { type: integer, minimum: 0 }
+        last_event_seq:
+          type: integer
+          minimum: 0
+          description: |
+            The number of events the worker recorded for the run. After the
+            worker restarts during a run it can be lower than the events in
+            the run's stream, which is authoritative: read the stream to know
+            them all.
         created_at: { $ref: "#/components/schemas/Timestamp" }
         started_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
         finished_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
