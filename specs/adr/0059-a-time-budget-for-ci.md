@@ -43,7 +43,9 @@ slow test, or the next milestone from adding a minute.
    | end-to-end | 76 s | 100 s |
 
    The budgets leave about a third of headroom for runners' variance and for
-   new tests.
+   new tests. These tables record the first jobs and budgets; later `rules/`
+   pull requests add jobs and change budgets, and `.github/workflows/ci.yml`
+   is the authority.
 4. **The limit and the budgets live in `.github/workflows/ci.yml`,** next to
    the jobs they bound; `tools/check_test_durations.py` reads pytest's JUnit
    report after the tests and fails the job when a test or the session goes
