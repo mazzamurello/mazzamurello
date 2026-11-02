@@ -40,7 +40,7 @@ leaves the instance.
 
 - **Status:** draft
 - **Priority:** SHOULD
-- **Phase:** 2
+- **Phase:** 3
 - **Verification:** integration
 
 The model gateway SHOULD enforce spending limits per user and per tenant for
@@ -97,6 +97,19 @@ only when the endpoint is saved, and MUST NOT follow redirects. A tenant admin
 can choose the endpoint, and the request leaves from the control plane, so
 anything else would let them reach the household's network (ADR-0051,
 ADR-0061).
+
+## MOD-010: Where inference runs
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+Every model configuration MUST state whether its inference runs locally, on
+hardware of the household, or remotely, at a provider. Clients MUST show
+which kind a conversation uses, and warn when its data would leave the
+household; the data egress policy (MOD-003) relies on the same statement
+(ADR-0066).
 
 ## MOD-007: Live usage reporting
 
