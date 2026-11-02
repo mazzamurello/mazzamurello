@@ -38,7 +38,7 @@ data leaves the instance and no consequential action runs without approval.
 
 - **Status:** draft
 - **Priority:** MUST
-- **Phase:** 2
+- **Phase:** 3
 - **Verification:** review
 
 A release MUST NOT be published if the eval suite falls below its documented

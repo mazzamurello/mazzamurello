@@ -5,6 +5,9 @@ the requirements of a phase are those with the matching `Phase` field in
 [`specs/requirements/`](specs/requirements/). Dates are deliberately absent:
 this is a personal, best-effort project.
 
+The phases were renumbered when connected devices became phase 2 (ADR-0063):
+ADRs written before then call the release phase 2 and opening up phase 3.
+
 ## Phase 0 — Walking skeleton
 
 **Status:** complete. Every phase 0 requirement is `implemented`, the security
@@ -47,12 +50,37 @@ automatic compaction, skills and questions to the user (AGT), web search and
 page reading, persistent workspaces, transparent memory (MEM), tool
 permissions, provenance and approvals with the lethal trifecta mitigation
 (AGT), the data egress policy (MOD-003), backup and restore (OPS-006), and the
-first eval suite (EVL).
+first eval suite (EVL). It also lays the foundations of connected devices:
+approval of every call to a device or an MCP server (AGT-018), remote MCP
+servers added by tenant admins (AGT-019), passkeys as a second factor
+(AUTH-010), and models labeled as local or remote (MOD-010).
+
+Suggested order: the web client's foundation (sign-in, conversations, streamed
+answers, versions, model settings); then trust (approvals, the egress policy,
+local and remote models, passkeys, backup, the first evals); then everyday
+conversations; memory and files; remote MCP servers and the other agent
+capabilities; notifications and voice last.
 
 **Exit criteria:** used daily by at least one household for a month without
 data loss; eval suite in place, including injection scenarios.
 
-## Phase 2 — A real assistant, and a first release
+## Phase 2 — Connected devices
+
+**Goal:** the assistant helps with the household's own machines: diagnosing a
+server, installing updates, checking logs and firewall rules, editing files,
+from any device where the user is signed in.
+
+Includes: the device service for Linux, paired to one user and connected
+outbound (DEV-001, DEV-002), its tools for commands and files (DEV-003), the
+tools of several devices in one run (DEV-004), calls that wait for offline
+devices (DEV-005), device status (DEV-006), least privilege by default
+(DEV-007), and the web app as a device (DEV-008) (ADR-0063). macOS and
+Windows may follow (DEV-009).
+
+**Exit criteria:** the maintainer administers their own servers through
+Mazzamurello for a month, with every device call approved and none surprising.
+
+## Phase 3 — A real assistant, and a first release
 
 **Goal:** the features that make it an assistant rather than a chat, and the
 release engineering to let others run it.
@@ -66,7 +94,7 @@ upgrade guarantees, English and Italian translations, release gating by evals.
 **Exit criteria:** first public release `0.1.0`; installation and upgrade
 documentation verified on a clean machine; public announcement.
 
-## Phase 3 — Opening up
+## Phase 4 — Opening up
 
 **Goal:** make the project sustainable beyond its first household.
 
@@ -74,3 +102,12 @@ Candidates: tenant administration for operators hosting several households,
 Kata Containers and Kubernetes providers, a native mobile app with push
 notifications, community translations, a second maintainer and the governance
 transition described in [GOVERNANCE.md](GOVERNANCE.md).
+
+## Later
+
+Ideas kept for after these phases, not planned yet:
+
+- personal remote MCP servers that a user adds for themselves, with per-user
+  credentials and OAuth sign-in (ADR-0064);
+- sessions of external coding agents shown as Mazzamurello conversations.
+
