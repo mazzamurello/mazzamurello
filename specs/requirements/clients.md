@@ -7,7 +7,7 @@ ADR-0040, ADR-0042, and the personas and journeys of the
 
 ## UX-001: Installable web app
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -17,7 +17,7 @@ installable on the home screen of Android and iOS devices as a web app.
 
 ## UX-002: Rich message rendering
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -28,7 +28,7 @@ MUST NOT execute scripts or load remote resources contained in messages.
 
 ## UX-003: Simple by default, detailed on request
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** review
@@ -85,7 +85,7 @@ with them as attachments.
 
 ## UX-007: Accessibility
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e, review
@@ -125,7 +125,7 @@ Rationale: journey J7.
 
 ## UX-010: Rewinding says the files stay
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
