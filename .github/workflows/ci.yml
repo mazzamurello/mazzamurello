@@ -81,14 +81,27 @@ jobs:
       matrix:
         include:
           - part: core
-            paths: tests/design tests/integration tests/tooling --ignore=tests/integration/test_sandbox_driver.py
-            budget: 200
+            paths: >-
+              tests/design tests/integration tests/tooling
+              --ignore=tests/integration/test_sandbox_driver.py --ignore=tests/integration/test_runs_api.py
+              --ignore=tests/integration/test_agent_tools.py --ignore=tests/integration/test_remote_provider.py
+            budget: 130
+          - part: runs
+            paths: >-
+              tests/integration/test_runs_api.py tests/integration/test_agent_tools.py
+              tests/integration/test_remote_provider.py
+            budget: 140
           - part: sandbox
             paths: tests/security tests/integration/test_sandbox_driver.py
             budget: 150
+          # The server image now builds the web app as well (ADR-0067).
           - part: end-to-end
             paths: tests/e2e
-            budget: 100
+            budget: 150
+          # The web client in Chromium, and its unit tests (ADR-0067).
+          - part: web
+            paths: tests/web
+            budget: 120
     env:
       MAX_TEST_SECONDS: "30"
     steps:
@@ -101,6 +114,21 @@ jobs:
           enable-cache: false
       - name: Install from the lock file (REPO-009)
         run: uv sync --locked --all-packages
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.part == 'web'
+        with:
+          node-version: "24.14.1"
+      - name: Install the web app from its lock file, and run its unit tests
+        if: matrix.part == 'web'
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          pnpm --dir src/web install --frozen-lockfile
+          pnpm --dir src/web test
+      - name: Install Chromium for the browser tests
+        if: matrix.part == 'web'
+        run: uv run --locked playwright install --with-deps chromium
       # Sandbox tests run under gVisor (ADR-0023, ADR-0053): install the
       # release the project is tested with from gVisor's official repository
       # and register it with Docker.
