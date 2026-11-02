@@ -13,7 +13,7 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from openai import AsyncOpenAI
 from pydantic_ai import RunContext
@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from mazzamurello_server.database import Identity, transaction
 from mazzamurello_server.encryption import decrypt
+from mazzamurello_server.endpoints import tenant_http_client
 from mazzamurello_server.model_configurations import TABLES, endpoint_refusal
 
 MODEL_PREFIX = "mzm"
@@ -103,11 +104,16 @@ class Gateway(AbstractCapability[RunDeps]):
             "output": row.output_price,
             "currency": row.currency,
         }
+        # Tenant endpoints connect only to checked public addresses, without redirects (ADR-0061).
+        http_client = tenant_http_client() if scope == "tenant" else None
         if row.api == "openrouter":
             # A client of our own: the provider would add attribution headers from the environment.
-            client = AsyncOpenAI(base_url=row.base_url, api_key=api_key)
+            # The SDK's signature names httpx2, and it also accepts a legacy httpx client, as here.
+            legacy_client = cast("Any", http_client)
+            client = AsyncOpenAI(base_url=row.base_url, api_key=api_key, http_client=legacy_client)
             return OpenRouterModel(row.model, provider=OpenRouterProvider(openai_client=client))
-        return OpenAIChatModel(row.model, provider=OpenAIProvider(base_url=row.base_url, api_key=api_key))
+        provider = OpenAIProvider(base_url=row.base_url, api_key=api_key, http_client=http_client)
+        return OpenAIChatModel(row.model, provider=provider)
 
     async def before_model_request(
         self, ctx: RunContext[RunDeps], request_context: ModelRequestContext

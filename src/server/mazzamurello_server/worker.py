@@ -100,7 +100,8 @@ agent = Agent(
         Gateway(),
         # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
         SandboxWorkspace(),
-        Shell(max_output_chars=SHELL_OUTPUT_CHARS),
+        # The sandbox, not a list of command names, decides what a command can do (ADR-0062).
+        Shell(max_output_chars=SHELL_OUTPUT_CHARS, denied_commands=()),
         FileSystem(),
         # Large results reach the model bounded; the rest stays in the workspace (AGT-014).
         ToolOutputLimits(),

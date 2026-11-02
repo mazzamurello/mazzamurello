@@ -7,6 +7,11 @@ this is a personal, best-effort project.
 
 ## Phase 0 — Walking skeleton
 
+**Status:** complete. Every phase 0 requirement is `implemented`, the security
+tests pass, and the end-to-end test installs Mazzamurello by following the
+README. Known limits are recorded in the specs, such as the workspace disk
+limit, which comes with SBX-016 in phase 1.
+
 **Goal:** the thinnest path through the whole architecture, with the
 security foundations in place:
 sign in → open a conversation → send a message → the agent runs a command in

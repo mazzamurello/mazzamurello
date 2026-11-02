@@ -224,17 +224,29 @@ async def start_run(
         model_scope=model.scope,
         model_id=str(model.id),
     )
-    await durable.enqueue_async(
-        {
-            "queue_name": RUN_QUEUE,
-            "workflow_name": RUN_WORKFLOW,
-            "workflow_id": str(body.run_id),
-            # One run at a time per conversation (ADR-0034).
-            "queue_partition_key": str(conversation_id),
-            "app_version": APPLICATION_VERSION,
-        },
-        workflow_input.to_json(),
-    )
+    try:
+        await durable.enqueue_async(
+            {
+                "queue_name": RUN_QUEUE,
+                "workflow_name": RUN_WORKFLOW,
+                "workflow_id": str(body.run_id),
+                # One run at a time per conversation (ADR-0034).
+                "queue_partition_key": str(conversation_id),
+                "app_version": APPLICATION_VERSION,
+            },
+            workflow_input.to_json(),
+        )
+    except Exception:
+        # A run that never starts must not block its conversation (AGT-010).
+        async with transaction(engine, identity) as connection:
+            await connection.execute(
+                text(
+                    "UPDATE runs SET status = 'failed', error_code = 'internal.error', finished_at = now()"
+                    " WHERE id = :id AND status = 'queued'"
+                ),
+                {"id": body.run_id},
+            )
+        raise
     return _streaming(durable, engine, identity, body.run_id, 0)
 
 

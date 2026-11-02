@@ -102,6 +102,7 @@ beyond keeping them configurable and updatable.
 | T-24 | Content of a version the user abandoned, or of a temporary conversation, reaches the model, memory or another conversation | X1 | CNV-002, CNV-011 |
 | T-25 | An imported skill carries injected instructions or malicious scripts | X1 | AGT-003, AGT-004, AGT-017 |
 | T-26 | A file of one user's library is read by another user or reaches another user's sandbox | X2 | CNV-012, TEN-008 |
+| T-27 | A tenant admin configures a model endpoint that leads the control plane to the household's network or the host, through a private address, DNS rebinding or a redirect | X2 | MOD-009 |
 
 ## The lethal trifecta in Mazzamurello
 

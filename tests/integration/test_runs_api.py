@@ -384,3 +384,26 @@ def test_a_run_survives_a_crash_of_the_worker(server: Server, token: str) -> Non
     assert run["status"] in {"completed", "failed"}
     assert events[-1].type == ("RUN_FINISHED" if run["status"] == "completed" else "RUN_ERROR")
     assert [event.seq for event in events] == list(range(1, len(events) + 1))
+
+
+@pytest.mark.spec("CNV-003", "AGT-010")
+def test_a_queued_run_without_a_workflow_does_not_block_its_conversation(
+    database: Database, server: Server, account: Account, token: str
+) -> None:
+    conversation = create_conversation(server, token)
+    # A run committed as queued whose workflow was never queued, as when the API stops in between.
+    stuck = uuid7()
+    with database.superuser() as conn:
+        conn.execute(
+            "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, kind, status, last_event_seq, created_at)"
+            " VALUES (%s, %s, %s, %s, 'message', 'queued', 0, now())",
+            (stuck, account.tenant_id, account.id, conversation["id"]),
+        )
+        conn.execute("UPDATE conversations SET active_run_id = %s WHERE id = %s", (stuck, conversation["id"]))
+    with server.client(token) as client:
+        response = client.post(f"/runs/{stuck}/cancel")
+    assert response.status_code == 200, response.text
+    assert body(response)["status"] == "cancelled"
+    run_id, events = start_run(server, token, conversation["id"], "after the stuck run")
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    assert text_of(events) == "Echo: after the stuck run"
