@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.5.1-draft
+  version: 0.6.0-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -31,6 +31,7 @@ servers:
 
 security:
   - deviceSession: []
+  - sessionCookie: []
 
 tags:
   - name: auth
@@ -49,8 +50,10 @@ paths:
         The username is matched ignoring case (ADR-0047). A disabled account
         is answered like a wrong password, and the attempt counts as failed.
         Attempts over the rate limits are refused with `429` and a
-        `Retry-After` header, whether or not the password was right.
-      x-requirements: [AUTH-001, AUTH-004, AUTH-006]
+        `Retry-After` header, whether or not the password was right. With
+        `session_delivery` set to `cookie`, the session is set as the
+        `mzm_session` cookie and the token is not in the body (ADR-0067).
+      x-requirements: [AUTH-001, AUTH-004, AUTH-005, AUTH-006]
       security: []
       requestBody:
         required: true
@@ -59,7 +62,11 @@ paths:
             schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
         "201":
-          description: Session created. The token is returned only once.
+          description: Session created. The token is returned only once, in the body or as a cookie.
+          headers:
+            Set-Cookie:
+              description: The `mzm_session` cookie, when `session_delivery` is `cookie`.
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LoginResponse" }
@@ -72,7 +79,8 @@ paths:
       tags: [auth]
       operationId: logout
       summary: Revoke the current device session.
-      x-requirements: [AUTH-004]
+      description: The session's cookie, if any, is cleared too.
+      x-requirements: [AUTH-004, AUTH-005]
       responses:
         "204": { description: Session revoked. }
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -626,6 +634,16 @@ components:
       type: http
       scheme: bearer
       description: Opaque device session token (ADR-0025, AUTH-004).
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: mzm_session
+      description: |
+        The same session token, in an `HttpOnly`, `Secure`, `SameSite=Lax`
+        cookie set by `login` for the web app (ADR-0025, ADR-0067). A request
+        authenticated by this cookie with a method other than `GET`, `HEAD`
+        or `OPTIONS` must carry the header `X-Mazzamurello-Request` with any
+        value; without it the request is unauthenticated (AUTH-005).
 
   parameters:
     SessionId:
@@ -774,14 +792,19 @@ components:
         username: { type: string, minLength: 1, maxLength: 64 }
         password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
         device_name: { type: string, minLength: 1, maxLength: 100 }
+        session_delivery:
+          type: string
+          enum: [token, cookie]
+          default: token
+          description: "`cookie` for browsers: the token is set as an `HttpOnly` cookie instead of returned (ADR-0067)."
 
     LoginResponse:
       type: object
-      required: [token, session, user]
+      required: [session, user]
       properties:
         token:
           type: string
-          description: Opaque session token. Shown only once; store it securely.
+          description: Opaque session token, absent when it was set as a cookie. Shown only once; store it securely.
         session: { $ref: "#/components/schemas/DeviceSession" }
         user: { $ref: "#/components/schemas/User" }
 
