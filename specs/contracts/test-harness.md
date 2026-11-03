@@ -97,6 +97,25 @@ errors before and during a stream, as OpenRouter's documentation describes
 them. It records the headers of each request, so tests can check what the
 gateway sends.
 
+## Web
+
+Tests of the web client (ADR-0067) use this procedure once per test session,
+before starting the API:
+
+1. From `src/web/`, install its dependencies from the lock file and build the
+   app.
+2. Start the API with `MZM_WEB_ROOT` set to the build's directory, as for the
+   other tests; the app is served at `http://127.0.0.1:PORT/`.
+3. Drive Chromium with Playwright against that address, signing in through the
+   app's own screen with accounts arranged as for the server's tests, and the
+   model the test suite serves.
+4. On every screen a test visits, check accessibility with axe-core; any
+   violation of WCAG 2.2 level AA fails the test (UX-007).
+
+Unit tests of the app's own code run with Vitest, without a server. The
+cookie session's `Secure` attribute is accepted on `127.0.0.1` by Chromium,
+as on any loopback address.
+
 ## Sandboxes
 
 Tests that need sandboxes, and the server, which needs the sandbox driver,

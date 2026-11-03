@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# Generated from specs/contracts/openapi.yaml by `pnpm generate`.
+src/api/schema.d.ts

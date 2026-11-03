@@ -11,8 +11,11 @@ import binascii
 import ipaddress
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 PREFIX = "MZM_"
+# Where the server image puts the built web app (ADR-0067).
+DEFAULT_WEB_ROOT = Path("/opt/mazzamurello/web")
 API_VARIABLES = frozenset(
     {
         "MZM_DATABASE_URL",
@@ -22,6 +25,7 @@ API_VARIABLES = frozenset(
         "MZM_SECRET_KEY",
         "MZM_SANDBOXD_URL",
         "MZM_SANDBOXD_TOKEN",
+        "MZM_WEB_ROOT",
     }
 )
 WORKER_VARIABLES = frozenset(
@@ -46,6 +50,8 @@ class ApiConfiguration:
     secret_key: bytes
     sandboxd_url: str
     sandboxd_token: str
+    # The built web app, served at `/` when the directory exists (ADR-0067).
+    web_root: Path = DEFAULT_WEB_ROOT
 
 
 @dataclass(frozen=True)
@@ -148,4 +154,5 @@ def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
         secret_key=_secret_key(environment),
         sandboxd_url=driver_url,
         sandboxd_token=driver_token,
+        web_root=Path(environment.get("MZM_WEB_ROOT") or DEFAULT_WEB_ROOT),
     )

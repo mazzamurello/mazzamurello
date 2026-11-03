@@ -33,6 +33,8 @@ class LoginRequest(Request):
     username: Annotated[str, Field(min_length=1, max_length=64)]
     password: Annotated[str, Field(min_length=1, max_length=1024)]
     device_name: Annotated[str, Field(min_length=1, max_length=100)]
+    # `cookie` for browsers: the token is set as an HttpOnly cookie instead (ADR-0067).
+    session_delivery: Literal["token", "cookie"] = "token"
 
 
 class User(Response):
@@ -55,7 +57,8 @@ class DeviceSession(Response):
 
 
 class LoginResponse(Response):
-    token: str
+    # Absent when the session was set as a cookie.
+    token: Annotated[str | None, Field(exclude_if=lambda value: value is None)] = None
     session: DeviceSession
     user: User
 
@@ -198,6 +201,8 @@ class PathRun(Response):
     kind: RunKind
     message_ids: list[str]
     versions: list[uuid.UUID]
+    # The most recent run continuing each version, in the same order.
+    version_tips: list[uuid.UUID]
 
 
 class MessagePage(Response):

@@ -1,6 +1,16 @@
 # The server image: API, worker, migrations and the operator commands
 # (ADR-0028, ADR-0054). Built from the repository root:
 # `docker build -f deploy/images/server/Dockerfile .`
+# The web app (ADR-0067), built with Node, which the running image does not need.
+FROM node:24.14.1-trixie-slim AS web
+WORKDIR /build/src/web
+RUN corepack enable
+COPY specs/contracts/openapi.yaml /build/specs/contracts/openapi.yaml
+COPY src/web/package.json src/web/pnpm-lock.yaml src/web/pnpm-workspace.yaml ./
+RUN COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm install --frozen-lockfile
+COPY src/web ./
+RUN pnpm build
+
 FROM python:3.13.9-slim-trixie
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /usr/local/bin/uv
@@ -18,6 +28,8 @@ COPY migrations migrations
 RUN uv sync --frozen --no-dev --package mazzamurello-server --no-editable
 
 ENV PATH=/opt/venv/bin:$PATH
+# Served at `/` by the API (MZM_WEB_ROOT's default).
+COPY --from=web /build/src/web/dist /opt/mazzamurello/web
 RUN useradd --system --uid 10001 --no-create-home mazzamurello
 USER mazzamurello
 ENTRYPOINT ["python", "-m"]

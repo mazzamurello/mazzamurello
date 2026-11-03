@@ -1,0 +1,3 @@
+# Dependencies are installed only once they are at least two weeks old
+# (in minutes), so that a compromised release has time to be caught.
+minimumReleaseAge: 20160

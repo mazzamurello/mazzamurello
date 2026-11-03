@@ -14,6 +14,7 @@ new entry here first (ADR-0005).
 | Tenant admin | A user who manages a tenant's users, shared spaces and tool permissions. |
 | User | A person with an account in exactly one tenant. |
 | Device session | An authenticated session of one user on one device, identified by an opaque token and revocable by the user (ADR-0025). |
+| Passkey | A WebAuthn credential kept by a user's device, often unlocked with a fingerprint or a face; a second factor on top of the password (ADR-0065). |
 | Source address | The network address a request comes from: the address of the connecting peer, or the client address reported by a trusted proxy (ADR-0050). |
 | Trusted proxy | A reverse proxy, named by the instance admin in the configuration, whose report of the client address the server believes (ADR-0050). |
 | Private data | Data owned by one user and visible only to that user. The default for all data. |
@@ -58,6 +59,14 @@ new entry here first (ADR-0005).
 | Scheduled task | A run started by a schedule or trigger rather than by a message. |
 | Memory item | A piece of information the assistant retains about a user across conversations. Visible, editable and deletable by the user. |
 | Connector | An integration with an external system (calendar, mail, files, home automation), exposed to the agent as mediated tools. |
+
+## Devices and connectors
+
+| Term | Definition |
+|---|---|
+| Connected device | A machine or phone of a user, paired to their account, that offers tools running on it to that user's runs (ADR-0063). Not to be confused with a device session, which is a sign-in. |
+| Device service | The program that runs on a connected device, keeps its connection to the instance and runs its tools (ADR-0063). |
+| Remote MCP server | A service reached over HTTP with the Model Context Protocol, added by a tenant admin, whose tools the assistant can call (ADR-0064). |
 
 ## Execution
 

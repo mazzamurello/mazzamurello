@@ -2,11 +2,11 @@
 
 **A private, self-hosted AI assistant for your household.**
 
-> **Status: phase 0, walking skeleton.** The server runs: accounts, separate
-> conversations, streamed answers from a model you configure, and a per-user
-> gVisor sandbox where the assistant runs commands. There is no user
-> interface yet; everything goes through the HTTP API (ADR-0024). Do not rely
-> on it for anything important.
+> **Status: phase 1 has started.** Accounts, separate conversations with
+> versions, streamed answers from a model you configure, and a per-user
+> gVisor sandbox where the assistant runs commands, through a web app you can
+> install on your phone and computer. Do not rely on it for anything
+> important yet.
 
 In the folklore of central Italy, the *mazzamurello* is a small household
 spirit: it lives in the house, knows everything that happens there, and
@@ -96,13 +96,18 @@ docker compose run --rm setup
 3. `setup` asks for the household's name and creates its first administrator,
    with the password you choose. It works only once.
 
-The API now answers on `http://127.0.0.1:8080/v1`; `curl
+The web app now opens at `http://127.0.0.1:8080/` on the server itself, and
+the API answers at `http://127.0.0.1:8080/v1`; `curl
 http://127.0.0.1:8080/v1/health` says `degraded` until a model is configured.
 
 **Configure a model**
 
-Models are configured through the API by the administrator (MOD-008); the
-settings screen of the web client will use the same API. With a local
+Sign in to the web app as the administrator and open **Model settings**:
+add a model with its endpoint, model name and, for paid providers, its API
+key, and make it the default. API keys are stored encrypted and never shown
+again.
+
+The same can be done through the API (MOD-008). With a local
 OpenAI-compatible server such as Ollama on your network:
 
 ```bash
@@ -130,9 +135,9 @@ tokens. API keys are stored encrypted and never returned.
 
 **Reaching it from other devices**
 
-By default the API listens only on `127.0.0.1:8080`. To reach it from your
-phone, put it behind the reverse proxy you already use for HTTPS (Caddy,
-Traefik, nginx), then set in `deploy/.env`:
+By default the web app and the API listen only on `127.0.0.1:8080`. To reach
+them from your phone, put them behind the reverse proxy you already use for
+HTTPS (Caddy, Traefik, nginx), then set in `deploy/.env`:
 
 ```bash
 MZM_PUBLISH=127.0.0.1:8080
@@ -144,9 +149,13 @@ that rate limits count the real client (ADR-0047). For a proxy on the same
 host it is the gateway of the deployment's network:
 `docker network inspect mazzamurello_internal --format '{{(index .IPAM.Config 0).Gateway}}'`.
 Run `docker compose up --detach --wait` again after changing `.env`.
-Publishing plain HTTP on
-your network (`MZM_PUBLISH=0.0.0.0:8080`) sends passwords and tokens
-unencrypted: do it only on a network you fully trust.
+
+The web app needs HTTPS, or `localhost`: it signs in with a `Secure` cookie,
+which browsers keep only over HTTPS (ADR-0067). Through the proxy, open the
+app's address on your phone and use the browser's **Add to Home Screen** to
+install it. Publishing plain HTTP on your network
+(`MZM_PUBLISH=0.0.0.0:8080`) leaves only the API usable, and sends passwords
+and tokens unencrypted: do it only on a network you fully trust.
 
 Every setting is listed in the
 [configuration contract](specs/contracts/configuration.md).
@@ -191,10 +200,10 @@ full workflow is in [docs/development/workflow.md](docs/development/workflow.md)
 | [`AGENTS.md`](AGENTS.md) | Rules of engagement for AI agents and humans |
 | [`specs/`](specs/) | Requirements, ADRs, contracts, glossary, threat model |
 | [`docs/`](docs/) | Documentation (development workflow today, user docs later) |
-| [`src/`](src/) | The server, the sandbox driver and the network guard |
+| [`src/`](src/) | The server, the web app, the sandbox driver and the network guard |
 | [`migrations/`](migrations/) | The database schema, as migrations |
 | [`deploy/`](deploy/) | The Compose deployment and its images |
-| [`tests/`](tests/) | The executable specs: design, integration, security and end-to-end tests |
+| [`tests/`](tests/) | The executable specs: design, integration, security, web and end-to-end tests |
 | [`tools/`](tools/) | Repository governance checks run by CI |
 
 ## Contributing

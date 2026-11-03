@@ -18,8 +18,8 @@ from tests.support.database import ROOT
 
 SERVER = ROOT / "src" / "server" / "mazzamurello_server"
 HTTP_METHODS = ("get", "put", "post", "delete", "patch")
-# Dotted names in the server that are not error codes.
-NOT_ERROR_CODES = re.compile(r"^mazzamurello\.")
+# Dotted names in the server that are not error codes: names of its own, and file names.
+NOT_ERROR_CODES = re.compile(r"^mazzamurello\.|\.(html|js|css|json|webmanifest)$")
 DOTTED = re.compile(r"^[a-z]+\.[a-z_]+$")
 
 
@@ -69,7 +69,7 @@ def test_every_error_code_the_server_produces_is_documented() -> None:
         value
         for path in sorted(SERVER.rglob("*.py"))
         for value in _string_constants(path)
-        if DOTTED.match(value) and not NOT_ERROR_CODES.match(value)
+        if DOTTED.match(value) and not NOT_ERROR_CODES.search(value)
     }
     assert produced, "no error codes found: the pattern no longer matches the server's codes"
     assert sorted(produced - documented) == []

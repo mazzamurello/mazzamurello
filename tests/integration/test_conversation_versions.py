@@ -159,3 +159,36 @@ def test_message_ids_are_stable_across_reads_and_versions(server: Server, token:
     other = messages(server, token, conversation["id"], run_id=original)
     # The first turn is shared by both versions, with the same IDs.
     assert once["runs"][0]["message_ids"] == other["runs"][0]["message_ids"]
+
+
+@pytest.mark.spec("CNV-001", "CNV-004")
+def test_the_first_message_can_be_edited(server: Server, token: str, default_model: HarnessModel) -> None:
+    conversation = create_conversation(server, token)
+    first, _ = start_run(server, token, conversation["id"], "first, original")
+    start_run(server, token, conversation["id"], "second")
+    # Rewinding to before the first turn: the next run is a new version of it.
+    with server.client(token) as client:
+        response = client.patch(f"/conversations/{conversation['id']}", json={"active_run_id": None})
+    assert response.status_code == 200, response.text
+    assert body(response)["active_run_id"] is None
+    assert messages(server, token, conversation["id"])["items"] == []
+    edited, _ = start_run(server, token, conversation["id"], "first, edited")
+    page = messages(server, token, conversation["id"])
+    assert page["runs"][0]["versions"] == [first, edited]
+    (request,) = default_model.endpoint.requests_with("first, edited")
+    assert request.user_texts() == ["first, edited"]
+
+
+@pytest.mark.spec("CNV-001")
+def test_switching_back_to_a_version_brings_back_its_later_turns(server: Server, token: str) -> None:
+    conversation = create_conversation(server, token)
+    first, _ = start_run(server, token, conversation["id"], "tips one")
+    original, _ = start_run(server, token, conversation["id"], "tips two")
+    later, _ = start_run(server, token, conversation["id"], "tips three")
+    edited, _ = start_run(server, token, conversation["id"], "tips two, edited", parent_run_id=first)
+    turn = messages(server, token, conversation["id"])["runs"][1]
+    assert turn["versions"] == [original, edited]
+    assert turn["version_tips"] == [later, edited]
+    _switch(server, token, conversation["id"], turn["version_tips"][0])
+    page = messages(server, token, conversation["id"])
+    assert [run["run_id"] for run in page["runs"]] == [first, original, later]

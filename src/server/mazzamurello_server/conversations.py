@@ -155,9 +155,10 @@ async def update_conversation(
         raise errors.invalid("/", "empty")
     async with transaction(engine, identity) as connection:
         await find_conversation(connection, conversation_id, lock=True)
-        if "active_run_id" in present and body.active_run_id is not None:
-            # Switching versions or rewinding (ADR-0037).
+        if "active_run_id" in present:
+            # Switching versions or rewinding, or with null to before the first turn (ADR-0037).
             await _refuse_while_active(connection, conversation_id)
+        if "active_run_id" in present and body.active_run_id is not None:
             owned = (
                 await connection.execute(
                     text("SELECT 1 FROM runs WHERE id = :run AND conversation_id = :conversation"),
@@ -170,6 +171,7 @@ async def update_conversation(
             "title": body.title if "title" in present else None,
             "archived": body.archived if "archived" in present else None,
             "active_run_id": body.active_run_id if "active_run_id" in present else None,
+            "clear_active_run": "active_run_id" in present and body.active_run_id is None,
         }
         row = (
             await connection.execute(
@@ -177,7 +179,8 @@ async def update_conversation(
                     "UPDATE conversations SET title = coalesce(:title, title),"  # noqa: S608
                     " archived_at = CASE WHEN CAST(:archived AS boolean) IS NULL THEN archived_at"
                     " WHEN CAST(:archived AS boolean) THEN coalesce(archived_at, now()) ELSE NULL END,"
-                    " active_run_id = coalesce(CAST(:active_run_id AS uuid), active_run_id), updated_at = now()"
+                    " active_run_id = CASE WHEN CAST(:clear_active_run AS boolean) THEN NULL"
+                    " ELSE coalesce(CAST(:active_run_id AS uuid), active_run_id) END, updated_at = now()"
                     f" WHERE id = :id RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 changes | {"id": conversation_id},
@@ -253,6 +256,23 @@ async def stored_messages(connection: AsyncConnection, run_ids: Sequence[uuid.UU
     return by_run
 
 
+async def _version_tips(connection: AsyncConnection, version_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, uuid.UUID]:
+    """For each version, the most recent run that continues it, itself included (CNV-001)."""
+    if not version_ids:
+        return {}
+    rows = await connection.execute(
+        text(
+            "WITH RECURSIVE tree AS ("
+            " SELECT id AS version, id, created_at FROM runs WHERE id = ANY(:versions)"
+            " UNION ALL"
+            " SELECT tree.version, runs.id, runs.created_at FROM runs JOIN tree ON runs.parent_run_id = tree.id"
+            ") SELECT DISTINCT ON (version) version, id FROM tree ORDER BY version, created_at DESC, id DESC"
+        ),
+        {"versions": list(set(version_ids))},
+    )
+    return {row.version: row.id for row in rows}
+
+
 def message_id(run_id: uuid.UUID, position: int) -> uuid.UUID:
     """The ID of a run's message in history, from the run and its position in it (CNV-001)."""
     return uuid.uuid5(run_id, f"message-{position}")
@@ -292,6 +312,7 @@ async def list_messages(
             ]
             for run in path
         }
+        tips = await _version_tips(connection, [version for listed in versions.values() for version in listed])
     flattened: list[tuple[Any, dict[str, Any]]] = []
     for run in path:
         model_messages = ModelMessagesTypeAdapter.validate_python(stored[run.id])
@@ -304,13 +325,15 @@ async def list_messages(
     runs: list[schemas.PathRun] = []
     for run, message in page:
         if not runs or runs[-1].run_id != run.id:
+            listed: list[uuid.UUID] = versions[run.id] if run.kind == "message" else [run.id]
             runs.append(
                 schemas.PathRun(
                     run_id=run.id,
                     parent_run_id=run.parent_run_id,
                     kind=run.kind,
                     message_ids=[],
-                    versions=versions[run.id] if run.kind == "message" else [run.id],
+                    versions=listed,
+                    version_tips=[tips.get(version) or version for version in listed],
                 )
             )
         runs[-1].message_ids.append(str(message["id"]))
