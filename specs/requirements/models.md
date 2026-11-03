@@ -74,7 +74,7 @@ Rationale: journey J12.
 
 ## MOD-008: Connections managed by household admins
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -87,7 +87,7 @@ ADR-0069).
 
 ## MOD-009: Connections reach only public addresses
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security
@@ -102,7 +102,7 @@ household's network (ADR-0061, ADR-0069).
 
 ## MOD-010: Where inference runs
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -128,7 +128,7 @@ Rationale: journey J12.
 
 ## MOD-011: A connection offers all its models
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -140,7 +140,7 @@ ordered by their use in the past week, most used first (ADR-0069).
 
 ## MOD-012: The model of a conversation
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -153,7 +153,7 @@ using another model (ADR-0069).
 
 ## MOD-013: Testing a connection
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, security
@@ -170,7 +170,7 @@ details MUST NOT contain the credentials (ADR-0069).
 
 ## MOD-014: Models without tools
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, e2e

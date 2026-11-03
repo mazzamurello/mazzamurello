@@ -45,7 +45,7 @@ Rationale: journey J1.
 
 ## CNV-004: Rewinding
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -225,7 +225,7 @@ Rationale: journey J1.
 
 ## CNV-016: Editing a message
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, e2e
