@@ -65,6 +65,8 @@ OPENROUTER_MODELS = (
     ("test/popular", "Test: Popular", "0.00000027", "0.00000041", 131072, True),
     ("test/second", "Test: Second", "0.0000003", "0.0000025", 1048576, True),
     ("test/chat-only", "Test: Chat only", "0.0000001", "0.0000002", 32768, False),
+    ("test/free-chat", "Test: Free chat", "0", "0", 32768, False),
+    ("test/free", "Test: Free", "0", "0", 131072, True),
     ("test/another", "Test: Another", "0.00000015", "0.0000006", 65536, True),
     ("test/router", "Test: Router", "-1", "-1", 2000000, False),
 )

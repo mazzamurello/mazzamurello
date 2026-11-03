@@ -188,3 +188,55 @@ def test_a_server_that_refuses_tools_fails_the_run(server: Server, household: Ho
     assert "does not support tools" in str(events[-1].data.get("message", ""))
     # Never retried without the tools.
     assert all(request.body.get("tools") for request in household.model.endpoint.requests_with(text))
+
+
+def _admin_without_models(database: Database, server: Server) -> str:
+    """A tenant admin, also the instance admin, of a household with no connection yet."""
+    return login(server, create_account(database, create_tenant(database), "tenant_admin", instance_admin=True))
+
+
+@pytest.mark.spec("MOD-012")
+def test_openrouter_brings_a_free_default_model(
+    database: Database, server: Server, harness_model: HarnessModel
+) -> None:
+    token = _admin_without_models(database, server)
+    with server.client(token) as client:
+        response = client.post(
+            "/tenant/connections",
+            json={
+                "name": "OpenRouter",
+                "kind": "openrouter",
+                "base_url": harness_model.endpoint.openrouter_url,
+                "api_key": "sk-or-v1-a",
+            },
+        )
+        assert response.status_code == 201, response.text
+        openrouter = body(response)["id"]
+        # The most used free model that can call tools.
+        assert body(client.get("/models"))["default"] == {"connection_id": openrouter, "model": "test/free"}
+        # A later connection leaves the default as it is.
+        other = client.post(
+            "/tenant/connections",
+            json={"name": "Server", "kind": "openai", "base_url": harness_model.endpoint.url, "location": "local"},
+        )
+        assert other.status_code == 201, other.text
+        assert body(client.get("/models"))["default"] == {"connection_id": openrouter, "model": "test/free"}
+    conversation = create_conversation(server, token)
+    assert conversation["model"] == {"connection_id": openrouter, "model": "test/free"}
+
+
+@pytest.mark.spec("MOD-012")
+def test_a_server_brings_its_first_model_as_default(
+    database: Database, server: Server, harness_model: HarnessModel
+) -> None:
+    token = _admin_without_models(database, server)
+    with server.client(token) as client:
+        response = client.post(
+            "/tenant/connections",
+            json={"name": "Server", "kind": "openai", "base_url": harness_model.endpoint.url, "location": "local"},
+        )
+        assert response.status_code == 201, response.text
+        assert body(client.get("/models"))["default"] == {
+            "connection_id": body(response)["id"],
+            "model": SERVER_MODELS[0],
+        }
