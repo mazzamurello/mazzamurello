@@ -3,6 +3,7 @@ import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api } from "../api/client";
+import { hasKeyboard } from "../focus";
 import { ME } from "../session";
 import { Sprite } from "./Sprite";
 
@@ -46,7 +47,7 @@ export function SignIn() {
         <form onSubmit={submit} className="flex w-full flex-col gap-3.5" aria-describedby={error ? "sign-in-error" : undefined}>
           <label className="flex flex-col gap-1.5">
             <span className="text-[13.5px] font-semibold">{t("signIn.username")}</span>
-            <input name="username" autoComplete="username" required autoCapitalize="none" className={INPUT} />
+            <input name="username" autoComplete="username" required autoCapitalize="none" autoFocus={hasKeyboard()} className={INPUT} />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[13.5px] font-semibold">{t("signIn.password")}</span>
