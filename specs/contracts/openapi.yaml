@@ -36,6 +36,7 @@ security:
 tags:
   - name: auth
   - name: administration
+  - name: models
   - name: conversations
   - name: runs
   - name: health
@@ -169,82 +170,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /instance/models:
-    post:
-      tags: [administration]
-      operationId: createInstanceModel
-      summary: Configure a model for the instance (instance admin only).
-      x-requirements: [MOD-008, MOD-002]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/CreateModelConfigurationRequest" }
-      responses:
-        "201":
-          description: Model configured.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ModelConfiguration" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationFailed" }
-    get:
-      tags: [administration]
-      operationId: listInstanceModels
-      summary: List the model configurations of the instance (instance admin only).
-      x-requirements: [MOD-008, MOD-002]
-      responses:
-        "200":
-          description: Every model configuration of this scope, by name.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: "#/components/schemas/ModelConfiguration" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /instance/models/{model_id}:
-    parameters:
-      - $ref: "#/components/parameters/ModelId"
-    patch:
-      tags: [administration]
-      operationId: updateInstanceModel
-      summary: Change a model configuration (instance admin only).
-      x-requirements: [MOD-008, MOD-002]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/UpdateModelConfigurationRequest" }
-      responses:
-        "200":
-          description: The updated model configuration.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ModelConfiguration" }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationFailed" }
-    delete:
-      tags: [administration]
-      operationId: deleteInstanceModel
-      summary: Remove a model configuration (instance admin only). Removing the default leaves the scope without one.
-      x-requirements: [MOD-008, MOD-002]
-      responses:
-        "204": { description: Model configuration removed. }
-        "401": { $ref: "#/components/responses/Unauthenticated" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
   /tenant/users:
     post:
       tags: [administration]
@@ -282,35 +207,40 @@ paths:
               schema: { $ref: "#/components/schemas/UserPage" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
-  /tenant/models:
+  /tenant/connections:
     post:
-      tags: [administration]
-      operationId: createTenantModel
-      summary: Configure a model for the current tenant (tenant admin only).
-      x-requirements: [MOD-008, MOD-002, TEN-006]
+      tags: [models]
+      operationId: createConnection
+      summary: Add a connection to the current tenant (tenant admin only).
+      description: |
+        The connection is tested first (MOD-013); when the test fails it is
+        not saved, and the answer is `connection.test_failed` with the test's
+        result. Only a user who is also the instance admin may use a private
+        address or `http` (MOD-009, ADR-0069).
+      x-requirements: [MOD-008, MOD-002, MOD-009, MOD-013, TEN-006]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CreateModelConfigurationRequest" }
+            schema: { $ref: "#/components/schemas/CreateConnectionRequest" }
       responses:
         "201":
-          description: Model configured.
+          description: Connection added; its models are listed.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ModelConfiguration" }
+              schema: { $ref: "#/components/schemas/Connection" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "422": { $ref: "#/components/responses/ConnectionRefused" }
     get:
-      tags: [administration]
-      operationId: listTenantModels
-      summary: List the model configurations of the current tenant (tenant admin only).
+      tags: [models]
+      operationId: listConnections
+      summary: List the connections of the current tenant (tenant admin only).
       x-requirements: [MOD-008, MOD-002, TEN-006]
       responses:
         "200":
-          description: Every model configuration of this scope, by name.
+          description: Every connection of the tenant, by name.
           content:
             application/json:
               schema:
@@ -319,44 +249,144 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: "#/components/schemas/ModelConfiguration" }
+                    items: { $ref: "#/components/schemas/Connection" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /tenant/models/{model_id}:
+  /tenant/connections/{connection_id}:
     parameters:
-      - $ref: "#/components/parameters/ModelId"
+      - $ref: "#/components/parameters/ConnectionId"
     patch:
-      tags: [administration]
-      operationId: updateTenantModel
-      summary: Change a model configuration (tenant admin only).
-      x-requirements: [MOD-008, MOD-002, TEN-006]
+      tags: [models]
+      operationId: updateConnection
+      summary: Change a connection (tenant admin only).
+      description: |
+        A new address or API key is tested first, as when adding a
+        connection. A new address set by a user who is not the instance admin
+        must be public (MOD-009).
+      x-requirements: [MOD-008, MOD-002, MOD-009, MOD-013, TEN-006]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/UpdateModelConfigurationRequest" }
+            schema: { $ref: "#/components/schemas/UpdateConnectionRequest" }
       responses:
         "200":
-          description: The updated model configuration.
+          description: The updated connection.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ModelConfiguration" }
+              schema: { $ref: "#/components/schemas/Connection" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "422": { $ref: "#/components/responses/ConnectionRefused" }
     delete:
-      tags: [administration]
-      operationId: deleteTenantModel
-      summary: Remove a model configuration (tenant admin only). Removing the default leaves the scope without one.
-      x-requirements: [MOD-008, MOD-002, TEN-006]
+      tags: [models]
+      operationId: deleteConnection
+      summary: Remove a connection (tenant admin only).
+      description: |
+        Its models are no longer offered: conversations that use one of
+        them fail with `model.unavailable` until their user chooses another
+        model, and removing the connection of the default model leaves the
+        tenant without one (MOD-012).
+      x-requirements: [MOD-008, TEN-006]
       responses:
-        "204": { description: Model configuration removed. }
+        "204": { description: Connection removed. }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenant/connections/{connection_id}/test:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionId"
+    post:
+      tags: [models]
+      operationId: testConnection
+      summary: Test a saved connection and refresh its models (tenant admin only).
+      x-requirements: [MOD-009, MOD-011, MOD-013, TEN-006]
+      responses:
+        "200":
+          description: The result of the test, passed or failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectionTest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /tenant/connection-tests:
+    post:
+      tags: [models]
+      operationId: testNewConnection
+      summary: Test a connection before adding it (tenant admin only).
+      description: Nothing is saved. Tests are limited to 20 a minute per tenant (T-31).
+      x-requirements: [MOD-009, MOD-013]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateConnectionRequest" }
+      responses:
+        "200":
+          description: The result of the test, passed or failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectionTest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /tenant/default-model:
+    put:
+      tags: [models]
+      operationId: setDefaultModel
+      summary: Choose the model new conversations start with (tenant admin only).
+      x-requirements: [MOD-008, MOD-012, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModelChoice" }
+      responses:
+        "200":
+          description: The default model.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelChoice" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /models:
+    get:
+      tags: [models]
+      operationId: listModels
+      summary: Every model the connections of the user's tenant offer.
+      description: |
+        For every user of the tenant. Grouped by connection, connections by
+        name; within one, in the provider's order: for OpenRouter, most used
+        in the past week first (MOD-011). Lists older than a day are
+        refreshed in the background (ADR-0069).
+      x-requirements: [MOD-010, MOD-011, MOD-012, UX-015, TEN-006]
+      responses:
+        "200":
+          description: The models of the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, default]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModelOption" }
+                  default:
+                    description: The tenant's default model, or `null` when it has none.
+                    oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+        "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /conversations:
     post:
@@ -541,8 +571,9 @@ paths:
           description: |
             A run is in progress (`run.in_progress`), an interrupt is pending
             (`run.interrupt_pending`), `parentRunId` is not the active run
-            (`resource.conflict`), or neither the tenant nor the instance has a
-            default model (`model.unavailable`, ADR-0052).
+            (`resource.conflict`), or the conversation's model is not offered
+            by a connection of the tenant, or it has none and the tenant has no
+            default model (`model.unavailable`, MOD-012).
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -631,8 +662,8 @@ paths:
         Anonymous callers receive only `status`. Instance admins also receive
         the individual checks (OPS-002). The status is `unavailable` when the
         database is unreachable or the sandbox driver refuses sandboxes, then
-        the answer is `503`; `degraded` when no instance default model is
-        configured; `ok` otherwise (ADR-0054).
+        the answer is `503`; `degraded` when no tenant has a default model
+        (ADR-0069); `ok` otherwise (ADR-0054).
       x-requirements: [OPS-002, SBX-003, SBX-015, SBX-017]
       security: [{}, { deviceSession: [] }]
       responses:
@@ -670,8 +701,8 @@ components:
       in: path
       required: true
       schema: { $ref: "#/components/schemas/Id" }
-    ModelId:
-      name: model_id
+    ConnectionId:
+      name: connection_id
       in: path
       required: true
       schema: { $ref: "#/components/schemas/Id" }
@@ -735,6 +766,19 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
           example: { type: "about:blank", title: "Conflict", status: 409, code: "resource.conflict" }
+    ConnectionRefused:
+      description: |
+        The request is invalid (`request.validation_failed`), or the
+        connection failed its test (`connection.test_failed`, MOD-013), whose
+        result is in `test`.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Problem"
+              - type: object
+                properties:
+                  test: { $ref: "#/components/schemas/ConnectionTest" }
     RunInProgress:
       description: |
         A run is in progress in this conversation (`run.in_progress`), or an
@@ -779,6 +823,7 @@ components:
         - run.timeout
         - model.unavailable
         - model.request_failed
+        - connection.test_failed
         - sandbox.unavailable
         - sandbox.command_failed
         - internal.error
@@ -921,69 +966,121 @@ components:
         cached_input: { $ref: "#/components/schemas/Decimal" }
         output: { $ref: "#/components/schemas/Decimal" }
         currency: { type: string, pattern: "^[A-Z]{3}$", description: "ISO 4217 code." }
-    ModelApi:
+    ConnectionKind:
       type: string
       description: |
-        The API of the endpoint (ADR-0057): `openai` for any OpenAI-compatible
-        chat completions endpoint, `openrouter` for OpenRouter's.
-      enum: [openai, openrouter]
-    ModelConfiguration:
+        `openrouter` for OpenRouter; `openai` for a server with an
+        OpenAI-compatible API (ADR-0057, ADR-0069).
+      enum: [openrouter, openai]
+    Location:
+      type: string
+      description: Where inference runs (MOD-010, ADR-0066).
+      enum: [local, remote]
+    Connection:
       type: object
       description: |
-        A model of a provider made available by an admin (ADR-0051). The API key
-        is never returned; `has_api_key` says whether one is set.
-      required: [id, name, api, base_url, model, has_api_key, paid, prices, is_default, created_at, updated_at]
+        A household's access to one provider (ADR-0069). The API key is never
+        returned; `has_api_key` says whether one is set. `private_network` is
+        true when the address was set by a user who is the instance admin,
+        which allows a private address (MOD-009).
+      required: [id, name, kind, base_url, location, has_api_key, private_network, model_count, models_refreshed_at, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         name: { type: string }
-        api: { $ref: "#/components/schemas/ModelApi" }
+        kind: { $ref: "#/components/schemas/ConnectionKind" }
         base_url: { type: string, format: uri }
-        model: { type: string }
+        location: { $ref: "#/components/schemas/Location" }
         has_api_key: { type: boolean }
-        paid: { type: boolean, description: "Whether the provider charges per token." }
-        prices:
-          oneOf:
-            - $ref: "#/components/schemas/ModelPrices"
-            - type: "null"
-        is_default: { type: boolean }
+        private_network: { type: boolean }
+        model_count: { type: integer, minimum: 0 }
+        models_refreshed_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
         created_at: { $ref: "#/components/schemas/Timestamp" }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
-    CreateModelConfigurationRequest:
+    CreateConnectionRequest:
       type: object
       description: |
-        Tenant models must use an `https` endpoint that resolves only to public
-        addresses; anything else is rejected with `request.validation_failed`
-        at `/base_url` (ADR-0051). Making a configuration the default makes the
-        previous default of the same scope a plain configuration.
-      required: [name, base_url, model, paid]
+        For `openrouter`, `base_url` defaults to `https://openrouter.ai/api/v1`
+        and `location` is `remote`; an `api_key` is required. For `openai`,
+        `base_url` and `location` are required.
+      required: [name, kind]
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
-        api: { allOf: [{ $ref: "#/components/schemas/ModelApi" }], default: openai }
-        base_url: { type: string, format: uri, maxLength: 2000, description: "Endpoint of the API, such as `http://192.168.1.10:11434/v1` or `https://openrouter.ai/api/v1`." }
-        model: { type: string, minLength: 1, maxLength: 200 }
+        kind: { $ref: "#/components/schemas/ConnectionKind" }
+        base_url: { type: string, format: uri, maxLength: 2000, description: "Address of the API, such as `http://192.168.1.10:11434/v1`." }
+        location: { $ref: "#/components/schemas/Location" }
         api_key: { type: string, minLength: 1, maxLength: 1000, writeOnly: true }
-        paid: { type: boolean }
-        prices: { $ref: "#/components/schemas/ModelPrices" }
-        is_default: { type: boolean, default: false }
-    UpdateModelConfigurationRequest:
+    UpdateConnectionRequest:
       type: object
-      description: Fields to change. `api_key` and `prices` set to `null` remove them.
+      description: Fields to change. `api_key` set to `null` removes it.
       additionalProperties: false
       minProperties: 1
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
-        api: { $ref: "#/components/schemas/ModelApi" }
         base_url: { type: string, format: uri, maxLength: 2000 }
-        model: { type: string, minLength: 1, maxLength: 200 }
+        location: { $ref: "#/components/schemas/Location" }
         api_key: { oneOf: [{ type: string, minLength: 1, maxLength: 1000 }, { type: "null" }], writeOnly: true }
-        paid: { type: boolean }
-        prices: { oneOf: [{ $ref: "#/components/schemas/ModelPrices" }, { type: "null" }] }
-        is_default: { type: boolean }
+    ConnectionTestStep:
+      type: object
+      required: [step, outcome, duration_ms, detail]
+      properties:
+        step:
+          type: string
+          description: |
+            `resolve`: find the address of the host; `connect`: open a
+            connection; `tls`: secure it, for `https`; `authenticate`: check
+            the key, for OpenRouter; `list_models`: read the model list.
+          enum: [resolve, connect, tls, authenticate, list_models]
+        outcome: { type: string, enum: [passed, failed, skipped] }
+        duration_ms: { type: [integer, "null"], minimum: 0, description: "Null for a skipped step." }
+        detail: { type: string, maxLength: 500, description: "Such as the address found, or `GET /v1/models → 404 Not Found`." }
+    ConnectionTest:
+      type: object
+      description: |
+        The result of a connection test, step by step (MOD-013). Steps after a
+        failure are skipped. `technical_detail` holds the low-level error or
+        up to 500 characters of the response; it never contains the API key.
+      required: [passed, steps, reason, http_status, technical_detail, model_count]
+      properties:
+        passed: { type: boolean }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/ConnectionTestStep" }
+        reason:
+          description: Why the test failed; `null` when it passed.
+          oneOf:
+            - type: string
+              enum: [name_not_found, connection_refused, timeout, tls_untrusted, address_not_allowed, http_error, unauthorized, not_a_model_server]
+            - type: "null"
+        http_status: { type: [integer, "null"], description: "The status of a failed HTTP answer." }
+        technical_detail: { type: [string, "null"], maxLength: 2000 }
+        model_count: { type: [integer, "null"], minimum: 0, description: "Models found, when the test passed." }
+    ModelChoice:
+      type: object
+      description: A model, named by its connection and the provider's name for it (ADR-0069).
+      required: [connection_id, model]
+      additionalProperties: false
+      properties:
+        connection_id: { $ref: "#/components/schemas/Id" }
+        model: { type: string, minLength: 1, maxLength: 200 }
+    ModelOption:
+      type: object
+      description: One model a connection of the tenant offers (MOD-011, UX-015).
+      required: [connection_id, connection_name, model, name, location, prices, context_window]
+      properties:
+        connection_id: { $ref: "#/components/schemas/Id" }
+        connection_name: { type: string }
+        model: { type: string, description: "The provider's name for the model, such as `qwen3:8b`." }
+        name: { type: string, description: "The name to show, such as `Qwen3 8B`." }
+        location: { $ref: "#/components/schemas/Location" }
+        prices:
+          description: Prices per million tokens when the model is paid per token and they are known, else `null`.
+          oneOf: [{ $ref: "#/components/schemas/ModelPrices" }, { type: "null" }]
+        context_window: { type: [integer, "null"], minimum: 1 }
 
     Conversation:
       type: object
-      required: [id, title, archived, active_run_id, created_at, updated_at]
+      required: [id, title, archived, active_run_id, model, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         title:
@@ -995,6 +1092,12 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Id"
             - type: "null"
+        model:
+          description: |
+            The model its next run uses (MOD-012): the tenant's default model
+            when the conversation was created, or the one its user chose;
+            `null` when the tenant had no default model then.
+          oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
         created_at: { $ref: "#/components/schemas/Timestamp" }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
 
@@ -1009,9 +1112,11 @@ components:
 
     CreateConversationRequest:
       type: object
+      description: Without `model`, the conversation starts with the tenant's default model.
       additionalProperties: false
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
+        model: { $ref: "#/components/schemas/ModelChoice" }
 
     UpdateConversationRequest:
       type: object
@@ -1020,6 +1125,9 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         archived: { type: boolean }
+        model:
+          allOf: [{ $ref: "#/components/schemas/ModelChoice" }]
+          description: A model offered by a connection of the tenant; used from the next run (MOD-012).
 
     RewindRequest:
       type: object
@@ -1119,8 +1227,10 @@ components:
 
     ModelRef:
       type: object
-      required: [provider, model]
+      description: The connection, when it still exists, and the provider and model that answered (MOD-005).
+      required: [connection_id, provider, model]
       properties:
+        connection_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
         provider: { type: string }
         model: { type: string }
 

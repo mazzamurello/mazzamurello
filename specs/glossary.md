@@ -57,7 +57,7 @@ new entry here first (ADR-0005).
 | Audit event | A record of a tool call, visible to the user it acted for. |
 | Scheduled task | A run started by a schedule or trigger rather than by a message. |
 | Memory item | A piece of information the assistant retains about a user across conversations. Visible, editable and deletable by the user. |
-| Connector | An integration with an external system (calendar, mail, files, home automation), exposed to the agent as mediated tools. |
+| Connector | An integration with an external system (calendar, mail, files, home automation), exposed to the agent as mediated tools. Not to be confused with a connection. |
 
 ## Devices and connectors
 
@@ -90,8 +90,9 @@ new entry here first (ADR-0005).
 |---|---|
 | Model gateway | The component through which every model call passes; applies routing, budgets and the data egress policy. |
 | Provider | A source of model inference: a local server or a remote service. |
-| Model configuration | A model of a provider made available by an admin: its endpoint, credentials, model name and prices, for the whole instance or for one tenant (ADR-0051). |
-| Default model | The model configuration that answers runs: the tenant's default, or else the instance's (ADR-0051). |
+| Connection | A household's access to one provider, managed by a tenant admin: OpenRouter, or a server with an OpenAI-compatible API, with its address and credentials. It offers all of the provider's models (ADR-0069). Not to be confused with a connector. |
+| Connection test | A check of a connection, step by step, that says which step fails and why (MOD-013). |
+| Default model | The model of one of its connections that a household's new conversations start with, chosen by a tenant admin (MOD-012). |
 | Local model | A model served from inside the instance or the household's network. |
 | Remote model | A model served by a third party over the internet. |
 | Cost ledger | The record of every model request made for a user, with tokens and cost but no content (MOD-006, ADR-0042). |

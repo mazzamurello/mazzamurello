@@ -1,7 +1,7 @@
 # MOD — Models and data egress
 
 How the assistant reaches language models, and what may leave the house.
-Background: ADR-0017, ADR-0036, ADR-0042.
+Background: ADR-0017, ADR-0036, ADR-0042, ADR-0057, ADR-0066, ADR-0069.
 
 ## MOD-001: Provider-agnostic model gateway
 
@@ -72,44 +72,45 @@ Ledger entries MUST NOT contain message content (ADR-0042).
 
 Rationale: journey J12.
 
-## MOD-008: Models configured by administrators
+## MOD-008: Connections managed by household admins
 
-- **Status:** implemented
-- **Priority:** MUST
-- **Phase:** 0
-- **Verification:** integration
-
-The instance admin MUST be able to configure models for the whole instance,
-and a tenant admin models for their tenant, through the public API, and mark
-one of them as the default. Credentials of a model configuration MUST be
-write-only in the API and stored only encrypted (MOD-002).
-
-## MOD-009: Tenant model endpoints reach only public addresses
-
-- **Status:** implemented
-- **Priority:** MUST
-- **Phase:** 0
-- **Verification:** security
-
-A request of the model gateway for a tenant model MUST connect only to public
-internet addresses, over `https`, checked when the connection is made and not
-only when the endpoint is saved, and MUST NOT follow redirects. A tenant admin
-can choose the endpoint, and the request leaves from the control plane, so
-anything else would let them reach the household's network (ADR-0051,
-ADR-0061).
-
-## MOD-010: Where inference runs
-
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
-Every model configuration MUST state whether its inference runs locally, on
-hardware of the household, or remotely, at a provider. Clients MUST show
-which kind a conversation uses, and warn when its data would leave the
-household; the data egress policy (MOD-003) relies on the same statement
-(ADR-0066).
+A tenant admin MUST be able to manage the connections of their tenant through
+the public API, and choose the tenant's default model among the models they
+offer. The instance MUST NOT have models of its own. Credentials of a
+connection MUST be write-only in the API and stored only encrypted (MOD-002,
+ADR-0069).
+
+## MOD-009: Connections reach only public addresses
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** security
+
+A request of the model gateway, or a connection test (MOD-013), MUST connect
+only to public internet addresses, over `https`, checked when the connection
+is made and not only when the address is saved, and MUST NOT follow
+redirects, unless the connection's address was set by a user who is the
+instance admin. A tenant admin can choose the address, and the request leaves
+from the control plane, so anything else would let them reach the
+household's network (ADR-0061, ADR-0069).
+
+## MOD-010: Where inference runs
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+Every connection MUST state whether its inference runs locally, on hardware
+of the household, or remotely, at a provider. Clients MUST show which kind a
+conversation uses, and warn when its data would leave the household; the data
+egress policy (MOD-003) relies on the same statement (ADR-0066, ADR-0069).
 
 ## MOD-007: Live usage reporting
 
@@ -124,3 +125,44 @@ tokens and cost of the run so far. The API MUST provide the total cost per
 message, per conversation, per day and per month for the requesting user.
 
 Rationale: journey J12.
+
+## MOD-011: A connection offers all its models
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+A connection MUST offer every model its provider lists that the agent can
+use, without models being configured one by one. OpenRouter's models MUST be
+ordered by their use in the past week, most used first (ADR-0069).
+
+## MOD-012: The model of a conversation
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+A new conversation MUST start with the tenant's default model. A user MUST
+be able to choose, for a conversation, any model offered by the connections
+of their tenant; the choice applies from the conversation's next run. When
+the conversation's model is no longer offered, a run MUST fail instead of
+using another model (ADR-0069).
+
+## MOD-013: Testing a connection
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+A tenant admin MUST be able to test a connection, saved or not, and the
+server MUST test a connection before saving a new address or new
+credentials, refusing to save it when the test fails. The result MUST give
+each step of the test with its outcome and duration, and for a failure a
+reason from a documented list: the name was not found, the connection was
+refused, the server did not answer in time, its certificate is not trusted,
+the address is not allowed, the server answered with an HTTP error, the
+credentials were rejected, or the answer is not a model list. Technical
+details MUST NOT contain the credentials (ADR-0069).
