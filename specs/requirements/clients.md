@@ -213,7 +213,7 @@ ask only for what the kind of connection needs: for OpenRouter, the API key.
 
 ## UX-017: One design language
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** review
