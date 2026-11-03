@@ -220,3 +220,15 @@ ask only for what the kind of connection needs: for OpenRouter, the API key.
 
 Clients SHOULD follow the design language of ADR-0070: its layout, colors,
 typefaces, icons and sprite, as the reference prototype shows them.
+
+## UX-018: Typing starts where the user expects
+
+- **Status:** accepted
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e
+
+On devices with a keyboard, clients SHOULD put the focus in the field where
+the user starts typing: the username on the sign-in screen, and the message
+box when a new chat opens. On touch screens they SHOULD NOT, since focusing a
+field opens the on-screen keyboard over the screen.
