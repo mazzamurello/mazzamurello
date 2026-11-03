@@ -2,7 +2,7 @@
 
 What every first-party client must offer, on the web and on the phone.
 Clients use only the public API (API-001). Background: ADR-0016, ADR-0039,
-ADR-0040, ADR-0042, and the personas and journeys of the
+ADR-0040, ADR-0042, ADR-0067, ADR-0070, and the personas and journeys of the
 [product description](../product.md).
 
 ## UX-001: Installable web app
@@ -137,6 +137,55 @@ not changed by rewinding.
 
 Rationale: journey J2.
 
+## UX-011: Light and dark themes
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST offer a light and a dark theme, follow the device's setting by
+default, and let the user choose one instead. Both themes MUST meet the
+contrast that UX-007 requires.
+
+## UX-012: The sprite greets the user
+
+- **Status:** accepted
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e
+
+When the user starts a new conversation, clients SHOULD show the sprite
+greeting them with a quote chosen at random from a list of famous quotes in
+the public domain, with its author and work, translated with the rest of the
+interface (ADR-0070).
+
+## UX-013: The sprite shows what a run is doing
+
+- **Status:** accepted
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e, review
+
+While a run is in progress, clients SHOULD show the sprite acting out what
+the assistant is doing: thinking, searching the web, reading, writing files,
+running commands or answering; when the run ends, it stands still. The sprite
+MUST be decorative: the same activity MUST be given as text, and the sprite
+MUST NOT move when the device asks for reduced motion (ADR-0070).
+
+## UX-014: Errors say what to do
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST show errors in a notice that says what went wrong and how to fix
+it, announced to assistive technologies, and SHOULD show the sprite holding a
+sign beside it (ADR-0070).
+
+Rationale: personas P2 and P4.
+
 ## UX-015: Choosing the model
 
 - **Status:** accepted
@@ -160,3 +209,13 @@ When a tenant admin adds or changes a connection, clients MUST show the
 result of its test (MOD-013) step by step, with the reason for a failure and
 how to fix it, and MUST show the technical details on request. Clients MUST
 ask only for what the kind of connection needs: for OpenRouter, the API key.
+
+## UX-017: One design language
+
+- **Status:** accepted
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** review
+
+Clients SHOULD follow the design language of ADR-0070: its layout, colors,
+typefaces, icons and sprite, as the reference prototype shows them.

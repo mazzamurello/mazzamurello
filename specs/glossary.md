@@ -67,6 +67,12 @@ new entry here first (ADR-0005).
 | Device service | The program that runs on a connected device, keeps its connection to the instance and runs its tools (ADR-0063). |
 | Remote MCP server | A service reached over HTTP with the Model Context Protocol, added by a tenant admin, whose tools the assistant can call (ADR-0064). |
 
+## Clients
+
+| Term | Definition |
+|---|---|
+| Sprite | The animated character of the clients: a mazzamurello, the house sprite of folklore the project is named after, who greets the user and acts out what a run is doing (ADR-0070). |
+
 ## Execution
 
 | Term | Definition |
