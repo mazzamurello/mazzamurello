@@ -136,3 +136,27 @@ messages will be deleted, and tell them that files in their workspace are
 not changed by rewinding.
 
 Rationale: journey J2.
+
+## UX-015: Choosing the model
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST let the user choose the model of a conversation (MOD-012) among
+every model of their household's connections, and search them. For each
+model they MUST show its connection, its name, whether it runs locally or
+remotely (MOD-010), and its price when it is paid per token.
+
+## UX-016: Testing a connection in the settings
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+When a tenant admin adds or changes a connection, clients MUST show the
+result of its test (MOD-013) step by step, with the reason for a failure and
+how to fix it, and MUST show the technical details on request. Clients MUST
+ask only for what the kind of connection needs: for OpenRouter, the API key.

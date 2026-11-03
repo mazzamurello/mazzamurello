@@ -4,7 +4,7 @@ The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
 ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0051,
-ADR-0052, ADR-0068.
+ADR-0052, ADR-0068, ADR-0069.
 
 ## Roles
 
@@ -80,7 +80,7 @@ minimum needed and nothing else.
 | `auth_find_session(token_hash bytea)` | `session_id, user_id, tenant_id, role, instance_admin, expires_at, revoked` | Token verification on every request (AUTH-004) |
 | `auth_touch_session(session_id uuid)` | — | Sets `last_used_at` to now and `expires_at` to 90 days later, for a session that is neither revoked nor expired (ADR-0049) |
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006), by the rules below |
-| `instance_default_model_configured()` | `boolean` | Whether the instance has a default model, for `/health` before any sign-in (OPS-002, ADR-0054) |
+| `default_model_configured()` | `boolean` | Whether any tenant has a default model, for `/health` before any sign-in (OPS-002, ADR-0054, ADR-0069) |
 | `retention_expired_runs(days integer)` | `run_id` for every run whose `finished_at` is more than `days` days ago | Retention of durable workflows (TEN-009, ADR-0052): only identifiers, so the worker can delete their workflows across tenants |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
 
@@ -106,7 +106,7 @@ these are the only policies for that role:
 | `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session`, `revoke_sessions_of_disabled_user` |
 | `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
 | `runs` | `SELECT` | `retention_expired_runs` |
-| `instance_models` | `SELECT` | `instance_default_model_configured` |
+| `connections` | `SELECT` | `default_model_configured` |
 
 Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
 by running services, so they open these tables only to the code of the
@@ -219,6 +219,7 @@ No policies for `mzm_app`: accessed only through
 | `usage` | jsonb | Pydantic AI conversation usage |
 | `pending_approvals` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending (ADR-0033), else null |
 | `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
+| `connection_id`, `model` | uuid, text | the model of the conversation (MOD-012): set from the tenant's default model on creation, or chosen by its user; both null when the tenant had no default model; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`), so a removed connection leaves `model` without a connection and runs fail |
 | `archived_at` | timestamptz | null when active |
 | `created_at` | timestamptz | not null |
 | `updated_at` | timestamptz | not null; updated when a run adds messages |
@@ -252,6 +253,7 @@ Primary key (`run_id`, `seq`).
 | `kind` | text | `message` (a new turn) or `resume` (answers to an interrupt, ADR-0033) |
 | `status` | text | `queued`, `running`, `interrupted`, `completed`, `failed`, `cancelled` |
 | `error_code` | text | stable error code when failed (API-007) |
+| `connection_id` | uuid | the connection that answered; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`) |
 | `model_provider`, `model_name` | text | set when known (MOD-005) |
 | `last_event_seq` | integer | sequence number of the last event written to the run's stream |
 | `created_at`, `started_at`, `finished_at` | timestamptz | |
@@ -278,56 +280,62 @@ It never contains content.
 | `conversation_id` | uuid | null for requests outside a conversation; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete set null (`conversation_id`) |
 | `run_id` | uuid | null outside a run; (`tenant_id`, `owner_id`, `run_id`) references `runs` on delete set null (`run_id`) |
 | `purpose` | text | `run`, `title`, `compaction`, `speech` or `memory` |
-| `provider`, `model` | text | not null; the host of the model configuration's endpoint and its model name (MOD-005) |
+| `provider`, `model` | text | not null; the host of the connection's address and the model's name (MOD-005) |
 | `input_tokens`, `cached_input_tokens`, `cache_write_tokens`, `output_tokens` | bigint | not null, default 0 |
 | `cost` | numeric(20, 10) | null when the price is unknown |
 | `currency` | text | ISO 4217 code, such as `USD`; null when `cost` is null |
-| `price_source` | text | `provider`, `admin`, `catalog`, `free` or `unknown` |
+| `price_source` | text | `provider`, `catalog`, `free` or `unknown`; `admin` in entries from before ADR-0069 |
 | `created_at` | timestamptz | not null; indexed with `owner_id` |
 
 Totals per message, conversation, day and month are computed from these rows.
 Per-user totals for tenant admins arrive in phase 1, through a function that
 returns only sums per user.
 
-### `instance_models`
+### `connections`
 
-Model configurations of the instance, available to every tenant (MOD-008,
-ADR-0051). Like `tenants`, this is configuration of the instance, not data of
-a tenant, and has no `tenant_id`.
+A household's access to one provider (MOD-008, ADR-0069).
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid | primary key |
-| `name` | text | not null, unique; shown to users |
-| `api` | text | not null, default `openai`; `openai` or `openrouter` (ADR-0057) |
-| `base_url` | text | not null; the endpoint of the API |
-| `model` | text | not null; the model name the endpoint expects |
-| `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `MZM_SECRET_KEY` (ADR-0051); null when the endpoint needs no key |
-| `paid` | boolean | not null; whether the provider charges per token |
-| `input_price`, `cached_input_price`, `output_price` | numeric(20, 10) | price per million tokens set by the admin, or null |
-| `currency` | text | ISO 4217 code; not null exactly when a price is set |
-| `is_default` | boolean | not null, default false; at most one row is the default |
+| `tenant_id` | uuid | not null, references `tenants` |
+| `name` | text | not null; unique within the tenant |
+| `kind` | text | not null; `openrouter` or `openai` |
+| `base_url` | text | not null; the address of the API |
+| `location` | text | not null; `local` or `remote`, always `remote` for `openrouter` (MOD-010) |
+| `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `MZM_SECRET_KEY` (ADR-0051); null when the server needs no key |
+| `private_network` | boolean | not null, default false; true when `base_url` was set by a user who is the instance admin (MOD-009) |
+| `default_model` | text | the model of this connection that new conversations start with; at most one connection per tenant has one (MOD-012) |
+| `models_refreshed_at` | timestamptz | when its models were last listed |
 | `created_at`, `updated_at` | timestamptz | not null |
 
-Policies: `SELECT` when `app_user_id()` is not null; `INSERT`, `UPDATE` and
-`DELETE` when `app_is_instance_admin()`.
+Policies: `SELECT` where `tenant_id = app_tenant_id()`, since every user's
+runs and model list need it; `INSERT`, `UPDATE` and `DELETE` where
+`tenant_id = app_tenant_id()` and `app_is_tenant_admin()`.
 
-### `tenant_models`
+A trigger keeps `private_network` honest: on `INSERT` it may be true only when
+`app_is_instance_admin()`; on `UPDATE` it may become or stay true with a new
+`base_url` only when `app_is_instance_admin()`, and otherwise a new
+`base_url` sets it to false.
 
-Model configurations of one tenant (MOD-008, ADR-0051): the columns of
-`instance_models`, plus:
+### `connection_models`
+
+The models a connection offers, as last listed by its provider (MOD-011,
+ADR-0069).
 
 | Column | Type | Notes |
 |---|---|---|
-| `tenant_id` | uuid | not null, references `tenants` |
+| `tenant_id` | uuid | not null |
+| `connection_id` | uuid | not null; (`tenant_id`, `connection_id`) references `connections` on delete cascade |
+| `model` | text | not null; the provider's name for the model |
+| `name` | text | not null; the name to show |
+| `position` | integer | not null; the provider's order, from 1: for OpenRouter, most used in the past week first |
+| `context_window` | integer | null when unknown |
+| `input_price`, `cached_input_price`, `output_price` | numeric(20, 10) | price per million tokens, or null |
+| `currency` | text | ISO 4217 code; not null exactly when a price is set |
 
-`name` is unique within the tenant, and at most one row per tenant is the
-default. Policies: `SELECT` where `tenant_id = app_tenant_id()`; `INSERT`,
-`UPDATE` and `DELETE` where `tenant_id = app_tenant_id()` and
-`app_is_tenant_admin()`.
-
-A run uses the default model of its tenant, or else the default instance
-model (ADR-0051).
+Primary key (`connection_id`, `model`). Policies as for `connections`;
+listing the models again replaces the rows of the connection.
 
 ### Policies for private tables
 
@@ -357,8 +365,8 @@ keys, not by privileges of `mzm_app`.
 | `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |
 | `runs` | `SELECT`, `INSERT`, `UPDATE` |
 | `usage_ledger` | `SELECT`, `INSERT`: entries never change (ADR-0042) |
-| `instance_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
-| `tenant_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `connections` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `connection_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | Helper functions | `EXECUTE` on `app_tenant_id()`, `app_user_id()`, `app_is_tenant_admin()`, `app_is_instance_admin()` |
 | Pre-authentication functions | `EXECUTE` on every function of that section except `bootstrap_instance` |
 
@@ -402,6 +410,12 @@ Migrations that change existing rows, besides the schema:
   from the first run to the conversation's active run are deleted, with
   their messages and the DBOS workflows of those runs; ledger entries are
   detached as on rewinding.
+- **Connections replace model configurations (ADR-0069).** Every tenant model
+  becomes a connection of its tenant, and every instance model a connection
+  of every tenant with `private_network` true; configurations of one tenant
+  with the same kind, address and key become one connection. A tenant's
+  default model is its default tenant model, or else the instance's default.
+  `instance_models` and `tenant_models` are then dropped.
 
 ## Properties verified by design tests
 
@@ -422,3 +436,5 @@ Migrations that change existing rows, besides the schema:
   every foreign key between private tables also includes the owner column.
 - Users cannot change their own `role` or `disabled_at`, and only instance
   admins create instance admins (AUTH-008).
+- Only a user who is the instance admin can set a connection's address while
+  keeping `private_network` true (MOD-009).

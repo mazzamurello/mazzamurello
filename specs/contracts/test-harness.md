@@ -86,12 +86,14 @@ database as superuser, with password hashes in the Argon2id encoded format
 
 Tests never reach a real model. The test suite serves its own model: an
 OpenAI-compatible chat completions endpoint on `127.0.0.1`, whose answers
-the tests script, and configures it through the API as an instance model
-(ADR-0051). Endpoints on the loopback address are allowed only for instance
-models, so tests use instance models for runs.
+the tests script, and adds it through the API as a connection of the test's
+tenant (ADR-0069), set by a user who is the instance admin, since only such a
+connection may use the loopback address. It lists its models at `/models`,
+as OpenAI-compatible servers do.
 
-The served model also answers as OpenRouter's chat completions API does, for
-configurations whose `api` is `openrouter` (ADR-0057): keep-alive comments,
+The served model also answers as OpenRouter's API does, for connections of
+kind `openrouter` whose address points to it (ADR-0057): its model list with
+`supported_parameters` and `sort`, the key check at `/key`, keep-alive comments,
 a final usage chunk that repeats the finish reason and reports `cost`, and
 errors before and during a stream, as OpenRouter's documentation describes
 them. It records the headers of each request, so tests can check what the

@@ -1,6 +1,6 @@
 # ADR-0051: Model configurations managed through the API
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0069
 - **Date:** 2026-10-31
 - **Deciders:** @tapionx
 - **Related:** ADR-0011, ADR-0027, ADR-0036, ADR-0042, MOD-001, MOD-002, MOD-006, MOD-008
