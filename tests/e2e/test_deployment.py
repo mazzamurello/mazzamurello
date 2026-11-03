@@ -213,21 +213,23 @@ def test_health_reports_the_platform_and_a_missing_model(deployment: Deployment)
     assert checks["model_gateway"] == "degraded"
 
 
-@pytest.mark.spec("OPS-001", "AGT-011", "MOD-008")
+@pytest.mark.spec("OPS-001", "AGT-011", "MOD-008", "MOD-009")
 def test_a_conversation_runs_a_command_in_the_sandbox(deployment: Deployment, reachable_model: ModelServer) -> None:
     headers = {"Authorization": f"Bearer {_token(deployment)}"}
     with httpx.Client(base_url=deployment.base_url, headers=headers, timeout=120) as client:
-        model = client.post(
-            "/instance/models",
+        # The first administrator is also the instance admin, so the connection may use a private address.
+        connection = client.post(
+            "/tenant/connections",
             json={
                 "name": "Served by the tests",
+                "kind": "openai",
                 "base_url": reachable_model.url,
-                "model": "test-model",
-                "paid": False,
-                "is_default": True,
+                "location": "local",
             },
         )
-        assert model.status_code == 201, model.text
+        assert connection.status_code == 201, connection.text
+        default = {"connection_id": connection.json()["id"], "model": "test-model"}
+        assert client.put("/tenant/default-model", json=default).status_code == 200
         assert client.get("/health").json()["status"] == "ok"
         conversation = client.post("/conversations", json={"title": "First conversation"}).json()
         payload = {

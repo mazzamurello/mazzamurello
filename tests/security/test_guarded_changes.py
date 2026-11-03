@@ -227,3 +227,65 @@ def test_own_rows_cannot_reference_another_users_rows(database: Database, world:
         assert _applies(conn, *attachment.statement(alice, alice))
         # The victim is in the same tenant, so only the owner tells the rows apart.
         assert not _applies(conn, *attachment.statement(alice, world.anna))
+
+
+def _new_connection(conn: psycopg.Connection, tenant_id: uuid.UUID, *, private_network: bool) -> uuid.UUID | None:
+    """Add a connection; return its ID if the row was stored with the given `private_network`."""
+    connection_id = uuid7()
+    _applies(
+        conn,
+        "INSERT INTO connections (id, tenant_id, name, kind, base_url, location, private_network, created_at,"
+        " updated_at) VALUES (%s, %s, %s, 'openai', 'http://192.168.1.10:11434/v1', 'local', %s, now(), now())",
+        (connection_id, tenant_id, f"Server {connection_id}", private_network),
+    )
+    row = conn.execute("SELECT private_network FROM connections WHERE id = %s", (connection_id,)).fetchone()
+    return connection_id if row == (private_network,) else None
+
+
+def _private_network(conn: psycopg.Connection, connection_id: uuid.UUID) -> bool:
+    row = conn.execute("SELECT private_network FROM connections WHERE id = %s", (connection_id,)).fetchone()
+    assert row is not None
+    return bool(row[0])
+
+
+@pytest.mark.spec("MOD-009")
+def test_only_instance_admins_mark_a_connection_private(database: Database, world: World) -> None:
+    with app_transaction(database, _tenant_admin(world)) as conn:
+        assert _new_connection(conn, world.tenant_a, private_network=False)
+        assert not _new_connection(conn, world.tenant_a, private_network=True)
+    with app_transaction(database, _tenant_admin(world, instance_admin=True)) as conn:
+        assert _new_connection(conn, world.tenant_a, private_network=True)
+
+
+def _act_as(conn: psycopg.Connection, context: Context) -> None:
+    """Change the request context within the current transaction."""
+    conn.execute(
+        "SELECT set_config('app.user_id', %s, true), set_config('app.role', %s, true),"
+        " set_config('app.instance_admin', %s, true)",
+        (str(context.user_id), context.role, str(context.instance_admin).lower()),
+    )
+
+
+@pytest.mark.spec("MOD-009")
+def test_a_new_address_from_another_admin_clears_private_network(database: Database, world: World) -> None:
+    with app_transaction(database, _tenant_admin(world, instance_admin=True)) as conn:
+        connection_id = _new_connection(conn, world.tenant_a, private_network=True)
+        assert connection_id
+        _act_as(conn, _tenant_admin(world))
+        # Renaming keeps it; a new address does not.
+        conn.execute("UPDATE connections SET name = 'Renamed' WHERE id = %s", (connection_id,))
+        assert _private_network(conn, connection_id)
+        _applies(
+            conn,
+            "UPDATE connections SET base_url = 'http://192.168.1.11:11434/v1', private_network = true WHERE id = %s",
+            (connection_id,),
+        )
+        # Refused, or stored as not private: never a new private address.
+        row = conn.execute("SELECT base_url, private_network FROM connections WHERE id = %s", (connection_id,))
+        assert row.fetchone() != ("http://192.168.1.11:11434/v1", True)
+        _act_as(conn, _tenant_admin(world, instance_admin=True))
+        conn.execute(
+            "UPDATE connections SET base_url = 'http://192.168.1.12:11434/v1', private_network = true WHERE id = %s",
+            (connection_id,),
+        )
+        assert _private_network(conn, connection_id)

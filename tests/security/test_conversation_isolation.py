@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from psycopg import sql
 
 from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
 from tests.support.database import Context, Database, app_transaction
@@ -23,6 +24,7 @@ class Victim:
 @pytest.fixture
 def victim(database: Database, server: Server, default_model: HarnessModel) -> Victim:
     owner = create_account(database, create_tenant(database))
+    default_model.connect(owner.tenant_id)
     token = login(server, owner)
     conversation = create_conversation(server, token, "Private")
     run_id, _ = start_run(server, token, conversation["id"], "private words")
@@ -93,23 +95,24 @@ def test_runs_cannot_be_started_under_another_conversation_id(
 
 
 @pytest.mark.spec("TEN-006", "MOD-008")
-def test_model_configurations_need_a_request_context(database: Database, server: Server, victim: Victim) -> None:
+@pytest.mark.parametrize("table", ["connections", "connection_models"])
+def test_connections_need_a_request_context(
+    database: Database, server: Server, harness_model: HarnessModel, table: str
+) -> None:
+    harness_model.connect(create_tenant(database))
     with app_transaction(database, None) as conn:
-        assert conn.execute("SELECT id FROM instance_models").fetchall() == []
-        assert conn.execute("SELECT id FROM tenant_models").fetchall() == []
+        assert conn.execute(sql.SQL("SELECT tenant_id FROM {}").format(sql.Identifier(table))).fetchall() == []
     with database.superuser() as conn:
-        assert conn.execute("SELECT 1 FROM instance_models LIMIT 1").fetchall()
+        assert conn.execute(sql.SQL("SELECT 1 FROM {} LIMIT 1").format(sql.Identifier(table))).fetchall()
 
 
 @pytest.mark.spec("TEN-006", "MOD-008")
-def test_tenant_models_are_visible_only_in_their_tenant(database: Database, server: Server) -> None:
-    owner = create_account(database, create_tenant(database), "tenant_admin")
-    with server.client(login(server, owner)) as client:
-        created = client.post(
-            "/tenant/models",
-            json={"name": "Ours", "base_url": "https://1.1.1.1/v1", "model": "m", "paid": False},
-        )
-    assert created.status_code == 201, created.text
+def test_connections_are_visible_only_in_their_tenant(
+    database: Database, server: Server, harness_model: HarnessModel
+) -> None:
+    owner = create_tenant(database)
+    harness_model.connect(owner)
     stranger = create_account(database, create_tenant(database), "tenant_admin", instance_admin=True)
     with app_transaction(database, Context(stranger.tenant_id, stranger.id, "tenant_admin", True)) as conn:
-        assert conn.execute("SELECT id FROM tenant_models WHERE tenant_id = %s", (owner.tenant_id,)).fetchall() == []
+        assert conn.execute("SELECT id FROM connections WHERE tenant_id = %s", (owner,)).fetchall() == []
+        assert conn.execute("SELECT model FROM connection_models WHERE tenant_id = %s", (owner,)).fetchall() == []

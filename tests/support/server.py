@@ -7,6 +7,7 @@ processes, configured by environment variables, the API called over HTTP.
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 import secrets
 import signal
@@ -18,6 +19,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -90,6 +92,14 @@ class Server:
     worker: Process = field(repr=False)
     # The API's environment, for tests that start another API process like it.
     api_environment: Mapping[str, str] = field(repr=False, default_factory=dict[str, str])
+    # Where the API and the worker record their outbound connections (OBS-006).
+    outbound_log: Path | None = None
+
+    def outbound(self) -> list[dict[str, Any]]:
+        """Every connection and name lookup the API and the worker made so far."""
+        if self.outbound_log is None or not self.outbound_log.exists():
+            return []
+        return [json.loads(line) for line in self.outbound_log.read_text().splitlines() if line]
 
     def client(self, token: str | None = None, source: str | None = None) -> httpx.Client:
         """An HTTP client for the API, authenticated by `token`, from source address `source`."""
@@ -169,6 +179,14 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
     port = _free_port()
     # Only the variables of the harness: the server refuses unknown MZM_* ones.
     base = {name: value for name, value in os.environ.items() if not name.startswith("MZM_")}
+    # Record outbound connections (tests/support/outbound/sitecustomize.py).
+    outbound_log = Path(tempfile.mkstemp(prefix="mzm-outbound-", suffix=".jsonl")[1])
+    config.add_cleanup(lambda: outbound_log.unlink(missing_ok=True))
+    hook = str(ROOT / "tests" / "support" / "outbound")
+    base |= {
+        "PYTHONPATH": os.pathsep.join(filter(None, [hook, base.get("PYTHONPATH")])),
+        "TEST_OUTBOUND_LOG": str(outbound_log),
+    }
     driver_url, driver_token = sandbox_driver
     shared = {
         "MZM_DATABASE_URL": database.app_url,
@@ -186,7 +204,13 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
         config.add_cleanup(api.close)
         worker = Process("worker", base | shared, command="worker")
         config.add_cleanup(worker.close)
-        server = Server(base_url=f"http://127.0.0.1:{port}/v1", api=api, worker=worker, api_environment=api_environment)
+        server = Server(
+            base_url=f"http://127.0.0.1:{port}/v1",
+            api=api,
+            worker=worker,
+            api_environment=api_environment,
+            outbound_log=outbound_log,
+        )
         _wait_until_ready(api, worker, server.base_url)
     except BaseException as exc:
         config.stash[_SERVER] = exc
