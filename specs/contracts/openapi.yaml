@@ -370,7 +370,7 @@ paths:
         name; within one, in the provider's order: for OpenRouter, most used
         in the past week first (MOD-011). Lists older than a day are
         refreshed in the background (ADR-0069).
-      x-requirements: [MOD-010, MOD-011, MOD-012, UX-015, TEN-006]
+      x-requirements: [MOD-010, MOD-011, MOD-012, MOD-014, UX-015, TEN-006]
       responses:
         "200":
           description: The models of the tenant.
@@ -1066,7 +1066,7 @@ components:
     ModelOption:
       type: object
       description: One model a connection of the tenant offers (MOD-011, UX-015).
-      required: [connection_id, connection_name, model, name, location, prices, context_window]
+      required: [connection_id, connection_name, model, name, location, prices, context_window, tools]
       properties:
         connection_id: { $ref: "#/components/schemas/Id" }
         connection_name: { type: string }
@@ -1077,6 +1077,9 @@ components:
           description: Prices per million tokens when the model is paid per token and they are known, else `null`.
           oneOf: [{ $ref: "#/components/schemas/ModelPrices" }, { type: "null" }]
         context_window: { type: [integer, "null"], minimum: 1 }
+        tools:
+          type: [boolean, "null"]
+          description: Whether the model can call tools; `null` when the provider does not say. A model that cannot runs without tools (MOD-014).
 
     Conversation:
       type: object

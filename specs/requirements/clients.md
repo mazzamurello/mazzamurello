@@ -196,7 +196,8 @@ Rationale: personas P2 and P4.
 Clients MUST let the user choose the model of a conversation (MOD-012) among
 every model of their household's connections, and search them. For each
 model they MUST show its connection, its name, whether it runs locally or
-remotely (MOD-010), and its price when it is paid per token.
+remotely (MOD-010), its price when it is paid per token, and whether it can
+only chat, without tools (MOD-014).
 
 ## UX-016: Testing a connection in the settings
 

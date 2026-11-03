@@ -45,9 +45,8 @@ forking (CNV-005) already describe exactly that.
 5. **Forking keeps both ways.** To try another way without losing the current
    one, the user forks the conversation at a turn (CNV-005) and continues in
    the fork.
-6. **Existing versions are removed.** A migration deletes, in every
-   conversation, the runs that are not on its active path: no client can
-   show them any more.
+6. **No conversion of existing versions.** Mazzamurello has not been
+   released, so the schema is rewritten rather than migrated (ADR-0071).
 
 ## Consequences
 
