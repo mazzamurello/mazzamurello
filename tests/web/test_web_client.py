@@ -7,13 +7,16 @@ The model the tests serve answers `Echo: <message>`, and scripts such as
 from __future__ import annotations
 
 import re
+import socket
 from uuid import uuid4
 
 import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.support.accounts import Account
-from tests.support.fixtures import HarnessModel
+from tests.support.fixtures import HarnessModel, HouseholdModel
+from tests.support.model import SERVER_MODELS
+from tests.support.server import Server
 from tests.web.conftest import accessibility_violations, sign_in
 
 
@@ -91,47 +94,122 @@ def test_a_run_can_be_stopped(page: Page, member: Account, default_model: Harnes
     expect(page.get_by_role("button", name="Send")).to_be_visible()
 
 
-@pytest.mark.spec("UX-010", "UX-007")
-def test_versions_and_going_back(page: Page, member: Account, default_model: HarnessModel) -> None:
+@pytest.mark.spec("CNV-016", "UX-010", "UX-007")
+def test_editing_a_message_asks_first_and_replaces_what_followed(
+    page: Page, member: Account, default_model: HarnessModel
+) -> None:
     sign_in(page, member)
     mark = uuid4().hex[:8]
     _send(page, f"first {mark}")
     _answer(page, f"Echo: first {mark}")
     _send(page, f"second {mark}")
     _answer(page, f"Echo: second {mark}")
-    # Editing the first message makes a second version of it.
     page.get_by_role("button", name="Edit").first.click()
     page.get_by_label("Edit your message").fill(f"first, edited {mark}")
     page.get_by_role("button", name="Send").first.click()
+    # Sending asks first: what will be deleted, and that files stay (UX-010).
+    dialog = page.get_by_role("alertdialog")
+    expect(dialog).to_contain_text("3 messages")
+    expect(dialog).to_contain_text("Files in your workspace")
+    assert accessibility_violations(page) == []
+    dialog.get_by_role("button", name="Delete and send").click()
     _answer(page, f"Echo: first, edited {mark}")
-    expect(page.get_by_text("2 / 2")).to_be_visible()
     expect(page.get_by_role("main")).not_to_contain_text(f"second {mark}")
-    # The first version comes back with the turn that followed it.
-    page.get_by_role("button", name="Previous version").click()
-    _answer(page, f"Echo: second {mark}")
-    expect(page.get_by_text("1 / 2")).to_be_visible()
-    # Going back says that the workspace's files stay (UX-010).
-    page.get_by_role("button", name="Go back to here").click()
-    dialog = page.get_by_role("dialog")
-    expect(dialog).to_contain_text("Files in your workspace are not changed")
+    expect(page.get_by_text("1 / 2")).to_have_count(0)
+    page.reload()
+    _answer(page, f"Echo: first, edited {mark}")
+    expect(page.get_by_role("main")).not_to_contain_text(f"Echo: first {mark}")
+    (request,) = default_model.endpoint.requests_with(f"first, edited {mark}")
+    assert request.user_texts() == [f"first, edited {mark}"]
+
+
+@pytest.mark.spec("CNV-016")
+def test_cancelling_the_confirmation_keeps_everything(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:8]
+    _send(page, f"keep {mark}")
+    _answer(page, f"Echo: keep {mark}")
+    page.get_by_role("button", name="Edit").first.click()
+    page.get_by_label("Edit your message").fill(f"changed {mark}")
+    page.get_by_role("button", name="Send").first.click()
+    page.get_by_role("alertdialog").get_by_role("button", name="Cancel").click()
+    page.reload()
+    _answer(page, f"Echo: keep {mark}")
+
+
+def _add_openrouter(server: Server, household: HouseholdModel) -> None:
+    with server.client(household.admin_token) as client:
+        response = client.post(
+            "/tenant/connections",
+            json={
+                "name": "OpenRouter",
+                "kind": "openrouter",
+                "base_url": household.endpoint.openrouter_url,
+                "api_key": f"sk-or-v1-{uuid4().hex}",
+            },
+        )
+    assert response.status_code == 201, response.text
+
+
+@pytest.mark.spec("UX-015", "MOD-010", "MOD-012", "MOD-014")
+def test_choosing_the_model_of_a_conversation(
+    page: Page, server: Server, member: Account, default_model: HarnessModel
+) -> None:
+    household = default_model.connect(member.tenant_id)
+    _add_openrouter(server, household)
+    sign_in(page, member)
+    page.get_by_role("button", name=re.compile("test-model")).click()
+    picker = page.get_by_role("dialog", name="Choose a model")
+    expect(picker).to_be_visible()
+    popular = picker.get_by_role("button", name=re.compile("Test: Popular"))
+    expect(popular).to_contain_text("OpenRouter")
+    expect(popular).to_contain_text("0.27")
+    expect(picker.get_by_role("button", name=re.compile("Test: Chat only"))).to_contain_text(re.compile("chat", re.I))
+    expect(picker.get_by_role("button", name=re.compile("test-model"))).to_contain_text("Test server")
     assert accessibility_violations(page) == []
-    dialog.get_by_role("button", name="Go back").click()
-    expect(page.get_by_role("main")).not_to_contain_text(f"second {mark}")
+    picker.get_by_role("searchbox").fill("second")
+    expect(picker.get_by_role("button", name=re.compile("Test: Second"))).to_be_visible()
+    expect(picker.get_by_role("button", name=re.compile("Test: Popular"))).to_have_count(0)
+    picker.get_by_role("searchbox").fill("")
+    picker.get_by_role("button", name=re.compile("Test: Popular")).click()
+    # The data of this conversation now leaves the household, and the client says so (MOD-010).
+    expect(page.get_by_role("button", name=re.compile("Test: Popular"))).to_be_visible()
+    expect(page.get_by_role("main")).to_contain_text("OpenRouter")
+    mark = uuid4().hex[:8]
+    _send(page, f"through openrouter {mark}")
+    _answer(page, f"Echo: through openrouter {mark}")
+    (request,) = household.endpoint.requests_with(f"through openrouter {mark}")
+    assert (request.openrouter, request.body["model"]) == (True, "test/popular")
 
 
-@pytest.mark.spec("UX-007")
-def test_model_settings(page: Page, admin: Account, default_model: HarnessModel) -> None:
+@pytest.mark.spec("UX-016", "MOD-013", "UX-007")
+def test_adding_a_connection_shows_its_test(page: Page, admin: Account, default_model: HarnessModel) -> None:
     sign_in(page, admin)
-    page.get_by_role("link", name="Model settings").click()
-    expect(page.get_by_role("heading", name="Models for the whole instance")).to_be_visible()
-    name = f"Local model {uuid4().hex[:6]}"
-    page.get_by_role("button", name="Add a model").first.click()
-    page.get_by_label("Name", exact=True).fill(name)
-    page.get_by_label("Model name").fill("llama3.2")
-    page.get_by_label("Endpoint").fill("http://192.168.1.10:11434/v1")
-    page.get_by_role("button", name="Save").click()
-    expect(page.get_by_text(name)).to_be_visible()
+    page.get_by_role("link", name="Settings").click()
+    page.get_by_role("button", name="Add a connection").click()
+    dialog = page.get_by_role("dialog")
+    # OpenRouter needs only its key.
+    dialog.get_by_role("button", name="OpenRouter").click()
+    expect(dialog.get_by_label("API key")).to_be_visible()
+    expect(dialog.get_by_label("Address")).to_have_count(0)
+    dialog.get_by_role("button", name="Your own server").click()
+    name = f"Gaming PC {uuid4().hex[:6]}"
+    dialog.get_by_label("Name", exact=True).fill(name)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed = probe.getsockname()[1]
+    dialog.get_by_label("Address").fill(f"http://127.0.0.1:{closed}/v1")
+    dialog.get_by_role("button", name="Test connection").click()
+    result = dialog.get_by_role("alert")
+    expect(result).to_contain_text("Connect", timeout=30_000)
+    expect(result).to_contain_text(str(closed))
+    result.get_by_text("Technical details").click()
+    expect(result).to_contain_text(re.compile("refused", re.I))
     assert accessibility_violations(page) == []
+    dialog.get_by_label("Address").fill(default_model.endpoint.url)
+    dialog.get_by_role("button", name="Connect").click()
+    expect(page.get_by_text(name)).to_be_visible(timeout=30_000)
+    expect(page.get_by_role("main")).to_contain_text(f"{len(SERVER_MODELS)} models")
 
 
 @pytest.mark.spec("UX-001")
@@ -161,3 +239,81 @@ def test_on_a_phone_the_list_opens_over_the_conversation(
         expect(page.get_by_role("link", name="New chat")).to_be_hidden()
     finally:
         context.close()
+
+
+@pytest.mark.spec("UX-011", "UX-007")
+def test_light_and_dark_themes(browser: Browser, web_origin: str, member: Account) -> None:
+    context = browser.new_context(base_url=web_origin, color_scheme="dark")
+    page = context.new_page()
+    try:
+        sign_in(page, member)
+        dark = page.evaluate("getComputedStyle(document.body).backgroundColor")
+        assert _luminance(dark) < 0.2, f"the device asks for dark, the app is {dark}"
+        assert accessibility_violations(page) == []
+        page.get_by_role("link", name="Settings").click()
+        page.get_by_role("button", name="Appearance").click()
+        page.get_by_role("button", name="Light").click()
+        page.reload()
+        light = page.evaluate("getComputedStyle(document.body).backgroundColor")
+        assert _luminance(light) > 0.8, f"the user chose light, the app is {light}"
+        assert accessibility_violations(page) == []
+    finally:
+        context.close()
+
+
+def _luminance(color: str) -> float:
+    red, green, blue = (int(value) / 255 for value in re.findall(r"\d+", color)[:3])
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+@pytest.mark.spec("UX-012")
+def test_the_sprite_greets_with_a_quote(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    sprite = page.locator("[data-sprite-pose]").first
+    expect(sprite).to_have_attribute("data-sprite-pose", "greeting")
+    expect(sprite).to_have_attribute("aria-hidden", "true")
+    quote = page.get_by_role("main").locator("blockquote")
+    expect(quote).to_be_visible()
+    assert len(quote.inner_text().strip()) > 10
+    expect(page.get_by_role("main").locator("figcaption")).not_to_be_empty()
+
+
+@pytest.mark.spec("UX-013")
+def test_the_sprite_acts_out_the_run_and_then_waits(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    _send(page, "run:sleep 4; echo acted")
+    sprite = page.get_by_role("main").locator("[data-sprite-pose]").last
+    expect(sprite).to_have_attribute("data-sprite-pose", "running", timeout=30_000)
+    # The same activity is given as text.
+    expect(page.get_by_role("status")).to_contain_text(re.compile("command", re.I))
+    _answer(page, "acted")
+    expect(sprite).to_have_attribute("data-sprite-pose", "waiting", timeout=30_000)
+
+
+@pytest.mark.spec("UX-013", "UX-007")
+def test_the_sprite_keeps_still_with_reduced_motion(browser: Browser, web_origin: str, member: Account) -> None:
+    context = browser.new_context(base_url=web_origin, reduced_motion="reduce")
+    page = context.new_page()
+    try:
+        sign_in(page, member)
+        expect(page.locator("[data-sprite-pose]").first).to_be_visible()
+        moving = page.evaluate(
+            "[...document.querySelectorAll('[data-sprite-pose], [data-sprite-pose] *')]"
+            ".some((element) => element.getAnimations().length > 0)"
+        )
+        assert moving is False
+    finally:
+        context.close()
+
+
+@pytest.mark.spec("UX-014", "UX-007")
+def test_errors_say_what_happened_and_what_to_do(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    _send(page, "fail")
+    notice = page.get_by_role("alert")
+    expect(notice).to_be_visible(timeout=30_000)
+    text = notice.inner_text()
+    assert len(text.strip()) > 30, text
+    assert "model.request_failed" not in text, "the notice shows an error code instead of words"
+    expect(notice.locator("[data-sprite-pose]")).to_have_attribute("data-sprite-pose", "error")
+    assert accessibility_violations(page) == []

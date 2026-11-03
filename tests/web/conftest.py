@@ -2,6 +2,12 @@
 
 The app is built from src/web once per session and served by an API process
 next to the session's server; Chromium is driven with Playwright.
+
+Tests find elements by their role and accessible name. The sprite is hidden
+from assistive technologies (UX-013), so tests find it by its
+`data-sprite-pose` attribute, which names the pose it shows: `greeting`,
+`thinking`, `searching`, `reading`, `writing`, `running`, `answering`,
+`waiting` or `error` (ADR-0070).
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from playwright.sync_api import Browser, Page, Playwright, sync_playwright
 
 from tests.support.accounts import Account, create_account, create_tenant
 from tests.support.database import ROOT, Database
+from tests.support.fixtures import HarnessModel
 from tests.support.fixtures import database as database
 from tests.support.fixtures import default_model as default_model
 from tests.support.fixtures import harness_model as harness_model
@@ -77,13 +84,19 @@ def page(browser: Browser, web_origin: str) -> Iterator[Page]:
 
 
 @pytest.fixture
-def member(database: Database) -> Account:
-    return create_account(database, create_tenant(database))
+def member(database: Database, default_model: HarnessModel) -> Account:
+    """A member of a household whose default model is the harness model."""
+    account = create_account(database, create_tenant(database))
+    default_model.connect(account.tenant_id)
+    return account
 
 
 @pytest.fixture
-def admin(database: Database) -> Account:
-    return create_account(database, create_tenant(database), "tenant_admin", instance_admin=True)
+def admin(database: Database, default_model: HarnessModel) -> Account:
+    """A tenant admin, also the instance admin, of a household whose default model is the harness model."""
+    account = create_account(database, create_tenant(database), "tenant_admin", instance_admin=True)
+    default_model.connect(account.tenant_id)
+    return account
 
 
 def sign_in(page: Page, account: Account) -> None:

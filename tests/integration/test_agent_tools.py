@@ -23,6 +23,7 @@ def account(database: Database) -> Account:
 
 @pytest.fixture
 def token(server: Server, account: Account, default_model: HarnessModel) -> str:
+    default_model.connect(account.tenant_id)
     return login(server, account)
 
 
