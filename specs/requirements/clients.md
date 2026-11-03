@@ -125,7 +125,7 @@ Rationale: journey J7.
 
 ## UX-010: Rewinding asks first and says the files stay
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -139,7 +139,7 @@ Rationale: journey J2.
 
 ## UX-011: Light and dark themes
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -150,7 +150,7 @@ contrast that UX-007 requires.
 
 ## UX-012: The sprite greets the user
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
@@ -162,7 +162,7 @@ interface (ADR-0070).
 
 ## UX-013: The sprite shows what a run is doing
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e, review
@@ -175,7 +175,7 @@ MUST NOT move when the device asks for reduced motion (ADR-0070).
 
 ## UX-014: Errors say what to do
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -188,7 +188,7 @@ Rationale: personas P2 and P4.
 
 ## UX-015: Choosing the model
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -201,7 +201,7 @@ only chat, without tools (MOD-014).
 
 ## UX-016: Testing a connection in the settings
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e

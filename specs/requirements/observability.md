@@ -56,7 +56,7 @@ instance admin, with a default of at most 14 days.
 
 ## OBS-006: Outbound requests only to declared destinations
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security, design
