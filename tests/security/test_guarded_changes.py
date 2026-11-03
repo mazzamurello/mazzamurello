@@ -165,10 +165,11 @@ class Attachment:
 
 
 def _run(actor: User, target: User) -> tuple[LiteralString, tuple[Any, ...]]:
+    # The conversation already has its first run, so a new one continues it (ADR-0068).
     return (
         "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status, created_at)"
-        " VALUES (%s, %s, %s, %s, NULL, 'message', 'completed', now())",
-        (uuid7(), actor.tenant_id, actor.id, target.conversation_id),
+        " VALUES (%s, %s, %s, %s, %s, 'message', 'completed', now())",
+        (uuid7(), actor.tenant_id, actor.id, target.conversation_id, actor.run_id),
     )
 
 

@@ -41,7 +41,7 @@ GRANTS: dict[str, dict[str, Columns]] = {
     "login_attempts": {},
     "conversations": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
     "conversation_messages": {"SELECT": EVERY, "INSERT": EVERY},
-    "runs": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY},
+    "runs": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
     "usage_ledger": {"SELECT": EVERY, "INSERT": EVERY},
     "connections": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
     "connection_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import pytest
 
 from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
@@ -164,6 +165,8 @@ def test_connections_of_other_households_are_out_of_reach(
 
 @pytest.mark.spec("MOD-008")
 def test_the_instance_has_no_models_of_its_own(server: Server, admin: Account) -> None:
-    with server.client(login(server, admin)) as client:
-        assert_problem(client.get("/instance/models"), 404, "resource.not_found")
-        assert_problem(client.get("/tenant/models"), 404, "resource.not_found")
+    # Outside the contract, so not through the harness's client, which checks every exchange against it.
+    headers = {"Authorization": f"Bearer {login(server, admin)}"}
+    for path in ("/instance/models", "/tenant/models"):
+        response = httpx.get(f"{server.base_url}{path}", headers=headers, timeout=30)
+        assert (response.status_code, response.json()["code"]) == (404, "resource.not_found")
