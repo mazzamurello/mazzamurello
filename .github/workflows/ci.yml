@@ -85,13 +85,15 @@ jobs:
               tests/design tests/integration tests/tooling
               --ignore=tests/integration/test_sandbox_driver.py --ignore=tests/integration/test_runs_api.py
               --ignore=tests/integration/test_agent_tools.py --ignore=tests/integration/test_remote_provider.py
-              --ignore=tests/integration/test_conversation_versions.py
+              --ignore=tests/integration/test_rewinding.py --ignore=tests/integration/test_models_api.py
             budget: 130
           - part: runs
             paths: tests/integration/test_runs_api.py tests/integration/test_agent_tools.py
             budget: 150
           - part: conversations
-            paths: tests/integration/test_conversation_versions.py tests/integration/test_remote_provider.py
+            paths: >-
+              tests/integration/test_rewinding.py tests/integration/test_models_api.py
+              tests/integration/test_remote_provider.py
             budget: 150
           - part: sandbox
             paths: tests/security tests/integration/test_sandbox_driver.py
