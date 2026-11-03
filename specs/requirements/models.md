@@ -140,7 +140,7 @@ ordered by their use in the past week, most used first (ADR-0069).
 
 ## MOD-012: The model of a conversation
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
