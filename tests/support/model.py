@@ -59,12 +59,14 @@ REFUSES_TOOLS_ERROR = "registry.ollama.ai/library/refuses-tools does not support
 # The key OpenRouter's key check refuses.
 REJECTED_KEY = "sk-or-rejected"
 # OpenRouter's models, most used in the past week first: (id, name, dollars per
-# token in, out, context window, whether it can call tools).
+# token in, out, context window, whether it can call tools). A router, whose
+# price depends on the model it picks, lists `-1`, as OpenRouter's own does.
 OPENROUTER_MODELS = (
     ("test/popular", "Test: Popular", "0.00000027", "0.00000041", 131072, True),
     ("test/second", "Test: Second", "0.0000003", "0.0000025", 1048576, True),
     ("test/chat-only", "Test: Chat only", "0.0000001", "0.0000002", 32768, False),
     ("test/another", "Test: Another", "0.00000015", "0.0000006", 65536, True),
+    ("test/router", "Test: Router", "-1", "-1", 2000000, False),
 )
 
 
