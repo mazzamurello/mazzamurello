@@ -24,7 +24,8 @@ Includes: tenancy and row-level security (TEN), local accounts (AUTH), the
 sandbox and its network isolation (SBX), mediated tools (AGT-001), the model
 gateway with one local and one remote provider (MOD), the public API with
 conversations, message versions, rewinding, stopping runs and streaming (API,
-CNV-001 to CNV-004, CNV-015), the cost ledger (MOD-006), privacy defaults for
+CNV-001 to CNV-004, CNV-015; message versions were replaced in phase 1 by
+editing that rewinds, ADR-0068), the cost ledger (MOD-006), privacy defaults for
 logs (OBS), Docker Compose deployment (OPS), and the repository governance
 checks (REPO). There is no user interface in phase 0: the API is exercised by
 end-to-end tests (ADR-0024).

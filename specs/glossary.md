@@ -28,7 +28,7 @@ new entry here first (ADR-0005).
 | Message | One entry in a conversation, from the user or the assistant. |
 | Folder | A user's named group of conversations in the conversation list; carries no instructions or settings (CNV-007). |
 | Fork | A new conversation started from a turn of another conversation, which records where it came from (CNV-005). |
-| Rewind | Making an earlier turn the end of the active path, so the conversation continues from there; what followed is kept as a version (CNV-004). |
+| Rewind | Making an earlier turn the end of a conversation, so it continues from there; what followed is deleted (CNV-004, ADR-0068). |
 | File library | The private collection of files a user has uploaded, usable from any of their conversations; shown as "Files" (CNV-012). |
 | Base instructions | The assistant's main instructions, which a user may replace and restore (CNV-014). |
 | Additional instructions | Instructions a user adds after the base instructions (CNV-014). |
@@ -37,9 +37,8 @@ new entry here first (ADR-0005).
 | Compaction checkpoint | The stored result of a compaction for one path, attached to the run at which it happened (ADR-0041). |
 | Temporary conversation | A conversation that is not listed, does not use memory and is deleted when the user leaves it (CNV-011). |
 | Attachment | A file of the file library referenced by a message; uploading an attachment adds it to the library (CNV-012). |
-| Parent run | The run whose messages a run continues; runs form a tree within a conversation (ADR-0037). |
-| Version | One of the runs that share the same parent run, created by editing a message or asking for a new answer (CNV-001). |
-| Active path | The chain of runs, from the first to the active run, that the user sees and that new runs continue by default (ADR-0037). |
+| Parent run | The run whose messages a run continues; the runs of a conversation form one chain (ADR-0037, ADR-0068). |
+| Active path | The chain of runs, from the first to the active run: the history the user sees and that a new run continues (ADR-0037, ADR-0068). |
 | Artifact | An output the assistant creates and revises for the user, such as a document, code, a diagram or a web page, shown next to the conversation, with immutable versions (ADR-0038). Not to be confused with a repository artifact, a file of this repository. |
 | Voice turn | A user turn spoken instead of typed, started and ended explicitly by the user, answered in full and read aloud (ADR-0040). |
 | Notification | A content-free message pushed to a user's device when a run finishes or an approval is pending (ADR-0039). |

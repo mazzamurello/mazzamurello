@@ -4,7 +4,7 @@ The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
 ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0051,
-ADR-0052.
+ADR-0052, ADR-0068.
 
 ## Roles
 
@@ -226,8 +226,8 @@ No policies for `mzm_app`: accessed only through
 ### `conversation_messages` (private)
 
 The source of truth of a conversation: Pydantic AI messages, grouped by the
-run that produced them (ADR-0031, ADR-0037). The history of a path is the
-messages of its runs, from the first run, each run's messages in order.
+run that produced them (ADR-0031, ADR-0037). The history of a conversation is
+the messages of its runs, from the first run, each run's messages in order.
 History served to clients is a projection of these rows.
 
 | Column | Type | Notes |
@@ -249,7 +249,7 @@ Primary key (`run_id`, `seq`).
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
 | `conversation_id` | uuid | not null; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete cascade |
 | `parent_run_id` | uuid | the run this run continues (ADR-0037); null for the first run; (`tenant_id`, `owner_id`, `parent_run_id`) references `runs` on delete cascade; indexed |
-| `kind` | text | `message` (a new turn or a version of one) or `resume` (answers to an interrupt, ADR-0033) |
+| `kind` | text | `message` (a new turn) or `resume` (answers to an interrupt, ADR-0033) |
 | `status` | text | `queued`, `running`, `interrupted`, `completed`, `failed`, `cancelled` |
 | `error_code` | text | stable error code when failed (API-007) |
 | `model_provider`, `model_name` | text | set when known (MOD-005) |
@@ -262,8 +262,9 @@ Constraints:
   unique index), in addition to the per-conversation queue partition of
   ADR-0034;
 - a run's parent belongs to the same conversation;
-- a run of kind `resume` has the interrupted run as parent, and is its only
-  child.
+- a run has at most one child, and a conversation at most one run without a
+  parent, so its runs form one chain (ADR-0068); a run of kind `resume` has
+  the interrupted run as parent.
 
 ### `usage_ledger` (private)
 
@@ -386,10 +387,21 @@ run events) **without row-level security**, which DBOS cannot apply. Rules
 ## Deletion
 
 Deleting a conversation deletes its messages and runs in the same transaction,
-and the DBOS workflows of those runs (API-003, TEN-009). Its entries in the
+and the DBOS workflows of those runs (API-003, TEN-009). Rewinding deletes the
+runs after the turn it rewinds to, and their messages and workflows, the same
+way (CNV-004, ADR-0068); the foreign key from a run to its parent cascades. Its entries in the
 cost ledger are kept, detached from the conversation and its runs, so that
 spending totals stay correct (ADR-0042). Deletion is physical;
 there is no soft delete for user content.
+
+## Data migrations
+
+Migrations that change existing rows, besides the schema:
+
+- **One chain per conversation (ADR-0068).** Runs that are not on the path
+  from the first run to the conversation's active run are deleted, with
+  their messages and the DBOS workflows of those runs; ledger entries are
+  detached as on rewinding.
 
 ## Properties verified by design tests
 
