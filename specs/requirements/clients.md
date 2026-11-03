@@ -223,7 +223,7 @@ typefaces, icons and sprite, as the reference prototype shows them.
 
 ## UX-018: Typing starts where the user expects
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
