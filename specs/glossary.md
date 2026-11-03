@@ -89,6 +89,7 @@ new entry here first (ADR-0005).
 | Canary sandbox | A short-lived sandbox the sandbox driver starts to verify isolation before accepting requests. |
 | Isolation runtime | The container runtime that enforces sandbox isolation: gVisor (ADR-0023). |
 | Egress policy | The network rules that decide which destinations a sandbox may reach. |
+| Declared destination | An external service the control plane may connect to, for one purpose, as listed in ADR-0072; the control plane connects to no other (OBS-006). |
 
 ## Models
 

@@ -1,7 +1,7 @@
 # OBS — Observability and privacy
 
 What the system records about its own behavior, and what it never records.
-Background: ADR-0014.
+Background: ADR-0014, ADR-0058, ADR-0072.
 
 ## OBS-001: Nothing sent to external services by default
 
@@ -53,3 +53,19 @@ itself off automatically after at most 24 hours.
 
 Logs and traces MUST be deleted after a retention period configurable by the
 instance admin, with a default of at most 14 days.
+
+## OBS-006: Outbound requests only to declared destinations
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** security, design
+
+The control plane MUST connect to external services only for the declared
+destinations of ADR-0072, each only for its purpose, and no library may
+download data at run time. The web client MUST load every script, style,
+font, icon and image from the instance itself, never from a CDN or another
+third party.
+
+Rationale: what leaves the household must be what its users and admins chose
+to send, and a short list they can check.
