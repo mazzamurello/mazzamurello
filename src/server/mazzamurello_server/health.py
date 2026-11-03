@@ -1,7 +1,7 @@
 """The instance's health (OPS-002, ADR-0054).
 
 `unavailable` when the database is unreachable or the sandbox driver
-refuses sandboxes, `degraded` when no instance default model is configured,
+refuses sandboxes, `degraded` when no household has a default model (ADR-0069),
 `ok` otherwise. Anonymous callers and members see only the status; instance
 admins see every check.
 """
@@ -29,7 +29,7 @@ DRIVER_TIMEOUT_SECONDS = 5
 async def _database_and_model(engine: Engine) -> tuple[Status, Status]:
     try:
         async with transaction(engine, None) as connection:
-            configured = (await connection.execute(text("SELECT instance_default_model_configured()"))).scalar_one()
+            configured = (await connection.execute(text("SELECT default_model_configured()"))).scalar_one()
     except (SQLAlchemyError, OSError):
         return "unavailable", "unavailable"
     return "ok", "ok" if configured else "degraded"

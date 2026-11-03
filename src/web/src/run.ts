@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { api } from "./api/client";
 import { followRun, startRun, type RunEvent, type StartRun } from "./api/stream";
+import type { Pose } from "./components/Sprite";
 
 export type LivePart =
   | { kind: "text"; id: string; text: string }
@@ -14,6 +15,8 @@ export interface LiveRun {
   parts: LivePart[];
   status: "running" | "finished" | "failed";
   errorCode?: string;
+  // What the provider said, when it refused the request (MOD-014).
+  reason?: string;
 }
 
 /** Fold one event into the run's parts. */
@@ -46,8 +49,12 @@ export function apply(run: LiveRun, event: RunEvent): LiveRun {
     }
     case "RUN_FINISHED":
       return { ...run, parts, status: "finished" };
-    case "RUN_ERROR":
-      return { ...run, parts, status: "failed", errorCode: text("code") || "internal.error" };
+    case "RUN_ERROR": {
+      const code = text("code") || "internal.error";
+      const message = text("message");
+      const reason = message.startsWith(`${code}: `) ? message.slice(code.length + 2) : undefined;
+      return { ...run, parts, status: "failed", errorCode: code, ...(reason ? { reason } : {}) };
+    }
   }
   return { ...run, parts };
 }
@@ -103,4 +110,24 @@ export function useLiveRun(onEnd: () => Promise<void>) {
   }, []);
 
   return { live, start, follow, stop, running: live?.status === "running" };
+}
+
+/** What a tool does, from its name: the sprite's pose and the words for it (UX-013, ADR-0070). */
+export function toolActivity(name: string): Exclude<Pose, "greeting" | "answering" | "waiting" | "error"> {
+  const lower = name.toLowerCase();
+  if (/search_web|web_search|fetch|browse|url/.test(lower)) return "searching";
+  if (/run|shell|command|exec|bash/.test(lower)) return "running";
+  if (/write|edit|create|delete|move|patch/.test(lower)) return "writing";
+  if (/read|list|find|grep|glob|search|view|open/.test(lower)) return "reading";
+  return "thinking";
+}
+
+/** The sprite's pose for a run: what it does now, or waiting once it ended. */
+export function poseOf(run: LiveRun | null): Pose {
+  if (run === null || run.status === "finished") return "waiting";
+  if (run.status === "failed") return run.errorCode === "run.cancelled" ? "waiting" : "error";
+  const last = run.parts.at(-1);
+  if (last === undefined) return "thinking";
+  if (last.kind === "tool") return last.result === undefined ? toolActivity(last.name) : "thinking";
+  return "answering";
 }
