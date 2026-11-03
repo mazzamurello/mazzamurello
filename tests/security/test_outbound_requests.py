@@ -1,11 +1,14 @@
 """The API and the worker connect only to declared destinations (OBS-006, ADR-0072, T-32).
 
 The harness records every connection and name lookup the two processes make
-(tests/support/outbound/sitecustomize.py). In the test session, every
-declared destination is on the loopback address: the database, the sandbox
-driver and the model the tests serve. So nothing may leave it, and only the
-names of the session's own services and of the households' connections may
-be looked up.
+(tests/support/outbound/sitecustomize.py). The test looks only at what the
+processes do while it runs, since other tests test connections to addresses
+of their own: it starts another API process and restarts the worker, signs
+a user in and completes runs. In the test session, every declared
+destination is on the loopback address: the database, the sandbox driver and
+the model the tests serve. So nothing may leave it, and only the names of
+the session's own services and of the households' connections may be looked
+up.
 """
 
 from __future__ import annotations
@@ -43,12 +46,16 @@ def test_the_api_and_the_worker_connect_only_to_declared_destinations(
 ) -> None:
     account = create_account(database, create_tenant(database))
     default_model.connect(account.tenant_id)
+    before = len(server.outbound())
+    api, _ = server.start_twin_api()
+    api.close()
+    server.crash_and_restart_worker()
     token = login(server, account)
     conversation = create_conversation(server, token)
     for text in ("hello", "run:echo outbound"):
         run_id, _ = start_run(server, token, conversation["id"], text)
         assert wait_for_run(server, token, run_id)["status"] == "completed"
-    entries = server.outbound()
+    entries = server.outbound()[before:]
     assert any("connect" in entry for entry in entries), "the harness recorded no connection"
     with database.superuser() as conn:
         addresses = [str(row[0]) for row in conn.execute("SELECT base_url FROM connections").fetchall()]
