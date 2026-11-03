@@ -156,8 +156,22 @@ jobs:
         if: matrix.part != 'web' || hashFiles('tests/web/conftest.py') != ''
         env:
           TEST_PATHS: ${{ matrix.paths }}
-        # TEST_PATHS is word-split on purpose: it lists paths and options.
-        run: uv run --locked pytest $TEST_PATHS --junitxml=test-report.xml -o junit_duration_report=call
+        # TEST_PATHS is word-split on purpose: it lists paths and options. Listed
+        # test files a branch does not have yet are left out, so that a rules
+        # change can name the files of a milestone before the milestone merges.
+        run: |
+          args=()
+          for arg in $TEST_PATHS; do
+            case "$arg" in
+              tests/*) if [ -e "${arg%%::*}" ]; then args+=("$arg"); fi ;;
+              *) args+=("$arg") ;;
+            esac
+          done
+          if ! printf '%s\n' "${args[@]}" | grep -q '^tests/'; then
+            echo "No tests of this part on this branch."
+            exit 0
+          fi
+          uv run --locked pytest "${args[@]}" --junitxml=test-report.xml -o junit_duration_report=call
       - name: Test time (REPO-011)
         if: (success() || failure()) && hashFiles('test-report.xml') != ''
         env:
