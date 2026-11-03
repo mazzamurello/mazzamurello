@@ -29,9 +29,11 @@ MIGRATION_TIMEOUT_SECONDS = 300
 
 # Tables of the database contract, by kind.
 PRIVATE_TABLES = ("device_sessions", "conversations", "conversation_messages", "runs", "usage_ledger")
-# Configuration of the instance, without a tenant (ADR-0051).
-INSTANCE_TABLES = ("tenants", "instance_models")
-CONTRACT_TABLES = ("tenants", "users", "login_attempts", "instance_models", "tenant_models", *PRIVATE_TABLES)
+# Configuration of the instance, without a tenant.
+INSTANCE_TABLES = ("tenants",)
+# Tables of a tenant that are not private to one user (ADR-0069).
+TENANT_TABLES = ("users", "connections", "connection_models")
+CONTRACT_TABLES = ("tenants", "login_attempts", *TENANT_TABLES, *PRIVATE_TABLES)
 # Column holding the owning user of each private table.
 OWNER_COLUMN = {table: "user_id" if table == "device_sessions" else "owner_id" for table in PRIVATE_TABLES}
 # Schemas that are not part of the application schema.
@@ -46,7 +48,7 @@ SECURITY_DEFINER_FUNCTIONS = (
     "bootstrap_instance",
     "revoke_sessions_of_disabled_user",
     "retention_expired_runs",
-    "instance_default_model_configured",
+    "default_model_configured",
 )
 
 

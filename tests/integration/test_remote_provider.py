@@ -1,4 +1,4 @@
-"""OpenRouter, the first remote provider (MOD-001, MOD-006, ADR-0057).
+"""OpenRouter, the first remote provider (MOD-001, MOD-006, ADR-0057, ADR-0069).
 
 The model the tests serve answers as OpenRouter's documentation describes
 under `/openrouter/api/v1` (tests/support/model.py); tests never reach
@@ -8,7 +8,6 @@ OpenRouter itself.
 from __future__ import annotations
 
 import secrets
-from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -16,7 +15,7 @@ import pytest
 
 from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
 from tests.support.database import Database, uuid7
-from tests.support.fixtures import HarnessModel
+from tests.support.fixtures import HarnessModel, HouseholdModel
 from tests.support.model import OPENROUTER_COST
 from tests.support.runs import create_conversation, start_run, text_of, wait_for_run
 from tests.support.server import Server
@@ -26,7 +25,7 @@ ATTRIBUTION_HEADERS = ("http-referer", "x-title", "x-openrouter-title", "x-openr
 
 @dataclass(frozen=True)
 class OpenRouterModel:
-    id: str
+    connection_id: str
     api_key: str
 
 
@@ -36,67 +35,63 @@ def account(database: Database) -> Account:
 
 
 @pytest.fixture
+def household(account: Account, default_model: HarnessModel) -> HouseholdModel:
+    return default_model.connect(account.tenant_id)
+
+
+@pytest.fixture
 def token(server: Server, account: Account) -> str:
     return login(server, account)
 
 
 @pytest.fixture
-def openrouter(server: Server, default_model: HarnessModel) -> Iterator[OpenRouterModel]:
-    """An OpenRouter model as the instance's default, for the duration of a test."""
+def openrouter(server: Server, household: HouseholdModel) -> OpenRouterModel:
+    """An OpenRouter connection of the household, whose most used model is its default."""
     api_key = f"sk-or-v1-{secrets.token_hex(16)}"
-    with server.client(default_model.admin_token) as client:
+    with server.client(household.admin_token) as client:
         response = client.post(
-            "/instance/models",
+            "/tenant/connections",
             json={
-                "name": f"OpenRouter {uuid7()}",
-                "api": "openrouter",
-                "base_url": default_model.endpoint.openrouter_url,
-                "model": "openai/gpt-4o-mini",
+                "name": "OpenRouter",
+                "kind": "openrouter",
+                "base_url": household.endpoint.openrouter_url,
                 "api_key": api_key,
-                "paid": True,
-                "is_default": True,
             },
         )
-    assert response.status_code == 201, response.text
-    model = OpenRouterModel(body(response)["id"], api_key)
-    try:
-        yield model
-    finally:
-        with server.client(default_model.admin_token) as client:
-            client.patch(f"/instance/models/{default_model.id}", json={"is_default": True})
-            client.delete(f"/instance/models/{model.id}")
+        assert response.status_code == 201, response.text
+        connection = body(response)
+        default = {"connection_id": connection["id"], "model": "test/popular"}
+        assert client.put("/tenant/default-model", json=default).status_code == 200
+    return OpenRouterModel(connection["id"], api_key)
 
 
-@pytest.mark.spec("MOD-001", "MOD-008")
-def test_model_configurations_name_their_api(server: Server, default_model: HarnessModel) -> None:
-    with server.client(default_model.admin_token) as client:
-        plain = client.post(
-            "/instance/models",
-            json={"name": f"Plain {uuid7()}", "base_url": "http://10.0.0.5:11434/v1", "model": "m", "paid": False},
-        )
-        assert plain.status_code == 201, plain.text
-        assert body(plain)["api"] == "openai"
-        changed = client.patch(f"/instance/models/{body(plain)['id']}", json={"api": "openrouter"})
-        assert changed.status_code == 200, changed.text
-        assert body(changed)["api"] == "openrouter"
-        assert_problem(
-            client.patch(f"/instance/models/{body(plain)['id']}", json={"api": "anthropic"}),
-            422,
-            "request.validation_failed",
-        )
-        assert client.delete(f"/instance/models/{body(plain)['id']}").status_code == 204
+@pytest.mark.spec("MOD-001", "MOD-008", "MOD-010")
+def test_openrouter_connections_are_remote(server: Server, household: HouseholdModel) -> None:
+    connection = {"name": "OpenRouter", "kind": "openrouter", "base_url": household.endpoint.openrouter_url}
+    with server.client(household.admin_token) as client:
+        created = client.post("/tenant/connections", json=connection | {"name": "Remote", "api_key": "sk-or-v1-a"})
+        assert created.status_code == 201, created.text
+        assert (body(created)["kind"], body(created)["location"]) == ("openrouter", "remote")
+        for invalid in ({"location": "local"}, {"kind": "anthropic"}):
+            assert_problem(
+                client.post("/tenant/connections", json=connection | {"api_key": "sk-or-v1-b"} | invalid),
+                422,
+                "request.validation_failed",
+            )
+        # OpenRouter needs a key.
+        assert_problem(client.post("/tenant/connections", json=connection), 422, "request.validation_failed")
 
 
 @pytest.mark.spec("MOD-001", "MOD-002", "OBS-001")
 def test_openrouter_answers_through_the_gateway(
-    server: Server, token: str, default_model: HarnessModel, openrouter: OpenRouterModel
+    server: Server, token: str, household: HouseholdModel, openrouter: OpenRouterModel
 ) -> None:
     conversation = create_conversation(server, token)
     text = f"hello {uuid7()}"
     run_id, events = start_run(server, token, conversation["id"], text)
     assert wait_for_run(server, token, run_id)["status"] == "completed"
     assert text_of(events) == f"Echo: {text}"
-    requests = default_model.endpoint.requests_with(text)
+    requests = household.endpoint.requests_with(text)
     assert requests
     assert all(request.openrouter for request in requests)
     assert {request.authorization for request in requests} == {f"Bearer {openrouter.api_key}"}
@@ -113,7 +108,7 @@ def test_the_ledger_records_the_cost_openrouter_reports(
         rows = conn.execute(
             "SELECT model, cost, currency, price_source FROM usage_ledger WHERE run_id = %s", (run_id,)
         ).fetchall()
-    assert rows == [("openai/gpt-4o-mini", Decimal(str(OPENROUTER_COST)), "USD", "provider")]
+    assert rows == [("test/popular", Decimal(str(OPENROUTER_COST)), "USD", "provider")]
 
 
 @pytest.mark.spec("MOD-001")

@@ -2,7 +2,7 @@
 
 What every first-party client must offer, on the web and on the phone.
 Clients use only the public API (API-001). Background: ADR-0016, ADR-0039,
-ADR-0040, ADR-0042, and the personas and journeys of the
+ADR-0040, ADR-0042, ADR-0067, ADR-0070, and the personas and journeys of the
 [product description](../product.md).
 
 ## UX-001: Installable web app
@@ -123,14 +123,112 @@ the user can answer.
 
 Rationale: journey J7.
 
-## UX-010: Rewinding says the files stay
+## UX-010: Rewinding asks first and says the files stay
 
 - **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
 
-When the user rewinds a conversation (CNV-004), clients MUST tell them that
-files in their workspace are not changed by rewinding.
+Before a conversation is rewound (CNV-004), including by editing an earlier
+message (CNV-016), clients MUST ask the user to confirm, say how many
+messages will be deleted, and tell them that files in their workspace are
+not changed by rewinding.
 
 Rationale: journey J2.
+
+## UX-011: Light and dark themes
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST offer a light and a dark theme, follow the device's setting by
+default, and let the user choose one instead. Both themes MUST meet the
+contrast that UX-007 requires.
+
+## UX-012: The sprite greets the user
+
+- **Status:** implemented
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e
+
+When the user starts a new conversation, clients SHOULD show the sprite
+greeting them with a quote chosen at random from a list of famous quotes in
+the public domain, with its author and work, translated with the rest of the
+interface (ADR-0070).
+
+## UX-013: The sprite shows what a run is doing
+
+- **Status:** implemented
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e, review
+
+While a run is in progress, clients SHOULD show the sprite acting out what
+the assistant is doing: thinking, searching the web, reading, writing files,
+running commands or answering; when the run ends, it stands still. The sprite
+MUST be decorative: the same activity MUST be given as text, and the sprite
+MUST NOT move when the device asks for reduced motion (ADR-0070).
+
+## UX-014: Errors say what to do
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST show errors in a notice that says what went wrong and how to fix
+it, announced to assistive technologies, and SHOULD show the sprite holding a
+sign beside it (ADR-0070).
+
+Rationale: personas P2 and P4.
+
+## UX-015: Choosing the model
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST let the user choose the model of a conversation (MOD-012) among
+every model of their household's connections, and search them. For each
+model they MUST show its connection, its name, whether it runs locally or
+remotely (MOD-010), its price when it is paid per token, and whether it can
+only chat, without tools (MOD-014).
+
+## UX-016: Testing a connection in the settings
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+When a tenant admin adds or changes a connection, clients MUST show the
+result of its test (MOD-013) step by step, with the reason for a failure and
+how to fix it, and MUST show the technical details on request. Clients MUST
+ask only for what the kind of connection needs: for OpenRouter, the API key.
+
+## UX-017: One design language
+
+- **Status:** implemented
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** review
+
+Clients SHOULD follow the design language of ADR-0070: its layout, colors,
+typefaces, icons and sprite, as the reference prototype shows them.
+
+## UX-018: Typing starts where the user expects
+
+- **Status:** implemented
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e
+
+On devices with a keyboard, clients SHOULD put the focus in the field where
+the user starts typing: the username on the sign-in screen, and the message
+box when a new chat opens. On touch screens they SHOULD NOT, since focusing a
+field opens the on-screen keyboard over the screen.

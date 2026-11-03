@@ -1,14 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Copy, FilePen, Pencil } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams } from "react-router";
 
-import { ApiError, api, unwrap, type MessagePage, type PathRun } from "../api/client";
-import { updateConversation, useRefreshConversations } from "../conversations";
-import { type LivePart, useLiveRun } from "../run";
+import { ApiError, api, unwrap, type ModelChoice, type MessagePage, type PathRun } from "../api/client";
+import { rewindConversation, updateConversation, useRefreshConversations } from "../conversations";
+import { useNotify } from "../notices";
+import { type LivePart, type LiveRun, poseOf, toolActivity, useLiveRun } from "../run";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
+import { Sprite } from "./Sprite";
 
 type AgUiMessage = MessagePage["items"][number] & {
   content?: unknown;
@@ -22,7 +25,7 @@ interface Turn {
   parts: LivePart[];
 }
 
-/** The runs of the active path, each with its user message and what answered it. */
+/** The runs of the conversation, each with its user message and what answered it. */
 function turnsOf(page: MessagePage): Turn[] {
   const byId = new Map(page.items.map((message) => [message.id, message as AgUiMessage]));
   return page.runs.map((run) => {
@@ -53,6 +56,12 @@ function textOf(content: unknown): string {
   return "";
 }
 
+/** The messages a person sees in a turn's answer: its texts, or one for an answer of tools only. */
+function shownAnswer(turn: Turn): number {
+  const texts = turn.parts.filter((part) => part.kind === "text").length;
+  return texts > 0 ? texts : turn.parts.length > 0 ? 1 : 0;
+}
+
 async function allMessages(conversationId: string): Promise<MessagePage> {
   const items: MessagePage["items"] = [];
   const runs: PathRun[] = [];
@@ -70,6 +79,13 @@ async function allMessages(conversationId: string): Promise<MessagePage> {
   return { items, runs, next_cursor: null };
 }
 
+interface PendingEdit {
+  index: number;
+  turn: Turn;
+  text: string;
+  deleted: number;
+}
+
 export function ConversationView() {
   const { t } = useTranslation();
   const { conversationId = "" } = useParams();
@@ -77,13 +93,14 @@ export function ConversationView() {
   const navigate = useNavigate();
   const queries = useQueryClient();
   const refreshList = useRefreshConversations();
+  const notify = useNotify();
   const conversation = useQuery({
     queryKey: ["conversation", conversationId, "details"],
     queryFn: async () => unwrap(await api.GET("/conversations/{conversation_id}", { params: { path: { conversation_id: conversationId } } })),
   });
   const history = useQuery({ queryKey: ["conversation", conversationId, "messages"], queryFn: () => allMessages(conversationId) });
 
-  // While a new version of an earlier turn streams, that turn and the ones after it are hidden.
+  // While an edited message streams, the turn it replaces and the ones after it are gone.
   const [hideFrom, setHideFrom] = useState<number | null>(null);
   const refresh = useCallback(async () => {
     await queries.invalidateQueries({ queryKey: ["conversation", conversationId] });
@@ -95,7 +112,9 @@ export function ConversationView() {
   }, [refresh]);
 
   const { live, start, follow, stop, running } = useLiveRun(runEnded);
-  const [rewindTo, setRewindTo] = useState<PathRun | null>(null);
+  const [pending, setPending] = useState<PendingEdit | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
+  const thread = useRef<HTMLDivElement>(null);
 
   // The first message of a new chat, handed over by the new-chat screen.
   const firstMessage = (location.state as { firstMessage?: string } | null)?.firstMessage;
@@ -117,21 +136,39 @@ export function ConversationView() {
     });
   }, [activeRunId, running, follow]);
 
-  /** A new version of `run`'s turn: editing its message or asking for a new answer (CNV-001). */
-  async function newVersion(index: number, run: PathRun, text: string) {
-    setHideFrom(index);
-    if (run.parent_run_id === null) {
-      // The first turn has no parent: rewind to before it, then start again.
-      await updateConversation(conversationId, { active_run_id: null });
-      start({ conversationId, text });
-    } else {
-      start({ conversationId, text, parentRunId: run.parent_run_id });
-    }
+  // An error says what went wrong and what to do (UX-014).
+  const reported = useRef<string | null>(null);
+  useEffect(() => {
+    if (live?.status !== "failed" || live.errorCode === "run.cancelled" || reported.current === live.runId) return;
+    reported.current = live.runId;
+    notify({ kind: "error", title: t("errors.title"), text: explain(t, live) });
+  }, [live, notify, t]);
+
+  // The thread follows the answer as it streams.
+  useEffect(() => {
+    const element = thread.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [live, history.data]);
+
+  async function chooseModel(choice: ModelChoice) {
+    await updateConversation(conversationId, { model: choice });
+    await refresh();
   }
 
-  async function switchTo(runId: string) {
-    await updateConversation(conversationId, { active_run_id: runId });
-    await refresh();
+  /** Editing a message rewinds to the turn before it, then sends the edited text (CNV-016, ADR-0068). */
+  async function sendEdit(edit: PendingEdit) {
+    setPending(null);
+    setEditing(null);
+    setHideFrom(edit.index);
+    try {
+      await rewindConversation(conversationId, edit.turn.run.parent_run_id);
+      await refresh();
+    } catch (error) {
+      setHideFrom(null);
+      notify({ kind: "error", title: t("errors.title"), text: t(`errors.${codeKey(error)}`) });
+      return;
+    }
+    start({ conversationId, text: edit.text });
   }
 
   if (conversation.error instanceof ApiError && conversation.error.status === 404) {
@@ -141,54 +178,69 @@ export function ConversationView() {
   const turns = history.data ? turnsOf(history.data) : [];
   const shown = live !== null && hideFrom !== null ? turns.slice(0, hideFrom) : turns;
 
+  function askToEdit(index: number, turn: Turn, text: string) {
+    const deleted = shownAnswer(turn) + turns.slice(index + 1).reduce((sum, later) => sum + (later.userText === null ? 0 : 1) + shownAnswer(later), 0);
+    const edit = { index, turn, text, deleted };
+    if (deleted === 0) void sendEdit(edit);
+    else setPending(edit);
+  }
+
   return (
     <>
-      <div className="flex-1 overflow-y-auto" aria-live="polite" aria-busy={running}>
-        <ol className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
+      <div ref={thread} className="min-h-0 flex-1 overflow-y-auto" aria-busy={running}>
+        <ol className="mx-auto w-full max-w-[740px] px-4 pt-2 pb-6">
           {shown.map((turn, index) => (
             <TurnView
               key={turn.run.run_id}
               turn={turn}
               busy={running}
-              last={index === shown.length - 1}
-              onEdit={(text) => void newVersion(index, turn.run, text)}
-              onRegenerate={() => turn.userText && void newVersion(index, turn.run, turn.userText)}
-              onSwitch={(runId) => void switchTo(runId)}
-              onRewind={() => setRewindTo(turn.run)}
+              last={live === null && index === shown.length - 1}
+              editing={editing === index}
+              onEdit={() => setEditing(index)}
+              onCancelEdit={() => setEditing(null)}
+              onSendEdit={(text) => askToEdit(index, turn, text)}
             />
           ))}
           {live && (
-            <li className="space-y-3">
+            <li className="my-5 flex flex-col gap-1">
               {live.userText !== null && <UserBubble text={live.userText} />}
               <Answer parts={live.parts} />
-              {live.status === "running" && live.parts.length === 0 && <p className="text-stone-600 dark:text-stone-300">{t("message.thinking")}</p>}
-              {live.status === "failed" && (
-                <p role="status" className="text-sm text-red-800 dark:text-red-300">
-                  {live.errorCode === "run.cancelled" ? t("message.stopped") : t("message.failed", { code: live.errorCode })}
-                </p>
-              )}
+              <Activity run={live} />
             </li>
           )}
         </ol>
       </div>
-      <Composer onSend={(text) => start({ conversationId, text })} onStop={() => void stop()} running={running} />
-      <Dialog.Root open={rewindTo !== null} onOpenChange={(open) => !open && setRewindTo(null)}>
+      <div className="flex-none px-4 pt-1.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-[740px]">
+          <Composer
+            onSend={(text) => start({ conversationId, text })}
+            onStop={() => void stop()}
+            running={running}
+            model={conversation.data?.model ?? null}
+            onModel={(choice) => void chooseModel(choice)}
+            placeholder={t("composer.placeholder")}
+          />
+        </div>
+      </div>
+      <Dialog.Root open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 space-y-3 rounded-xl bg-white p-5 shadow-xl dark:bg-stone-800">
-            <Dialog.Title className="text-lg font-semibold">{t("rewind.title")}</Dialog.Title>
-            <Dialog.Description>{t("rewind.body")}</Dialog.Description>
-            {/* Going back never changes the workspace, and the user is told so (UX-010). */}
-            <p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-950">{t("rewind.files")}</p>
-            <div className="flex justify-end gap-2">
-              <Dialog.Close className="rounded-lg px-3 py-2">{t("rewind.cancel")}</Dialog.Close>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
+          <Dialog.Content role="alertdialog" className="rise fixed top-1/2 left-1/2 z-50 w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-[20px] bg-raised p-[22px] shadow-soft">
+            <Dialog.Title className="mb-2 text-lg font-bold tracking-tight">{t("rewind.title")}</Dialog.Title>
+            <Dialog.Description className="mb-2.5 text-muted">
+              {pending?.deleted === 1 ? t("rewind.bodyOne", { count: 1 }) : t("rewind.bodyMany", { count: pending?.deleted ?? 0 })}
+            </Dialog.Description>
+            {/* Rewinding never changes the workspace, and the user is told so (UX-010). */}
+            <p className="flex items-center gap-2 rounded-[10px] bg-hover px-3 py-2.5 text-sm">
+              <FilePen className="size-[18px] flex-none" aria-hidden="true" />
+              {t("rewind.files")}
+            </p>
+            <div className="mt-[18px] flex flex-wrap justify-end gap-2">
+              <Dialog.Close className="h-[38px] rounded-[10px] border border-line-strong bg-surface px-4 text-sm font-semibold hover:bg-hover">{t("rewind.cancel")}</Dialog.Close>
               <button
                 type="button"
-                className="rounded-lg bg-stone-800 px-3 py-2 text-white"
-                onClick={() => {
-                  if (rewindTo) void switchTo(rewindTo.run_id);
-                  setRewindTo(null);
-                }}
+                className="h-[38px] rounded-[10px] bg-danger px-4 text-sm font-semibold text-on-danger"
+                onClick={() => pending && void sendEdit(pending)}
               >
                 {t("rewind.confirm")}
               </button>
@@ -200,83 +252,130 @@ export function ConversationView() {
   );
 }
 
+function codeKey(error: unknown): string {
+  const code = error instanceof ApiError ? error.code : "internal.error";
+  return ["model.unavailable", "model.request_failed", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
+}
+
+function explain(t: (key: string) => string, run: LiveRun): string {
+  const text = t(`errors.${codeKey(new ApiError(0, run.errorCode ?? "internal.error"))}`);
+  return run.reason ? `${text} ${run.reason}` : text;
+}
+
+/** The sprite acting out what the assistant does, and the same in words (UX-013). */
+function Activity({ run }: { run: LiveRun }) {
+  const { t } = useTranslation();
+  const pose = poseOf(run);
+  const working = run.status === "running";
+  const words =
+    run.status === "failed"
+      ? run.errorCode === "run.cancelled"
+        ? t("message.stopped")
+        : t("errors.title")
+      : working
+        ? t(`activity.${pose}`)
+        : "";
+  return (
+    <div className="mt-0.5 flex min-h-[58px] items-center gap-2.5">
+      <Sprite pose={pose} className="h-[53px] w-[46px] flex-none" />
+      <span role="status" className={`text-sm text-muted ${working ? "live-text" : ""}`}>
+        {words}
+      </span>
+    </div>
+  );
+}
+
 function TurnView(props: {
   turn: Turn;
   busy: boolean;
   last: boolean;
-  onEdit: (text: string) => void;
-  onRegenerate: () => void;
-  onSwitch: (runId: string) => void;
-  onRewind: () => void;
+  editing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onSendEdit: (text: string) => void;
 }) {
   const { t } = useTranslation();
   const { turn, busy } = props;
-  const [editing, setEditing] = useState(false);
-  const versions = turn.run.versions;
-  const current = versions.indexOf(turn.run.run_id);
-  const action = "rounded px-2 py-1 text-sm text-stone-700 hover:bg-stone-200 disabled:opacity-50 dark:text-stone-200 dark:hover:bg-stone-700";
-
+  const answerText = turn.parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n\n");
   return (
-    <li className="space-y-3">
+    <li className="group/turn my-5 flex flex-col gap-1">
       {turn.userText !== null &&
-        (editing ? (
+        (props.editing ? (
           <form
-            className="space-y-2"
+            className="flex w-full max-w-[600px] flex-col gap-2.5 self-end rounded-[18px] border border-line-strong bg-surface px-3.5 py-3"
             onSubmit={(event) => {
               event.preventDefault();
               const text = String(new FormData(event.currentTarget).get("text") ?? "").trim();
-              if (text) props.onEdit(text);
-              setEditing(false);
+              if (text) props.onSendEdit(text);
             }}
           >
             <label className="sr-only" htmlFor={`edit-${turn.run.run_id}`}>
               {t("message.editLabel")}
             </label>
-            <textarea id={`edit-${turn.run.run_id}`} name="text" defaultValue={turn.userText} rows={3} autoFocus className="w-full rounded-xl border border-stone-400 bg-white p-3 text-stone-900" />
-            <div className="flex justify-end gap-2">
-              <button type="button" className={action} onClick={() => setEditing(false)}>
+            <textarea id={`edit-${turn.run.run_id}`} name="text" defaultValue={turn.userText} rows={3} autoFocus className="min-h-[60px] resize-none bg-transparent outline-none" />
+            <div className="flex items-center justify-end gap-2">
+              <small className="flex-1 text-[12.5px] text-muted">{t("message.editHint")}</small>
+              <button type="button" className="h-8 rounded-[10px] border border-line-strong px-3 text-[13px] font-semibold hover:bg-hover" onClick={props.onCancelEdit}>
                 {t("message.cancelEdit")}
               </button>
-              <button type="submit" className="rounded-lg bg-stone-800 px-3 py-1 text-white">
+              <button type="submit" className="h-8 rounded-[10px] bg-fg px-3 text-[13px] font-semibold text-bg">
                 {t("message.saveEdit")}
               </button>
             </div>
           </form>
         ) : (
-          <div className="space-y-1">
+          <div className="group/message flex flex-col items-end gap-1">
             <UserBubble text={turn.userText} />
-            <div className="flex items-center justify-end gap-1">
-              {versions.length > 1 && (
-                <span className="flex items-center gap-1 text-sm" aria-label={t("message.version", { current: current + 1, total: versions.length })}>
-                  <button type="button" className={action} disabled={busy || current <= 0} aria-label={t("message.previousVersion")} onClick={() => props.onSwitch(turn.run.version_tips[current - 1] ?? "")}>
-                    ‹
-                  </button>
-                  <span aria-hidden="true">
-                    {current + 1} / {versions.length}
-                  </span>
-                  <button type="button" className={action} disabled={busy || current >= versions.length - 1} aria-label={t("message.nextVersion")} onClick={() => props.onSwitch(turn.run.version_tips[current + 1] ?? "")}>
-                    ›
-                  </button>
-                </span>
-              )}
-              <button type="button" className={action} disabled={busy} onClick={() => setEditing(true)}>
-                {t("message.edit")}
-              </button>
+            <div className="flex gap-0.5 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100">
+              <CopyButton text={turn.userText} />
+              <IconButton label={t("message.edit")} disabled={busy} onClick={props.onEdit}>
+                <Pencil className="size-4" aria-hidden="true" />
+              </IconButton>
             </div>
           </div>
         ))}
       <Answer parts={turn.parts} />
-      <div className="flex gap-1">
-        <button type="button" className={action} disabled={busy} onClick={props.onRegenerate}>
-          {t("message.regenerate")}
-        </button>
-        {!props.last && (
-          <button type="button" className={action} disabled={busy} onClick={props.onRewind}>
-            {t("message.rewind")}
-          </button>
-        )}
-      </div>
+      {props.last && (
+        <div className="mt-0.5 flex min-h-[58px] items-center gap-2.5">
+          <Sprite pose="waiting" className="h-[53px] w-[46px] flex-none" />
+        </div>
+      )}
+      {answerText && (
+        <div className={`flex gap-0.5 transition-opacity group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100 ${props.last ? "opacity-100" : "opacity-0"}`}>
+          <CopyButton text={answerText} />
+        </div>
+      )}
     </li>
+  );
+}
+
+function IconButton(props: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      className="grid size-[30px] place-items-center rounded-lg text-muted hover:bg-hover hover:text-fg disabled:opacity-40"
+      aria-label={props.label}
+      title={props.label}
+      disabled={props.disabled}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation();
+  const notify = useNotify();
+  return (
+    <IconButton
+      label={t("message.copyMessage")}
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => notify({ kind: "info", title: t("message.copied") }));
+      }}
+    >
+      <Copy className="size-4" aria-hidden="true" />
+    </IconButton>
   );
 }
 
@@ -284,7 +383,7 @@ function UserBubble({ text }: { text: string }) {
   const { t } = useTranslation();
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-2xl bg-stone-200 px-4 py-2 whitespace-pre-wrap dark:bg-stone-700">
+      <div className="max-w-[min(85%,560px)] rounded-[20px] bg-bubble px-[15px] py-2.5 break-words whitespace-pre-wrap">
         <span className="sr-only">{t("message.you")}: </span>
         {text}
       </div>
@@ -293,26 +392,55 @@ function UserBubble({ text }: { text: string }) {
 }
 
 function Answer({ parts }: { parts: LivePart[] }) {
+  const tools = parts.filter((part) => part.kind === "tool");
+  const texts = parts.filter((part) => part.kind === "text");
   return (
-    <div className="space-y-3">
-      {parts.map((part) => (part.kind === "text" ? <Markdown key={part.id} text={part.text} /> : <ToolCall key={part.id} part={part} />))}
+    <div className="flex min-w-0 flex-col gap-2.5">
+      {tools.length > 0 && (
+        <div className="flex flex-col items-start gap-1.5">
+          {tools.map((part) => (
+            <ToolCall key={part.id} part={part} />
+          ))}
+        </div>
+      )}
+      {texts.map((part) => (
+        <Markdown key={part.id} text={part.text} />
+      ))}
     </div>
   );
+}
+
+function argumentPreview(args: string): string {
+  try {
+    const parsed = JSON.parse(args) as Record<string, unknown>;
+    const first = Object.values(parsed).find((value) => typeof value === "string");
+    return typeof first === "string" ? first : "";
+  } catch {
+    return "";
+  }
 }
 
 /** Tool activity as a compact summary that expands to its full details (UX-003). */
 function ToolCall({ part }: { part: Extract<LivePart, { kind: "tool" }> }) {
   const { t } = useTranslation();
+  const activity = toolActivity(part.name);
+  const label =
+    activity === "running" ? t("activity.ran") : activity === "writing" ? t("activity.wrote") : activity === "reading" ? t("activity.read") : activity === "searching" ? t("activity.searched") : t("activity.used", { name: part.name });
+  const preview = argumentPreview(part.args);
   return (
-    <details className="rounded-lg border border-stone-300 text-sm dark:border-stone-600">
-      <summary className="cursor-pointer px-3 py-2">{part.result === undefined ? t("message.toolRunning", { name: part.name }) : t("message.tool", { name: part.name })}</summary>
-      <div className="space-y-2 border-t border-stone-300 p-3 dark:border-stone-600">
-        <p className="font-medium">{t("message.toolArguments")}</p>
-        <pre className="overflow-x-auto rounded bg-stone-100 p-2 dark:bg-stone-900">{part.args}</pre>
+    <details className="group/tool max-w-full">
+      <summary className="inline-flex max-w-full cursor-pointer list-none items-center gap-2 rounded-full border border-line py-[5px] pr-2.5 pl-[9px] text-[13.5px] text-muted hover:bg-hover hover:text-fg [&::-webkit-details-marker]:hidden">
+        <b className="font-semibold whitespace-nowrap text-fg">{label}</b>
+        {preview && <span className="min-w-0 truncate font-mono text-[12.5px]">{preview}</span>}
+        <ChevronRight className="size-4 flex-none transition-transform group-open/tool:rotate-90" aria-hidden="true" />
+      </summary>
+      <div className="mt-2 mb-1 ml-3.5 flex flex-col gap-2 border-l-2 border-line py-1 pl-3.5 text-[13.5px] text-muted">
+        <p className="font-semibold">{t("message.toolArguments")}</p>
+        <pre className="overflow-x-auto rounded-lg bg-hover p-2 font-mono text-[12.5px] text-fg">{part.args}</pre>
         {part.result !== undefined && (
           <>
-            <p className="font-medium">{t("message.toolResult")}</p>
-            <pre className="max-h-80 overflow-auto rounded bg-stone-100 p-2 dark:bg-stone-900">{part.result}</pre>
+            <p className="font-semibold">{t("message.toolResult")}</p>
+            <pre className="max-h-80 overflow-auto rounded-lg bg-hover p-2 font-mono text-[12.5px] whitespace-pre-wrap text-fg">{part.result}</pre>
           </>
         )}
       </div>

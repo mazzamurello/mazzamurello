@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from mazzamurello_server import errors, schemas
 from mazzamurello_server.auth import Authenticated, Engine
+from mazzamurello_server.connections import default_model
 from mazzamurello_server.conversations import Durable, find_conversation
 from mazzamurello_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
 from mazzamurello_server.durable import APPLICATION_VERSION, EVENTS_STREAM, RUN_QUEUE, RUN_WORKFLOW
@@ -30,8 +31,8 @@ from mazzamurello_server.workflow_input import RunWorkflowInput
 router = APIRouter()
 
 RUN_COLUMNS = (
-    "id, conversation_id, parent_run_id, kind, status, error_code, model_provider, model_name, last_event_seq,"
-    " created_at, started_at, finished_at"
+    "id, conversation_id, parent_run_id, kind, status, error_code, connection_id, model_provider, model_name,"
+    " last_event_seq, created_at, started_at, finished_at"
 )
 FINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
 TERMINAL_EVENTS = frozenset({"RUN_FINISHED", "RUN_ERROR"})
@@ -41,7 +42,7 @@ SSE_MEDIA_TYPE = "text/event-stream"
 def run_response(row: Any) -> schemas.Run:
     model = None
     if row.model_provider is not None and row.model_name is not None:
-        model = schemas.ModelRef(provider=row.model_provider, model=row.model_name)
+        model = schemas.ModelRef(connection_id=row.connection_id, provider=row.model_provider, model=row.model_name)
     return schemas.Run(
         id=row.id,
         conversation_id=row.conversation_id,
@@ -127,19 +128,37 @@ def _streaming(
     )
 
 
-async def _default_model(connection: AsyncConnection) -> Any:
-    """The tenant's default model, or else the instance's (ADR-0051); row-level security scopes both."""
-    return (
+async def _run_model(connection: AsyncConnection, conversation: Any) -> Any:
+    """The connection and model that answer the conversation's next run (MOD-012, ADR-0069).
+
+    A conversation created before its household had a default model takes the
+    default now. A model no longer offered is never replaced by another one.
+    """
+    if conversation.connection_id is None and conversation.model is None:
+        default = await default_model(connection)
+        if default is None:
+            raise errors.ApiError(409, "model.unavailable", "No default model")
+        await connection.execute(
+            text("UPDATE conversations SET connection_id = :connection, model = :model WHERE id = :id"),
+            {"connection": default.connection_id, "model": default.model, "id": conversation.id},
+        )
+        choice = (default.connection_id, default.model)
+    elif conversation.connection_id is None:
+        raise errors.ApiError(409, "model.unavailable", "The conversation's model is no longer offered")
+    else:
+        choice = (conversation.connection_id, conversation.model)
+    row = (
         await connection.execute(
             text(
-                "SELECT scope, id, base_url, model FROM ("
-                " SELECT 'tenant' AS scope, 1 AS rank, id, base_url, model FROM tenant_models WHERE is_default"
-                " UNION ALL"
-                " SELECT 'instance', 2, id, base_url, model FROM instance_models WHERE is_default"
-                ") defaults ORDER BY rank LIMIT 1"
-            )
+                "SELECT c.id, c.base_url, m.model FROM connections c JOIN connection_models m ON m.connection_id = c.id"
+                " WHERE c.id = :connection AND m.model = :model"
+            ),
+            {"connection": choice[0], "model": choice[1]},
         )
     ).one_or_none()
+    if row is None:
+        raise errors.ApiError(409, "model.unavailable", "The conversation's model is no longer offered")
+    return row
 
 
 @router.post("/conversations/{conversation_id}/runs")
@@ -173,25 +192,16 @@ async def start_run(
             if active is not None:
                 raise errors.ApiError(409, "run.in_progress", "Run in progress")
             parent = conversation.active_run_id
-            if body.parent_run_id is not None:
-                found = (
-                    await connection.execute(
-                        text("SELECT id FROM runs WHERE id = :id AND conversation_id = :conversation"),
-                        {"id": body.parent_run_id, "conversation": conversation_id},
-                    )
-                ).one_or_none()
-                if found is None:
-                    raise errors.not_found()
-                parent = body.parent_run_id
-            model = await _default_model(connection)
-            if model is None:
-                raise errors.ApiError(409, "model.unavailable", "No default model")
+            # A conversation never branches: a run continues the active run (ADR-0068).
+            if body.parent_run_id is not None and body.parent_run_id != parent:
+                raise errors.conflict()
+            model = await _run_model(connection, conversation)
             await connection.execute(
                 text(
                     "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status,"
-                    " model_provider, model_name, last_event_seq, created_at)"
-                    " VALUES (:id, :tenant_id, :owner_id, :conversation, :parent, 'message', 'queued', :provider,"
-                    " :model, 0, now())"
+                    " connection_id, model_provider, model_name, last_event_seq, created_at)"
+                    " VALUES (:id, :tenant_id, :owner_id, :conversation, :parent, 'message', 'queued', :connection,"
+                    " :provider, :model, 0, now())"
                 ),
                 {
                     "id": body.run_id,
@@ -199,6 +209,7 @@ async def start_run(
                     "owner_id": identity.user_id,
                     "conversation": conversation_id,
                     "parent": parent,
+                    "connection": model.id,
                     "provider": urlsplit(str(model.base_url)).netloc,
                     "model": model.model,
                 },
@@ -221,8 +232,8 @@ async def start_run(
         run_id=str(body.run_id),
         parent_run_id=None if parent is None else str(parent),
         user_text=user_text,
-        model_scope=model.scope,
-        model_id=str(model.id),
+        connection_id=str(model.id),
+        model=model.model,
     )
     try:
         await durable.enqueue_async(

@@ -1,9 +1,11 @@
-"""Initial schema: the phase 0 database contract (specs/contracts/database.md).
+"""The schema of the database contract (specs/contracts/database.md).
 
 Tables, row-level security, policies, privileges and the pre-authentication
 functions (TEN-001 to TEN-004, TEN-006, AUTH-001, AUTH-004, AUTH-006 to
-AUTH-008; ADR-0009, ADR-0046, ADR-0047). Roles and the database itself are
-created before any migration, by the initialization of the contract.
+AUTH-009, MOD-008, MOD-009; ADR-0009, ADR-0046 to ADR-0049, ADR-0052,
+ADR-0068, ADR-0069). Roles and the database itself are created before any
+migration, by the initialization of the contract. Until the first release,
+this one migration is rewritten whenever the contract changes (ADR-0071).
 
 Revision ID: 0001
 Revises:
@@ -23,11 +25,15 @@ CONTRACT_TABLES = (
     "users",
     "device_sessions",
     "login_attempts",
+    "connections",
+    "connection_models",
     "conversations",
     "runs",
     "conversation_messages",
     "usage_ledger",
 )
+# Tables of a tenant that every user of it reads and its tenant admins change (ADR-0069).
+TENANT_TABLES = ("connections", "connection_models")
 PRIVATE_TABLES = ("conversations", "runs", "conversation_messages", "usage_ledger")
 
 HELPER_FUNCTIONS = [
@@ -119,6 +125,48 @@ TABLES = [
     "CREATE INDEX login_attempts_username_idx ON login_attempts (lower(username), created_at)",
     "CREATE INDEX login_attempts_source_idx ON login_attempts (source, created_at)",
     "CREATE INDEX login_attempts_created_at_idx ON login_attempts (created_at)",
+    # A household's access to one provider (MOD-008, ADR-0069).
+    """
+    CREATE TABLE connections (
+      id uuid PRIMARY KEY,
+      tenant_id uuid NOT NULL REFERENCES tenants (id),
+      name text NOT NULL CHECK (name <> ''),
+      kind text NOT NULL CHECK (kind IN ('openrouter', 'openai')),
+      base_url text NOT NULL,
+      location text NOT NULL CHECK (location IN ('local', 'remote')),
+      api_key_ciphertext bytea,
+      private_network boolean NOT NULL DEFAULT false,
+      default_model text CHECK (default_model <> ''),
+      models_refreshed_at timestamptz,
+      created_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL,
+      UNIQUE (tenant_id, name),
+      UNIQUE (tenant_id, id),
+      -- OpenRouter's inference is always remote (MOD-010).
+      CHECK (kind <> 'openrouter' OR location = 'remote')
+    )
+    """,
+    # One default model per tenant (MOD-012).
+    "CREATE UNIQUE INDEX connections_one_default ON connections (tenant_id) WHERE default_model IS NOT NULL",
+    """
+    CREATE TABLE connection_models (
+      tenant_id uuid NOT NULL,
+      connection_id uuid NOT NULL,
+      model text NOT NULL CHECK (model <> ''),
+      name text NOT NULL,
+      position integer NOT NULL CHECK (position >= 1),
+      context_window integer CHECK (context_window >= 1),
+      tools boolean,
+      input_price numeric(20, 10) CHECK (input_price >= 0),
+      cached_input_price numeric(20, 10) CHECK (cached_input_price >= 0),
+      output_price numeric(20, 10) CHECK (output_price >= 0),
+      currency text CHECK (currency ~ '^[A-Z]{3}$'),
+      PRIMARY KEY (connection_id, model),
+      FOREIGN KEY (tenant_id, connection_id) REFERENCES connections (tenant_id, id) ON DELETE CASCADE,
+      -- A currency exactly when a price is set.
+      CHECK ((currency IS NULL) = (input_price IS NULL AND cached_input_price IS NULL AND output_price IS NULL))
+    )
+    """,
     """
     CREATE TABLE conversations (
       id uuid PRIMARY KEY,
@@ -130,10 +178,14 @@ TABLES = [
       pending_approvals jsonb,
       approvals_expire_at timestamptz,
       archived_at timestamptz,
+      -- The model of the conversation (MOD-012); a removed connection leaves the model without one.
+      connection_id uuid,
+      model text CHECK (model <> ''),
       created_at timestamptz NOT NULL,
       updated_at timestamptz NOT NULL,
       UNIQUE (tenant_id, owner_id, id),
-      FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id)
+      FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id),
+      FOREIGN KEY (tenant_id, connection_id) REFERENCES connections (tenant_id, id) ON DELETE SET NULL (connection_id)
     )
     """,
     """
@@ -146,6 +198,7 @@ TABLES = [
       kind text NOT NULL CHECK (kind IN ('message', 'resume')),
       status text NOT NULL CHECK (status IN ('queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled')),
       error_code text,
+      connection_id uuid,
       model_provider text,
       model_name text,
       last_event_seq integer,
@@ -155,6 +208,7 @@ TABLES = [
       UNIQUE (tenant_id, owner_id, id),
       UNIQUE (tenant_id, owner_id, conversation_id, id),
       FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id),
+      FOREIGN KEY (tenant_id, connection_id) REFERENCES connections (tenant_id, id) ON DELETE SET NULL (connection_id),
       FOREIGN KEY (tenant_id, owner_id, conversation_id)
         REFERENCES conversations (tenant_id, owner_id, id) ON DELETE CASCADE,
       FOREIGN KEY (tenant_id, owner_id, parent_run_id)
@@ -165,7 +219,9 @@ TABLES = [
     )
     """,
     "CREATE INDEX runs_conversation_idx ON runs (conversation_id)",
-    "CREATE INDEX runs_parent_run_idx ON runs (parent_run_id)",
+    # The runs of a conversation form one chain (ADR-0068): one child per run, one first run.
+    "CREATE UNIQUE INDEX runs_one_child ON runs (parent_run_id) WHERE parent_run_id IS NOT NULL",
+    "CREATE UNIQUE INDEX runs_one_first ON runs (conversation_id) WHERE parent_run_id IS NULL",
     # At most one queued or running run per conversation.
     """
     CREATE UNIQUE INDEX runs_one_active_per_conversation ON runs (conversation_id)
@@ -208,7 +264,7 @@ TABLES = [
       output_tokens bigint NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
       cost numeric(20, 10),
       currency text CHECK (currency ~ '^[A-Z]{3}$'),
-      price_source text NOT NULL CHECK (price_source IN ('provider', 'admin', 'catalog', 'free', 'unknown')),
+      price_source text NOT NULL CHECK (price_source IN ('provider', 'catalog', 'free', 'unknown')),
       created_at timestamptz NOT NULL,
       -- A currency exactly when there is a cost.
       CHECK ((cost IS NULL) = (currency IS NULL)),
@@ -242,6 +298,57 @@ TRIGGERS = [
     $$
     """,
     "CREATE TRIGGER users_guard BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION users_guard()",
+    # Only the instance admin's address may reach private networks (MOD-009,
+    # ADR-0069): a new address from anyone else is not private.
+    """
+    CREATE FUNCTION connections_guard() RETURNS trigger LANGUAGE plpgsql
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+    BEGIN
+      IF public.app_is_instance_admin() THEN
+        RETURN NEW;
+      END IF;
+      IF TG_OP = 'INSERT' THEN
+        IF NEW.private_network THEN
+          RAISE EXCEPTION 'only the instance admin sets a private address'
+            USING ERRCODE = 'insufficient_privilege';
+        END IF;
+      ELSIF NEW.base_url IS DISTINCT FROM OLD.base_url THEN
+        NEW.private_network := false;
+      ELSIF NEW.private_network AND NOT OLD.private_network THEN
+        RAISE EXCEPTION 'only the instance admin sets a private address'
+          USING ERRCODE = 'insufficient_privilege';
+      END IF;
+      RETURN NEW;
+    END
+    $$
+    """,
+    """
+    CREATE TRIGGER connections_guard BEFORE INSERT OR UPDATE ON connections
+    FOR EACH ROW EXECUTE FUNCTION connections_guard()
+    """,
+    # Disabling an account revokes its sessions (AUTH-009, ADR-0048). It runs
+    # as mzm_owner: row-level security keeps a tenant admin from reaching
+    # other users' sessions, so the function works through the owner policies
+    # on device_sessions (ADR-0046). It is not executable by mzm_app; triggers
+    # call it whatever the caller's privileges.
+    """
+    CREATE FUNCTION revoke_sessions_of_disabled_user() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+    BEGIN
+      UPDATE public.device_sessions s SET revoked_at = now()
+      WHERE s.tenant_id = NEW.tenant_id AND s.user_id = NEW.id AND s.revoked_at IS NULL;
+      RETURN NULL;
+    END
+    $$
+    """,
+    """
+    CREATE TRIGGER revoke_sessions_of_disabled_user AFTER UPDATE OF disabled_at ON users
+    FOR EACH ROW WHEN (OLD.disabled_at IS NULL AND NEW.disabled_at IS NOT NULL)
+    EXECUTE FUNCTION revoke_sessions_of_disabled_user()
+    """,
     # A run of kind `resume` has the interrupted run as parent and is its only
     # child (ADR-0033, ADR-0037). The parent row is locked, so concurrent
     # children of the same run are checked one after the other.
@@ -309,11 +416,31 @@ PRE_AUTHENTICATION_FUNCTIONS = [
       WHERE s.token_hash = $1
     $$
     """,
+    # A session lasts 90 days from its last use; a revoked or expired one is
+    # never renewed (AUTH-004, ADR-0049).
     """
     CREATE FUNCTION auth_touch_session(session_id uuid) RETURNS void
     LANGUAGE sql SECURITY DEFINER
     SET search_path = pg_catalog, pg_temp
-    AS $$ UPDATE public.device_sessions SET last_used_at = now() WHERE id = $1 $$
+    AS $$
+      UPDATE public.device_sessions SET last_used_at = now(), expires_at = now() + interval '90 days'
+      WHERE id = $1 AND revoked_at IS NULL AND expires_at > now()
+    $$
+    """,
+    # Retention of durable workflows (ADR-0052): identifiers only, across tenants.
+    """
+    CREATE FUNCTION retention_expired_runs(days integer) RETURNS SETOF uuid
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$ SELECT r.id FROM public.runs r WHERE r.finished_at < now() - make_interval(days => $1) $$
+    """,
+    # Whether any household has a default model, for /health before any
+    # sign-in (OPS-002, ADR-0054): only a yes or a no.
+    """
+    CREATE FUNCTION default_model_configured() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$ SELECT EXISTS (SELECT 1 FROM public.connections WHERE default_model IS NOT NULL) $$
     """,
     # Rate limits of ADR-0047: a 15-minute window, 5 failures per username and
     # 20 per source address. For each limit, the failure that the limit counts
@@ -421,6 +548,26 @@ APPLICATION_POLICIES = [
         """
         for table in PRIVATE_TABLES
     ),
+    *(
+        statement
+        for table in TENANT_TABLES
+        for statement in (
+            f"CREATE POLICY {table}_app_select ON {table} FOR SELECT TO mzm_app USING (tenant_id = app_tenant_id())",
+            f"""
+            CREATE POLICY {table}_app_insert ON {table} FOR INSERT TO mzm_app
+            WITH CHECK (tenant_id = app_tenant_id() AND app_is_tenant_admin())
+            """,
+            f"""
+            CREATE POLICY {table}_app_update ON {table} FOR UPDATE TO mzm_app
+            USING (tenant_id = app_tenant_id() AND app_is_tenant_admin())
+            WITH CHECK (tenant_id = app_tenant_id() AND app_is_tenant_admin())
+            """,
+            f"""
+            CREATE POLICY {table}_app_delete ON {table} FOR DELETE TO mzm_app
+            USING (tenant_id = app_tenant_id() AND app_is_tenant_admin())
+            """,
+        )
+    ),
 ]
 
 # Owner policies for the pre-authentication functions (ADR-0046).
@@ -434,6 +581,8 @@ OWNER_POLICIES = [
     "CREATE POLICY login_attempts_owner_select ON login_attempts FOR SELECT TO mzm_owner USING (true)",
     "CREATE POLICY login_attempts_owner_insert ON login_attempts FOR INSERT TO mzm_owner WITH CHECK (true)",
     "CREATE POLICY login_attempts_owner_delete ON login_attempts FOR DELETE TO mzm_owner USING (true)",
+    "CREATE POLICY runs_owner_select ON runs FOR SELECT TO mzm_owner USING (true)",
+    "CREATE POLICY connections_owner_select ON connections FOR SELECT TO mzm_owner USING (true)",
 ]
 
 # "Privileges of mzm_app" in the database contract (TEN-004).
@@ -452,15 +601,18 @@ PRIVILEGES = [
     "GRANT UPDATE (revoked_at) ON device_sessions TO mzm_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON conversations TO mzm_app",
     "GRANT SELECT, INSERT ON conversation_messages TO mzm_app",
-    "GRANT SELECT, INSERT, UPDATE ON runs TO mzm_app",
+    # Rewinding deletes runs (ADR-0068).
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON runs TO mzm_app",
     "GRANT SELECT, INSERT ON usage_ledger TO mzm_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON connections, connection_models TO mzm_app",
     """
     GRANT EXECUTE ON FUNCTION app_tenant_id(), app_user_id(), app_is_tenant_admin(), app_is_instance_admin()
       TO mzm_app
     """,
     """
     GRANT EXECUTE ON FUNCTION auth_find_login(text), auth_find_session(bytea), auth_touch_session(uuid),
-      auth_record_login_attempt(text, inet, boolean) TO mzm_app
+      auth_record_login_attempt(text, inet, boolean), retention_expired_runs(integer), default_model_configured()
+      TO mzm_app
     """,
 ]
 
@@ -493,6 +645,10 @@ def downgrade() -> None:
         [
             "ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC",
             *(f"DROP TABLE {table} CASCADE" for table in reversed(CONTRACT_TABLES)),
+            "DROP FUNCTION default_model_configured()",
+            "DROP FUNCTION retention_expired_runs(integer)",
+            "DROP FUNCTION revoke_sessions_of_disabled_user()",
+            "DROP FUNCTION connections_guard()",
             "DROP FUNCTION bootstrap_instance(text, text, text, text)",
             "DROP FUNCTION auth_record_login_attempt(text, inet, boolean)",
             "DROP FUNCTION auth_touch_session(uuid)",

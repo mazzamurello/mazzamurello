@@ -1,7 +1,7 @@
-// Conversations through the API (API-003).
+// Conversations through the API (API-003, CNV-004, MOD-012).
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api, unwrap, type Conversation } from "./api/client";
+import { api, unwrap, type Conversation, type ModelChoice } from "./api/client";
 
 export const CONVERSATIONS = ["conversations"] as const;
 
@@ -12,15 +12,25 @@ export function useConversations() {
   });
 }
 
-export async function createConversation(): Promise<Conversation> {
-  return unwrap(await api.POST("/conversations", { body: {} }));
+export async function createConversation(model?: ModelChoice): Promise<Conversation> {
+  return unwrap(await api.POST("/conversations", { body: model === undefined ? {} : { model } }));
 }
 
 export async function updateConversation(
   id: string,
-  body: { title?: string; archived?: boolean; active_run_id?: string | null },
+  body: { title?: string; archived?: boolean; model?: ModelChoice },
 ): Promise<Conversation> {
   return unwrap(await api.PATCH("/conversations/{conversation_id}", { params: { path: { conversation_id: id } }, body }));
+}
+
+/** Make `runId` the last run, deleting the runs after it; `null` deletes every run (ADR-0068). */
+export async function rewindConversation(id: string, runId: string | null): Promise<Conversation> {
+  return unwrap(
+    await api.POST("/conversations/{conversation_id}/rewind", {
+      params: { path: { conversation_id: id } },
+      body: { run_id: runId },
+    }),
+  );
 }
 
 export async function deleteConversation(id: string): Promise<void> {

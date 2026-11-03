@@ -28,7 +28,7 @@ new entry here first (ADR-0005).
 | Message | One entry in a conversation, from the user or the assistant. |
 | Folder | A user's named group of conversations in the conversation list; carries no instructions or settings (CNV-007). |
 | Fork | A new conversation started from a turn of another conversation, which records where it came from (CNV-005). |
-| Rewind | Making an earlier turn the end of the active path, so the conversation continues from there; what followed is kept as a version (CNV-004). |
+| Rewind | Making an earlier turn the end of a conversation, so it continues from there; what followed is deleted (CNV-004, ADR-0068). |
 | File library | The private collection of files a user has uploaded, usable from any of their conversations; shown as "Files" (CNV-012). |
 | Base instructions | The assistant's main instructions, which a user may replace and restore (CNV-014). |
 | Additional instructions | Instructions a user adds after the base instructions (CNV-014). |
@@ -37,9 +37,8 @@ new entry here first (ADR-0005).
 | Compaction checkpoint | The stored result of a compaction for one path, attached to the run at which it happened (ADR-0041). |
 | Temporary conversation | A conversation that is not listed, does not use memory and is deleted when the user leaves it (CNV-011). |
 | Attachment | A file of the file library referenced by a message; uploading an attachment adds it to the library (CNV-012). |
-| Parent run | The run whose messages a run continues; runs form a tree within a conversation (ADR-0037). |
-| Version | One of the runs that share the same parent run, created by editing a message or asking for a new answer (CNV-001). |
-| Active path | The chain of runs, from the first to the active run, that the user sees and that new runs continue by default (ADR-0037). |
+| Parent run | The run whose messages a run continues; the runs of a conversation form one chain (ADR-0037, ADR-0068). |
+| Active path | The chain of runs, from the first to the active run: the history the user sees and that a new run continues (ADR-0037, ADR-0068). |
 | Artifact | An output the assistant creates and revises for the user, such as a document, code, a diagram or a web page, shown next to the conversation, with immutable versions (ADR-0038). Not to be confused with a repository artifact, a file of this repository. |
 | Voice turn | A user turn spoken instead of typed, started and ended explicitly by the user, answered in full and read aloud (ADR-0040). |
 | Notification | A content-free message pushed to a user's device when a run finishes or an approval is pending (ADR-0039). |
@@ -58,7 +57,7 @@ new entry here first (ADR-0005).
 | Audit event | A record of a tool call, visible to the user it acted for. |
 | Scheduled task | A run started by a schedule or trigger rather than by a message. |
 | Memory item | A piece of information the assistant retains about a user across conversations. Visible, editable and deletable by the user. |
-| Connector | An integration with an external system (calendar, mail, files, home automation), exposed to the agent as mediated tools. |
+| Connector | An integration with an external system (calendar, mail, files, home automation), exposed to the agent as mediated tools. Not to be confused with a connection. |
 
 ## Devices and connectors
 
@@ -67,6 +66,12 @@ new entry here first (ADR-0005).
 | Connected device | A machine or phone of a user, paired to their account, that offers tools running on it to that user's runs (ADR-0063). Not to be confused with a device session, which is a sign-in. |
 | Device service | The program that runs on a connected device, keeps its connection to the instance and runs its tools (ADR-0063). |
 | Remote MCP server | A service reached over HTTP with the Model Context Protocol, added by a tenant admin, whose tools the assistant can call (ADR-0064). |
+
+## Clients
+
+| Term | Definition |
+|---|---|
+| Sprite | The animated character of the clients: a mazzamurello, the house sprite of folklore the project is named after, who greets the user and acts out what a run is doing (ADR-0070). |
 
 ## Execution
 
@@ -84,6 +89,7 @@ new entry here first (ADR-0005).
 | Canary sandbox | A short-lived sandbox the sandbox driver starts to verify isolation before accepting requests. |
 | Isolation runtime | The container runtime that enforces sandbox isolation: gVisor (ADR-0023). |
 | Egress policy | The network rules that decide which destinations a sandbox may reach. |
+| Declared destination | An external service the control plane may connect to, for one purpose, as listed in ADR-0072; the control plane connects to no other (OBS-006). |
 
 ## Models
 
@@ -91,8 +97,9 @@ new entry here first (ADR-0005).
 |---|---|
 | Model gateway | The component through which every model call passes; applies routing, budgets and the data egress policy. |
 | Provider | A source of model inference: a local server or a remote service. |
-| Model configuration | A model of a provider made available by an admin: its endpoint, credentials, model name and prices, for the whole instance or for one tenant (ADR-0051). |
-| Default model | The model configuration that answers runs: the tenant's default, or else the instance's (ADR-0051). |
+| Connection | A household's access to one provider, managed by a tenant admin: OpenRouter, or a server with an OpenAI-compatible API, with its address and credentials. It offers all of the provider's models (ADR-0069). Not to be confused with a connector. |
+| Connection test | A check of a connection, step by step, that says which step fails and why (MOD-013). |
+| Default model | The model of one of its connections that a household's new conversations start with, chosen by a tenant admin (MOD-012). |
 | Local model | A model served from inside the instance or the household's network. |
 | Remote model | A model served by a third party over the internet. |
 | Cost ledger | The record of every model request made for a user, with tokens and cost but no content (MOD-006, ADR-0042). |

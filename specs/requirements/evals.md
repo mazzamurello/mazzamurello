@@ -12,14 +12,14 @@ How the behavior of the assistant is measured. Background: ADR-0015.
 The repository MUST contain a versioned suite of eval scenarios, each with
 explicit pass criteria, runnable with a single command.
 
-## EVL-002: Multiple model configurations
+## EVL-002: Multiple models
 
 - **Status:** draft
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** review
 
-The eval suite SHOULD run against several model configurations, including at
+The eval suite SHOULD run against several models, including at
 least one small local model, and report results per scenario and per model.
 
 ## EVL-003: Adversarial scenarios
@@ -42,7 +42,7 @@ data leaves the instance and no consequential action runs without approval.
 - **Verification:** review
 
 A release MUST NOT be published if the eval suite falls below its documented
-thresholds for the reference model configurations.
+thresholds for the reference models.
 
 ## EVL-005: Synthetic data only
 

@@ -17,8 +17,14 @@ def instance_admin(database: Database) -> Account:
     return create_account(database, create_tenant(database), "tenant_admin", instance_admin=True)
 
 
+@pytest.fixture
+def some_default(database: Database, default_model: HarnessModel) -> None:
+    """At least one household of the instance has a default model."""
+    default_model.connect(create_tenant(database))
+
+
 @pytest.mark.spec("OPS-002")
-def test_anonymous_callers_see_only_the_status(server: Server, default_model: HarnessModel) -> None:
+def test_anonymous_callers_see_only_the_status(server: Server, some_default: None) -> None:
     with server.client() as client:
         response = client.get("/health")
     assert response.status_code == 200, response.text
@@ -26,14 +32,14 @@ def test_anonymous_callers_see_only_the_status(server: Server, default_model: Ha
 
 
 @pytest.mark.spec("OPS-002")
-def test_members_see_only_the_status(database: Database, server: Server, default_model: HarnessModel) -> None:
+def test_members_see_only_the_status(database: Database, server: Server, some_default: None) -> None:
     member = create_account(database, create_tenant(database))
     with server.client(login(server, member)) as client:
         assert client.get("/health").json() == {"status": "ok"}
 
 
 @pytest.mark.spec("OPS-002", "SBX-003", "SBX-015")
-def test_instance_admins_see_every_check(server: Server, instance_admin: Account, default_model: HarnessModel) -> None:
+def test_instance_admins_see_every_check(server: Server, instance_admin: Account, some_default: None) -> None:
     with server.client(login(server, instance_admin)) as client:
         health = client.get("/health").json()
     assert health["status"] == "ok"
@@ -41,11 +47,13 @@ def test_instance_admins_see_every_check(server: Server, instance_admin: Account
 
 
 @pytest.mark.spec("OPS-002", "MOD-008")
-def test_an_instance_without_a_default_model_is_degraded(
-    server: Server, instance_admin: Account, default_model: HarnessModel
+def test_an_instance_where_no_household_has_a_default_model_is_degraded(
+    database: Database, server: Server, instance_admin: Account, some_default: None
 ) -> None:
-    with server.client(default_model.admin_token) as client:
-        client.patch(f"/instance/models/{default_model.id}", json={"is_default": False})
+    # Tests run one at a time, so the defaults of every household are set aside meanwhile.
+    with database.superuser() as conn:
+        defaults = conn.execute("SELECT id, default_model FROM connections WHERE default_model IS NOT NULL").fetchall()
+        conn.execute("UPDATE connections SET default_model = NULL")
     try:
         with server.client() as client:
             anonymous = client.get("/health")
@@ -54,5 +62,6 @@ def test_an_instance_without_a_default_model_is_degraded(
         assert (anonymous.status_code, anonymous.json()) == (200, {"status": "degraded"})
         assert detailed["checks"]["model_gateway"] == "degraded"
     finally:
-        with server.client(default_model.admin_token) as client:
-            client.patch(f"/instance/models/{default_model.id}", json={"is_default": True})
+        with database.superuser() as conn:
+            for connection_id, model in defaults:
+                conn.execute("UPDATE connections SET default_model = %s WHERE id = %s", (model, connection_id))
