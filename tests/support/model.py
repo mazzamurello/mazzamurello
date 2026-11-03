@@ -14,6 +14,11 @@ last user message:
 The command tool is found among the tools the request offers, by its name or
 description, so tests do not depend on the tool's name.
 
+`GET /v1/models` lists `SERVER_MODELS`, as OpenAI-compatible servers do; a
+request for `refuses-tools` that offers tools is refused as Ollama refuses it.
+Under `/html`, the server answers every request with a web page, as a server
+that is not a model API would.
+
 Under `/openrouter/api/v1`, the same scripts are answered as OpenRouter's
 chat completions API does, as its documentation describes (ADR-0057): a
 keep-alive comment before the first chunk, `provider` and
@@ -22,6 +27,10 @@ the finish reason and reports `cost`. Two more scripts apply there:
 
 - `status:402` answers OpenRouter's "insufficient credits" error;
 - `error-midstream` streams one piece, then an error event, and ends.
+
+There, `GET /models` answers as OpenRouter's model list (`OPENROUTER_MODELS`),
+most used first when asked with `sort=top-weekly` and by name otherwise, and
+`GET /key` accepts every key except `REJECTED_KEY`.
 
 Every request is recorded, with its headers, so that tests can check what
 reached the model.
@@ -42,6 +51,25 @@ SLOW_PIECE_SECONDS = 0.5
 OPENROUTER_PREFIX = "/openrouter"
 # The cost OpenRouter reports for every answer, in credits of one US dollar.
 OPENROUTER_COST = 0.000420
+# The models of the OpenAI-compatible server.
+# `gpt-4o-mini` is a model the price catalog knows.
+SERVER_MODELS = ("test-model", "refuses-tools", "gpt-4o-mini")
+# What Ollama answers when a model that cannot call tools is offered some.
+REFUSES_TOOLS_ERROR = "registry.ollama.ai/library/refuses-tools does not support tools"
+# The key OpenRouter's key check refuses.
+REJECTED_KEY = "sk-or-rejected"
+# OpenRouter's models, most used in the past week first: (id, name, dollars per
+# token in, out, context window, whether it can call tools). A router, whose
+# price depends on the model it picks, lists `-1`, as OpenRouter's own does.
+OPENROUTER_MODELS = (
+    ("test/popular", "Test: Popular", "0.00000027", "0.00000041", 131072, True),
+    ("test/second", "Test: Second", "0.0000003", "0.0000025", 1048576, True),
+    ("test/chat-only", "Test: Chat only", "0.0000001", "0.0000002", 32768, False),
+    ("test/free-chat", "Test: Free chat", "0", "0", 32768, False),
+    ("test/free", "Test: Free", "0", "0", 131072, True),
+    ("test/another", "Test: Another", "0.00000015", "0.0000006", 65536, True),
+    ("test/router", "Test: Router", "-1", "-1", 2000000, False),
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +78,9 @@ class ModelRequest:
     body: dict[str, Any]
     headers: dict[str, str] = field(default_factory=dict[str, str])
     openrouter: bool = False
+    method: str = "POST"
+    # The path and query of the request.
+    path: str = ""
 
     def user_texts(self) -> list[str]:
         """The text of every user message the model received, in order."""
@@ -85,6 +116,11 @@ class ModelServer:
         """The requests whose last user message is `text`."""
         with self._lock:
             return [request for request in self.requests if request.user_texts()[-1:] == [text]]
+
+    def reads(self, path: str) -> list[ModelRequest]:
+        """The `GET` requests whose path, without the query, ends with `path`."""
+        with self._lock:
+            return [r for r in self.requests if r.method == "GET" and r.path.split("?")[0].endswith(path)]
 
 
 def _last_text(body: dict[str, Any]) -> str:
@@ -130,15 +166,47 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
         def log_message(self, format: str, *args: object) -> None:
             pass
 
+        def do_GET(self) -> None:
+            self.openrouter = self.path.startswith(f"{OPENROUTER_PREFIX}/")
+            headers = {name.lower(): value for name, value in self.headers.items()}
+            model.record(
+                ModelRequest(self.headers.get("Authorization"), {}, headers, self.openrouter, "GET", self.path)
+            )
+            path, _, query = self.path.partition("?")
+            if path.startswith("/html/"):
+                self._page()
+            elif self.openrouter and path.endswith("/api/v1/key"):
+                if self.headers.get("Authorization") == f"Bearer {REJECTED_KEY}":
+                    self._error(401, "User not found.", "authentication")
+                else:
+                    self._json(200, {"data": {"label": "sk-or-v1-...", "limit": None, "usage": 0}})
+            elif self.openrouter and path.endswith("/api/v1/models"):
+                self._json(200, {"data": _openrouter_models("sort=top-weekly" in query.split("&"))})
+            elif not self.openrouter and path == "/v1/models":
+                self._json(200, {"object": "list", "data": [{"id": name, "object": "model"} for name in SERVER_MODELS]})
+            else:
+                data = b"404 page not found"
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
         def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", "0"))
             body = cast(dict[str, Any], json.loads(self.rfile.read(length) or b"{}"))
             self.openrouter = self.path.startswith(f"{OPENROUTER_PREFIX}/")
             headers = {name.lower(): value for name, value in self.headers.items()}
-            request = ModelRequest(self.headers.get("Authorization"), body, headers, self.openrouter)
+            request = ModelRequest(self.headers.get("Authorization"), body, headers, self.openrouter, "POST", self.path)
             model.record(request)
             texts = request.user_texts()
             last = texts[-1] if texts else ""
+            if self.path.startswith("/html/"):
+                self._page()
+                return
+            if body.get("model") == "refuses-tools" and body.get("tools"):
+                self._json(400, {"error": {"message": REFUSES_TOOLS_ERROR, "type": "api_error"}})
+                return
             if not self.path.endswith("/chat/completions") or last == "fail":
                 self._error(500, "scripted failure", "server_error")
                 return
@@ -163,6 +231,14 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             else:
                 error = {"message": message, "type": kind}
             self._json(status, {"error": error}, headers)
+
+        def _page(self) -> None:
+            data = b"<!doctype html><title>Router</title><p>Welcome to your router.</p>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
 
         def _json(self, status: int, payload: dict[str, Any], headers: dict[str, str] | None = None) -> None:
             data = json.dumps(payload).encode()
@@ -284,6 +360,24 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             self.wfile.flush()
 
     return Handler
+
+
+def _openrouter_models(most_used_first: bool) -> list[dict[str, Any]]:
+    """OpenRouter's model list, as its documentation describes it."""
+    models = list(OPENROUTER_MODELS) if most_used_first else sorted(OPENROUTER_MODELS, key=lambda m: m[1])
+    return [
+        {
+            "id": model_id,
+            "canonical_slug": model_id,
+            "name": name,
+            "context_length": context,
+            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            "pricing": {"prompt": prompt, "completion": completion, "request": "0", "image": "0"},
+            "supported_parameters": ["max_tokens", "temperature", *(["tools", "tool_choice"] if tools else [])],
+            "top_provider": {"context_length": context, "is_moderated": False},
+        }
+        for model_id, name, prompt, completion, context, tools in models
+    ]
 
 
 def _usage() -> dict[str, int]:

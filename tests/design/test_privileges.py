@@ -41,10 +41,10 @@ GRANTS: dict[str, dict[str, Columns]] = {
     "login_attempts": {},
     "conversations": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
     "conversation_messages": {"SELECT": EVERY, "INSERT": EVERY},
-    "runs": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY},
+    "runs": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
     "usage_ledger": {"SELECT": EVERY, "INSERT": EVERY},
-    "instance_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
-    "tenant_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
+    "connections": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
+    "connection_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
 }
 EXECUTABLE_FUNCTIONS = {
     "app_tenant_id()",
@@ -56,7 +56,7 @@ EXECUTABLE_FUNCTIONS = {
     "auth_touch_session(uuid)",
     "auth_record_login_attempt(text, inet, boolean)",
     "retention_expired_runs(integer)",
-    "instance_default_model_configured()",
+    "default_model_configured()",
 }
 
 # Owner policies of the pre-authentication functions: table -> operations.
@@ -66,7 +66,7 @@ OWNER_POLICIES = {
     "device_sessions": {"SELECT", "UPDATE"},
     "login_attempts": {"SELECT", "INSERT", "DELETE"},
     "runs": {"SELECT"},
-    "instance_models": {"SELECT"},
+    "connections": {"SELECT"},
 }
 
 

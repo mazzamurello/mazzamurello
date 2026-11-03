@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The reference design of the web client (ADR-0070). Sample data and scripted answers; not part of the app. -->
+<title>Mazzamurello Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+<style>
+/* Layout: an app shell — conversation list on the left, one centered reading column, the composer docked below it. */
+:root {
+  --bg: #F7F7F5; --panel: #EFEFEC; --surface: #FFFFFF; --raised: #FFFFFF;
+  --line: #E3E3DF; --line-strong: #CDCDC8; --fg: #1D1D1F; --muted: #626268; --faint: #85858C;
+  --bubble: #ECECE8; --hover: rgba(29, 29, 31, .06); --scrim: rgba(12, 12, 14, .42);
+  --shadow: 0 1px 2px rgba(20, 20, 22, .05), 0 10px 30px rgba(20, 20, 22, .09);
+  --accent-l: #C2372A; --accent-d: #F07163; --accent-soft-l: #FBEAE7; --accent-soft-d: #3A2220;
+  --accent: var(--accent-l); --accent-soft: var(--accent-soft-l); --on-accent: #FFFFFF;
+  --ok: #2B7A4B; --danger: #B42318; --on-danger: #FFFFFF;
+  /* The mazzamurello keeps its colors in both themes. */
+  --c-hat: #C8352A; --c-hat-shade: #992A21; --c-tunic: #B5302A; --c-skin: #F3D6B0; --c-hair: #E1B64C;
+  --c-line: #3A2A22; --c-blush: #EE9682; --c-mouth: #7A2A22; --c-wood: #9C6B3E; --c-paper: #FBF6EA; --c-glass: rgba(150, 200, 235, .45);
+  --font-ui: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+:root[data-accent="moss"] { --accent-l: #2E7848; --accent-d: #6CC48C; --accent-soft-l: #E3F1E7; --accent-soft-d: #1D3326; }
+:root[data-accent="dusk"] { --accent-l: #4553C4; --accent-d: #95A0F7; --accent-soft-l: #E8EAFB; --accent-soft-d: #262A48; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171719; --panel: #1E1E21; --surface: #232327; --raised: #2A2A2F;
+    --line: #323238; --line-strong: #46464D; --fg: #ECECEF; --muted: #A6A6AE; --faint: #82828A;
+    --bubble: #2D2D32; --hover: rgba(255, 255, 255, .07); --scrim: rgba(0, 0, 0, .6);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .45);
+    --accent: var(--accent-d); --accent-soft: var(--accent-soft-d); --on-accent: #1B0D0B;
+    --ok: #67C18B; --danger: #F2786C; --on-danger: #1B0D0B;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171719; --panel: #1E1E21; --surface: #232327; --raised: #2A2A2F;
+  --line: #323238; --line-strong: #46464D; --fg: #ECECEF; --muted: #A6A6AE; --faint: #82828A;
+  --bubble: #2D2D32; --hover: rgba(255, 255, 255, .07); --scrim: rgba(0, 0, 0, .6);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .45);
+  --accent: var(--accent-d); --accent-soft: var(--accent-soft-d); --on-accent: #1B0D0B;
+  --ok: #67C18B; --danger: #F2786C; --on-danger: #1B0D0B;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-ui); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Shell */
+.app { display: grid; grid-template-columns: 268px minmax(0, 1fr); height: 100%; }
+.app.bare { grid-template-columns: minmax(0, 1fr); }
+.app.bare .sidebar, .app.bare .topbar { display: none; }
+.sidebar { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; padding: 12px 10px; gap: 6px; }
+.side-top { display: flex; align-items: center; gap: 6px; padding: 2px 4px 8px; }
+.brand { display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 4px; font-weight: 700; font-size: 16px; letter-spacing: -.01em; flex: 1; text-align: left; border-radius: 8px; }
+.brand .mz { width: 28px; height: 28px; }
+.new-chat { display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 9px 10px; border-radius: 10px; font-weight: 600; color: var(--fg); }
+.new-chat .plus { width: 26px; height: 26px; border-radius: 999px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; }
+.new-chat .plus svg.i { width: 16px; height: 16px; stroke-width: 2.4; }
+.new-chat:hover, .side-link:hover, .conv:hover { background: var(--hover); }
+.convs { flex: 1; overflow-y: auto; min-height: 0; margin-top: 6px; }
+.convs h2 { font-size: 12px; font-weight: 600; color: var(--faint); margin: 14px 10px 4px; letter-spacing: .02em; }
+.convs ul { list-style: none; margin: 0; padding: 0; }
+.conv { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+.conv[aria-current="page"] { background: var(--hover); font-weight: 600; }
+.side-bottom { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.side-link { display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 8px 10px; border-radius: 9px; font-size: 14px; text-align: left; }
+.me { display: flex; align-items: center; gap: 10px; padding: 6px 4px 2px 10px; }
+.avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 700; display: grid; place-items: center; font-size: 13px; flex: none; }
+.me-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.25; }
+.me-name small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.topbar { height: 52px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 128px 0 16px; }
+.top-title { flex: 1; min-width: 0; font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-title small { font-weight: 400; color: var(--muted); margin-left: 8px; }
+#view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.only-phone { display: none !important; }
+.scrim { display: none; }
+.icon-btn { width: 34px; height: 34px; display: inline-grid; place-items: center; border: 0; border-radius: 9px; background: none; color: var(--muted); flex: none; }
+.icon-btn:hover { background: var(--hover); color: var(--fg); }
+
+/* Buttons and fields */
+.btn { height: 38px; padding: 0 16px; border-radius: 10px; font-weight: 600; font-size: 14px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: transparent; }
+.btn.primary:hover { opacity: .9; }
+.btn.danger { background: var(--danger); color: var(--on-danger); border-color: transparent; }
+.btn.small { height: 32px; padding: 0 12px; font-size: 13px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-weight: 600; font-size: 13.5px; }
+.field small { color: var(--muted); font-size: 12.5px; }
+.input, select.input { height: 40px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 0 12px; background: var(--bg); width: 100%; }
+.input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.seg { display: inline-flex; padding: 3px; background: var(--hover); border-radius: 12px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: none; padding: 6px 12px; border-radius: 9px; font-weight: 500; font-size: 13.5px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, .1); }
+
+/* Home */
+.home { flex: 1; overflow-y: auto; display: flex; }
+.home-inner { margin: auto; width: 100%; max-width: 760px; padding: 16px 16px 48px; display: flex; flex-direction: column; gap: 28px; }
+.greeting { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.greeting .mz { width: 132px; height: 152px; flex: none; }
+.speech { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 18px 22px 16px; max-width: 460px; box-shadow: var(--shadow); }
+.speech::before { content: ""; position: absolute; left: -9px; top: 46%; width: 16px; height: 16px; background: var(--surface); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg); }
+.speech .hello { margin: 0 0 8px; font-weight: 700; font-size: 20px; letter-spacing: -.015em; text-wrap: balance; }
+.speech blockquote { margin: 0; font: italic 400 19px/1.45 var(--font-serif); text-wrap: pretty; }
+.speech .by { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--muted); font-size: 13.5px; }
+.speech .by span { flex: 1; }
+.speech .by cite { font-style: italic; }
+
+/* Conversation */
+.thread { flex: 1; overflow-y: auto; min-height: 0; }
+.col { max-width: 740px; margin: 0 auto; padding: 0 16px; }
+.thread .col { padding-top: 8px; padding-bottom: 24px; }
+.msg { display: flex; flex-direction: column; gap: 4px; margin: 20px 0; }
+.msg.user { align-items: flex-end; }
+.bubble { background: var(--bubble); padding: 10px 15px; border-radius: 20px; max-width: min(85%, 560px); white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.msg-actions .icon-btn { width: 30px; height: 30px; }
+.msg-actions svg.i { width: 16px; height: 16px; }
+.msg:hover .msg-actions, .msg:focus-within .msg-actions, .msg.last .msg-actions { opacity: 1; }
+@media (hover: none) { .msg-actions { opacity: 1; } }
+.edit-box { width: min(100%, 600px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.edit-box textarea { border: 0; outline: 0; background: none; resize: none; min-height: 60px; }
+.edit-box .row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.edit-box .row small { flex: 1; color: var(--muted); font-size: 12.5px; }
+.prose { overflow-wrap: anywhere; min-width: 0; }
+.prose > :first-child { margin-top: 0; }
+.prose p { margin: 0 0 12px; }
+.prose h3 { font-size: 16.5px; font-weight: 700; margin: 20px 0 6px; letter-spacing: -.01em; }
+.prose ul { margin: 0 0 12px; padding-left: 22px; }
+.prose li { margin: 5px 0; }
+.prose li::marker { color: var(--faint); }
+.prose code { font-family: var(--font-mono); font-size: .86em; background: var(--hover); padding: 1px 5px; border-radius: 5px; }
+.prose .table { overflow-x: auto; margin: 4px 0 14px; border: 1px solid var(--line); border-radius: 12px; }
+.prose table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.prose th, .prose td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.prose tr:last-child td { border-bottom: 0; }
+.prose th { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; background: var(--hover); }
+.prose .checks { list-style: none; padding-left: 0; }
+.prose .checks li { display: flex; gap: 10px; align-items: baseline; }
+.prose .checks li::before { content: ""; width: 13px; height: 13px; border: 1.6px solid var(--line-strong); border-radius: 4px; flex: none; transform: translateY(2px); }
+.prose .stopped { color: var(--muted); font-style: italic; }
+.tools { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin-bottom: 10px; }
+.tools:empty { display: none; }
+details.tool summary { list-style: none; display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 13.5px; max-width: 100%; }
+details.tool summary::-webkit-details-marker { display: none; }
+details.tool summary:hover { color: var(--fg); background: var(--hover); }
+details.tool summary b { font-weight: 600; color: var(--fg); white-space: nowrap; }
+details.tool summary span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+details.tool summary svg.i { width: 16px; height: 16px; }
+details.tool .chev { transition: transform .15s; }
+details.tool[open] .chev { transform: rotate(90deg); }
+.tool-body { margin: 8px 0 4px 14px; padding: 4px 0 4px 14px; border-left: 2px solid var(--line); font-size: 13.5px; color: var(--muted); }
+.tool-body ol { margin: 0; padding-left: 18px; }
+.tool-body li { margin: 3px 0; }
+.tool-body li span { color: var(--faint); }
+.tool-body pre { margin: 0; font: 12.5px/1.5 var(--font-mono); white-space: pre-wrap; color: var(--fg); }
+.run { display: flex; align-items: center; gap: 10px; min-height: 58px; margin-top: 2px; }
+.run .mz { width: 46px; height: 53px; flex: none; }
+.run-text { color: var(--muted); font-size: 14px; }
+.run-text.live { background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 40%, var(--fg) 50%, var(--muted) 60%, var(--muted) 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 2.2s linear infinite; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+/* Composer */
+.dock { flex: none; padding: 6px 0 14px; }
+.composer { position: relative; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 24px; box-shadow: var(--shadow); padding: 14px 12px 10px 18px; display: flex; flex-direction: column; gap: 8px; }
+.composer:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
+.composer textarea { border: 0; outline: 0; resize: none; background: none; min-height: 26px; max-height: 220px; line-height: 1.5; padding: 0; }
+.composer textarea::placeholder { color: var(--faint); }
+.composer-bar { display: flex; align-items: center; gap: 6px; }
+.composer-bar .grow { flex: 1; }
+.model-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--muted); font-weight: 500; font-size: 13.5px; padding: 6px 8px; border-radius: 9px; min-width: 0; }
+.model-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-btn:hover, .model-btn[aria-expanded="true"] { background: var(--hover); color: var(--fg); }
+.model-btn svg.i { width: 16px; height: 16px; }
+.send { width: 36px; height: 36px; border-radius: 12px; background: var(--accent); color: var(--on-accent); border: 0; display: grid; place-items: center; flex: none; transition: opacity .15s; }
+.send svg.i { stroke-width: 2.3; }
+.send:disabled { opacity: .35; cursor: default; }
+.send.stop { background: var(--fg); color: var(--bg); }
+.egress { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--faint); margin: 8px 0 0; text-align: center; }
+.egress svg.i { width: 14px; height: 14px; }
+
+/* Model picker */
+.picker { position: absolute; right: 6px; bottom: calc(100% + 8px); width: min(400px, calc(100vw - 32px)); max-height: min(480px, 68vh); background: var(--raised); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; z-index: 30; }
+.picker-search { padding: 10px; border-bottom: 1px solid var(--line); }
+.picker-search .input { height: 38px; background: var(--bg); }
+.picker-list { overflow-y: auto; padding: 4px 6px 8px; }
+.picker h3 { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--faint); margin: 12px 10px 4px; }
+.picker h3 svg.i { width: 14px; height: 14px; }
+.picker h3 em { font-style: normal; font-weight: 400; margin-left: auto; }
+.opt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 10px; width: 100%; text-align: left; padding: 8px 10px; border-radius: 11px; background: none; border: 0; }
+.opt:hover, .opt:focus-visible { background: var(--hover); }
+.opt-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.opt-meta { grid-column: 1; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.opt-check { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: var(--accent); }
+.badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.picker-foot { padding: 9px 14px; font-size: 12px; color: var(--faint); border-top: 1px solid var(--line); }
+.picker-empty { padding: 18px 10px; color: var(--muted); font-size: 14px; }
+
+/* Dialogs and toasts */
+.dialog-scrim { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; padding: 16px; animation: fade .15s; }
+.dialog { background: var(--raised); border-radius: 20px; width: min(460px, 100%); padding: 22px; box-shadow: var(--shadow); max-height: calc(100% - 32px); overflow-y: auto; animation: rise .2s cubic-bezier(.2, .8, .3, 1); }
+.dialog h2 { font-size: 18px; margin: 0 0 8px; letter-spacing: -.01em; }
+.dialog p { color: var(--muted); margin: 0 0 10px; }
+.dialog .note { display: flex; gap: 8px; align-items: center; color: var(--fg); background: var(--hover); padding: 9px 12px; border-radius: 10px; font-size: 14px; }
+.dialog form { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.toasts { position: fixed; top: calc(62px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 60; width: min(540px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; display: flex; gap: 12px; align-items: center; background: var(--raised); border: 1px solid var(--line); border-radius: 18px; padding: 10px 10px 10px 16px; box-shadow: var(--shadow); animation: rise .25s cubic-bezier(.2, .8, .3, 1); font-size: 14px; }
+.toast.error { padding-left: 8px; border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.toast .mz { width: 58px; height: 67px; flex: none; }
+.toast-text { flex: 1; min-width: 0; }
+.toast-text strong { display: block; margin-bottom: 2px; }
+.toast-text p { margin: 0 0 8px; color: var(--muted); }
+@keyframes fade { from { opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+
+/* Connection test */
+.test-result { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; }
+.test-result.ok { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+.test-result.fail { border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
+.tr-head { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 14.5px; }
+.test-result.ok .tr-head svg.i { color: var(--ok); }
+.test-result.fail .tr-head svg.i { color: var(--danger); }
+.dialog .test-result p { margin: 0; color: var(--muted); }
+.stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.stages li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 0 8px; align-items: center; }
+.stages .st-label { font-weight: 600; }
+.stages .st-detail { grid-column: 2 / span 2; color: var(--muted); font: 12px/1.45 var(--font-mono); overflow-wrap: anywhere; }
+.stages .st-ms { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.stages .st-ico { display: grid; place-items: center; width: 18px; height: 18px; }
+.stages .st-ico svg.i { width: 15px; height: 15px; stroke-width: 2.4; }
+.stages li.ok .st-ico { color: var(--ok); }
+.stages li.fail .st-ico, .stages li.fail .st-detail { color: var(--danger); }
+.stages li.skip { color: var(--faint); }
+.stages li.skip .st-label { font-weight: 500; }
+.stages li.run .st-ico::before, .tr-head .spin { content: ""; width: 12px; height: 12px; border-radius: 999px; border: 2px solid var(--muted); border-right-color: transparent; animation: spin .8s linear infinite; display: inline-block; flex: none; }
+.test-result details summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 600; }
+.test-result pre { font: 12px/1.5 var(--font-mono); background: var(--hover); padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; }
+.sim { border: 1px dashed var(--line-strong); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.sim .k { font-size: 12px; color: var(--faint); font-weight: 600; }
+.sim .seg button { padding: 4px 9px; font-size: 12.5px; }
+.dialog-actions .grow { flex: 1; }
+
+/* Settings */
+.page { flex: 1; overflow-y: auto; }
+.page-inner { max-width: 900px; margin: 0 auto; padding: 8px 16px 56px; display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 36px; }
+.page h1 { grid-column: 1 / -1; font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+.tabs { display: flex; flex-direction: column; gap: 2px; }
+.tabs button { text-align: left; border: 0; background: none; padding: 8px 12px; border-radius: 9px; color: var(--muted); font-weight: 500; display: flex; gap: 10px; align-items: center; }
+.tabs button:hover { background: var(--hover); color: var(--fg); }
+.tabs button[aria-current="page"] { background: var(--hover); color: var(--fg); font-weight: 600; }
+.sections { display: flex; flex-direction: column; gap: 34px; min-width: 0; }
+.sections h2 { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+.hint { color: var(--muted); font-size: 14px; margin: 0 0 14px; max-width: 62ch; }
+.conns { display: flex; flex-direction: column; gap: 10px; }
+.conn { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.conn-icon { grid-row: 1 / span 2; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.conn-name { font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.conn-sub { color: var(--muted); font-size: 13px; grid-column: 2; overflow-wrap: anywhere; }
+.conn .pill { grid-row: 1 / span 2; grid-column: 3; }
+.pill { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.pill.checking { color: var(--muted); background: var(--hover); }
+.pill.checking::before { content: ""; width: 10px; height: 10px; border-radius: 999px; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+.tag { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+.tag svg.i { width: 12px; height: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.add-row { margin-top: 12px; }
+.themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 480px; }
+.theme-card { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 14px; padding: 12px; text-align: left; display: flex; flex-direction: column; gap: 8px; font-weight: 600; font-size: 14px; }
+.theme-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.swatch { height: 44px; border-radius: 8px; border: 1px solid var(--line); }
+.swatch.s-light { background: linear-gradient(90deg, #EFEFEC 30%, #F7F7F5 30%); }
+.swatch.s-dark { background: linear-gradient(90deg, #1E1E21 30%, #171719 30%); }
+.swatch.s-system { background: linear-gradient(135deg, #F7F7F5 50%, #171719 50%); }
+
+/* Sign-in */
+.signin { flex: 1; overflow-y: auto; display: flex; padding: 24px 16px; }
+.signin-card { margin: auto; width: min(360px, 100%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.signin-card .mz { width: 92px; height: 106px; }
+.signin-card h1 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin: 6px 0 2px; text-align: center; }
+.signin-card > p { color: var(--muted); margin: 0 0 18px; text-align: center; }
+.signin-card form { width: 100%; display: flex; flex-direction: column; gap: 14px; }
+.signin-card .btn { width: 100%; height: 42px; }
+
+/* Poses */
+.poses { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.pose-card { border: 1px solid var(--line); background: var(--surface); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
+.pose-card .mz { width: 116px; height: 134px; }
+.pose-card b { font-size: 14.5px; }
+.pose-card span { color: var(--muted); font-size: 13px; }
+
+/* Prototype controls: not part of the app */
+.proto { position: fixed; top: calc(9px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); z-index: 70; }
+.proto-pill { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px dashed var(--line-strong); background: var(--raised); color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.proto-pill svg.i { width: 15px; height: 15px; }
+.proto-card { position: absolute; right: 0; top: calc(100% + 8px); width: min(296px, calc(100vw - 24px)); background: var(--raised); border: 1px dashed var(--line-strong); border-radius: 16px; box-shadow: var(--shadow); padding: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+.proto-card .k { font-weight: 600; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.proto-card .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.proto-card p { margin: 0; color: var(--faint); font-size: 12px; }
+
+/* The mazzamurello */
+.mz { display: block; overflow: visible; }
+.mz .pose { display: none; }
+.mz[data-state="idle"] .pose-idle, .mz[data-state="still"] .pose-idle, .mz[data-state="answering"] .pose-idle,
+.mz[data-state="greeting"] .pose-wave, .mz[data-state="thinking"] .pose-think, .mz[data-state="searching"] .pose-search,
+.mz[data-state="reading"] .pose-read, .mz[data-state="writing"] .pose-write, .mz[data-state="knocking"] .pose-knock,
+.mz[data-state="error"] .pose-sign { display: inline; }
+.mz .fig { transform-origin: 100px 212px; animation: mz-breathe 3.2s ease-in-out infinite; }
+.mz .hat { transform-origin: 100px 94px; animation: mz-sway 4.5s ease-in-out infinite; }
+.mz[data-state="still"] .fig, .mz[data-state="still"] .hat { animation: none; }
+.mz[data-state="answering"] .fig { animation: mz-bob .9s ease-in-out infinite; }
+.mz[data-state="greeting"] .fig { animation: mz-hop 4s ease-in-out infinite; }
+.mz .wave-arm { transform-origin: 109px 128px; animation: mz-wave 4s ease-in-out infinite; }
+.mz[data-state="thinking"] .head { transform-origin: 100px 124px; animation: mz-tilt 2.6s ease-in-out infinite alternate; }
+.mz .dot { animation: mz-dot 1.5s ease-in-out infinite; }
+.mz .d2 { animation-delay: .2s; } .mz .d3 { animation-delay: .4s; }
+.mz .lens-arm { transform-origin: 109px 128px; animation: mz-scan 2.4s ease-in-out infinite; }
+.mz[data-state="searching"] .head { transform-origin: 100px 124px; animation: mz-look 2.4s ease-in-out infinite; }
+.mz .page-flip { transform-origin: 100px 150px; animation: mz-flip 2.8s ease-in-out infinite; }
+.mz[data-state="reading"] .head { transform-origin: 100px 124px; transform: translateY(2px) rotate(-2deg); }
+.mz .pencil-arm { transform-origin: 109px 128px; animation: mz-scribble .42s ease-in-out infinite alternate; }
+.mz .ink { stroke-dasharray: 46; animation: mz-ink 2.7s linear infinite; }
+.mz .mallet-arm { transform-origin: 109px 128px; animation: mz-knock .8s cubic-bezier(.55, 0, .6, 1) infinite; }
+.mz .bang { animation: mz-bang .8s linear infinite; }
+.mz .sign-arm { transform-origin: 109px 128px; animation: mz-wobble 1.3s ease-in-out infinite alternate; }
+@keyframes mz-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
+@keyframes mz-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes mz-sway { 0%, 100% { transform: rotate(-1.5deg); } 50% { transform: rotate(2.5deg); } }
+@keyframes mz-hop { 0%, 30%, 100% { transform: translateY(0); } 8% { transform: translateY(-10px); } 16% { transform: translateY(0); } 21% { transform: translateY(-4px); } }
+@keyframes mz-wave { 0%, 55%, 100% { transform: rotate(0); } 10%, 30% { transform: rotate(-18deg); } 20%, 40% { transform: rotate(12deg); } }
+@keyframes mz-tilt { from { transform: rotate(-3deg); } to { transform: rotate(4deg); } }
+@keyframes mz-dot { 0%, 100% { opacity: .2; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+@keyframes mz-scan { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(10deg); } }
+@keyframes mz-look { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(4deg); } }
+@keyframes mz-flip { 0%, 35% { transform: scaleX(1); } 60%, 100% { transform: scaleX(-1); } }
+@keyframes mz-scribble { from { transform: rotate(-2.5deg); } to { transform: rotate(2deg) translateY(1px); } }
+@keyframes mz-ink { 0% { stroke-dashoffset: 46; } 80%, 100% { stroke-dashoffset: 0; } }
+@keyframes mz-knock { 0% { transform: rotate(-28deg); } 55% { transform: rotate(38deg); } 65% { transform: rotate(30deg); } 100% { transform: rotate(-28deg); } }
+@keyframes mz-bang { 0%, 50% { opacity: 0; } 56% { opacity: 1; } 80%, 100% { opacity: 0; } }
+@keyframes mz-wobble { from { transform: rotate(-4deg); } to { transform: rotate(3deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .mz, .mz * { animation: none !important; }
+  .run-text.live { animation: none; color: var(--muted); background: none; }
+  .toast, .dialog, .dialog-scrim { animation: none; }
+}
+
+/* Phones */
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: min(300px, 86vw); z-index: 40; transform: translateX(-100%); transition: transform .25s cubic-bezier(.2, .8, .3, 1); padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); padding-left: max(10px, env(safe-area-inset-left, 0px)); }
+  .app.drawer .sidebar { transform: none; box-shadow: var(--shadow); }
+  .app.drawer .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 35; }
+  .only-phone { display: inline-grid !important; }
+  .topbar { padding-left: max(8px, env(safe-area-inset-left, 0px)); }
+  .greeting { flex-direction: column; gap: 14px; }
+  .greeting .mz { width: 108px; height: 124px; }
+  .speech::before { left: calc(50% - 8px); top: -9px; transform: rotate(135deg); }
+  .speech { padding: 16px 18px 14px; }
+  .home-inner { gap: 22px; }
+  .page-inner { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .tabs { flex-direction: row; overflow-x: auto; }
+  .dock { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .themes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="Conversations"></aside>
+  <div class="scrim" data-action="close-menu"></div>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div id="view"></div>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+<div id="dialogs"></div>
+<div class="proto" id="proto"></div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Icons, drawn in the style of an open line-icon set */
+const ICONS = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  sliders: '<path d="M20 5h-8M8 5H4M20 12h-4M12 12H4M20 19h-9M7 19H4"/><circle cx="10" cy="5" r="2"/><circle cx="14" cy="12" r="2"/><circle cx="9" cy="19" r="2"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h11"/>',
+  pencil: '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  fork: '<circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7v1a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7M12 11v6"/>',
+  chevDown: '<path d="m6 9 6 6 6-6"/>',
+  chevRight: '<path d="m9 6 6 6-6 6"/>',
+  arrowUp: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+  stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  filePen: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4M14 3v5h5M14 3l5 5v3"/><path d="M18.4 13.6a1.9 1.9 0 0 1 2.7 2.7L16 21.4l-3.5.9.9-3.5Z"/>',
+  book: '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2ZM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7Z"/>',
+  terminal: '<path d="m4 17 6-6-6-6M12 19h8"/>',
+  home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/>',
+  cloud: '<path d="M17.5 19H8a6 6 0 1 1 5.7-7.9A4.5 4.5 0 1 1 17.5 19Z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/>',
+  plug: '<path d="M12 22v-5M9 8V2M15 8V2M18 8v4a6 6 0 0 1-12 0V8Z"/>',
+  palette: '<circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-.5a2 2 0 0 1 2-2h2a4 4 0 0 0 4-4C22 7 17.5 2 12 2Z"/>',
+  flask: '<path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+};
+const icon = (name, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+
+/* The mazzamurello: one figure, a pose per state */
+const LN = "var(--c-line)", SK = "var(--c-skin)", RED = "var(--c-hat)", WOOD = "var(--c-wood)";
+const limb = (d, color, w = 3.6) =>
+  `<path d="${d}" fill="none" stroke="${LN}" stroke-width="${w + 2.4}" stroke-linecap="round" stroke-linejoin="round"/>` +
+  `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const hand = (x, y, r = 3.3) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${SK}" stroke="${LN}" stroke-width="1.3"/>`;
+const ARM_L = limb("M91,128 Q84,141 82,152", SK) + hand(82, 153);
+const ARM_R = limb("M109,128 Q116,141 118,152", SK) + hand(118, 153);
+const FIGURE = `
+  <ellipse cx="100" cy="214" rx="34" ry="4.5" fill="var(--fg)" opacity=".1"/>
+  <g class="fig">
+    ${limb("M95,158 Q91,182 89,203", RED, 4.4)}${limb("M105,158 Q109,182 111,203", RED, 4.4)}
+    <path d="M93,200 Q88,212 73,207 Q64,203 66,196 Q73,204 87,200 Z" fill="var(--c-hat-shade)" stroke="${LN}" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M107,200 Q112,212 127,207 Q136,203 134,196 Q127,204 113,200 Z" fill="var(--c-hat-shade)" stroke="${LN}" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M91,124 Q100,119 109,124 L116,158 Q100,165 84,158 Z" fill="var(--c-tunic)" stroke="${LN}" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M87,146 Q100,151 113,146" stroke="var(--c-hat-shade)" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <g class="head">
+      <path d="M83,100 L55,86 L84,113 Z" fill="${SK}" stroke="${LN}" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M80,102 L64,92" stroke="var(--c-blush)" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M117,100 L145,86 L116,113 Z" fill="${SK}" stroke="${LN}" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M120,102 L136,92" stroke="var(--c-blush)" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="100" cy="103" r="21" fill="${SK}" stroke="${LN}" stroke-width="1.6"/>
+      <circle cx="87" cy="111" r="4" fill="var(--c-blush)" opacity=".6"/>
+      <circle cx="113" cy="111" r="4" fill="var(--c-blush)" opacity=".6"/>
+      <path d="M88,104 Q92,99 96,104 M104,104 Q108,99 112,104" stroke="${LN}" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M100,106 Q102.5,109 100,110" stroke="${LN}" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      <path d="M91,113 Q100,123 109,113 Q100,116.5 91,113 Z" fill="var(--c-mouth)" stroke="${LN}" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M81,93 L73,108 L80,104 L78,114 L86,102 L85,95 Z" fill="var(--c-hair)" stroke="${LN}" stroke-width="1.2" stroke-linejoin="round"/>
+      <path d="M119,93 L127,108 L120,104 L122,114 L114,102 L115,95 Z" fill="var(--c-hair)" stroke="${LN}" stroke-width="1.2" stroke-linejoin="round"/>
+      <g class="hat">
+        <path d="M77,96 C73,72 85,50 101,36 C113,25 128,17 147,17 C139,24 134,33 131,45 C128,61 127,79 124,96 Z" fill="${RED}" stroke="${LN}" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M107,42 C117,52 121,72 119,95" stroke="var(--c-hat-shade)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".85"/>
+        <path d="M75,97 Q100,105 126,97 L125,90 Q100,97 76,90 Z" fill="var(--c-hat-shade)" stroke="${LN}" stroke-width="1.4" stroke-linejoin="round"/>
+      </g>
+    </g>
+    <g class="pose pose-idle">${ARM_L}${ARM_R}</g>
+    <g class="pose pose-wave">${ARM_L}<g class="wave-arm">${limb("M109,128 Q122,121 127,104", SK)}${hand(127, 102, 3.9)}</g></g>
+    <g class="pose pose-think">
+      ${limb("M91,128 Q86,141 97,146", SK)}${hand(97, 146)}
+      ${limb("M109,128 C119,139 113,128 105,123", SK)}${hand(105, 123)}
+      <g fill="var(--c-paper)" stroke="${LN}" stroke-width="1.2">
+        <circle class="dot" cx="134" cy="80" r="2.4"/><circle class="dot d2" cx="142" cy="67" r="3.3"/><circle class="dot d3" cx="152" cy="52" r="4.4"/>
+      </g>
+    </g>
+    <g class="pose pose-search">${ARM_L}
+      <g class="lens-arm">${limb("M109,128 Q122,135 131,124", SK)}${limb("M132,121 L137,113", WOOD, 3.2)}
+        <circle cx="143.5" cy="104" r="10" fill="var(--c-glass)" stroke="${LN}" stroke-width="2.6"/>
+        <path d="M137.5,101 Q139.5,96.5 144,95.8" stroke="var(--c-paper)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        ${hand(131, 123)}
+      </g>
+    </g>
+    <g class="pose pose-read">
+      <path d="M75,141 L100,146 L125,141 L125,160 L100,165 L75,160 Z" fill="${WOOD}" stroke="${LN}" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M78,139 Q90,137 100,143 L100,160 Q90,155 78,157 Z" fill="var(--c-paper)" stroke="${LN}" stroke-width="1.1" stroke-linejoin="round"/>
+      <path d="M122,139 Q110,137 100,143 L100,160 Q110,155 122,157 Z" fill="var(--c-paper)" stroke="${LN}" stroke-width="1.1" stroke-linejoin="round"/>
+      <path d="M82,146 Q90,145 96,148 M82,151 Q90,150 96,153 M104,148 Q110,145 118,146 M104,153 Q110,150 118,151" stroke="${LN}" stroke-width=".9" opacity=".45" fill="none"/>
+      <path class="page-flip" d="M122,139 Q110,137 100,143 L100,160 Q110,155 122,157 Z" fill="var(--c-paper)" stroke="${LN}" stroke-width="1.1" stroke-linejoin="round"/>
+      ${limb("M91,128 Q82,141 86,150", SK)}${hand(86, 150)}${limb("M109,128 Q118,141 114,150", SK)}${hand(114, 150)}
+    </g>
+    <g class="pose pose-write">
+      <g transform="rotate(-10 80 148)">
+        <rect x="67" y="133" width="26" height="30" rx="2.5" fill="var(--c-paper)" stroke="${LN}" stroke-width="1.4"/>
+        <path class="ink" d="M71,142 h17 M71,148 h17 M71,154 h12" stroke="${LN}" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+        <path d="M70,133 v-2.5 M75,133 v-2.5 M80,133 v-2.5 M85,133 v-2.5 M90,133 v-2.5" stroke="${LN}" stroke-width="1.4" stroke-linecap="round"/>
+      </g>
+      ${limb("M91,128 Q83,140 85,151", SK)}${hand(85, 151)}
+      <g class="pencil-arm">${limb("M109,128 Q115,146 93,147", SK)}${limb("M89,151 L98,139", "var(--c-hair)", 2.6)}
+        <path d="M89,151 l-1.6,2.4" stroke="${LN}" stroke-width="1.6" stroke-linecap="round"/>${hand(93, 147)}
+      </g>
+    </g>
+    <g class="pose pose-knock">${ARM_L}
+      <g class="mallet-arm">${limb("M109,128 Q122,124 128,110", SK)}${limb("M128,112 L128,88", WOOD, 3)}
+        <rect x="118" y="78" width="20" height="11" rx="3" fill="${WOOD}" stroke="${LN}" stroke-width="1.4"/>${hand(128, 109)}
+      </g>
+      <path class="bang" d="M158,98 l7,-4 M160,106 h8 M158,114 l7,4" stroke="${LN}" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    </g>
+    <g class="pose pose-sign">${ARM_L}
+      <g class="sign-arm">${limb("M109,128 Q126,124 134,110", SK)}${limb("M136,110 L158,86", WOOD, 3)}
+        <rect x="138" y="56" width="48" height="31" rx="4" fill="var(--c-paper)" stroke="${LN}" stroke-width="1.8"/>
+        <path d="M162,62 v11" stroke="${RED}" stroke-width="4.2" stroke-linecap="round"/><circle cx="162" cy="80" r="2.4" fill="${RED}"/>
+        ${hand(134, 109)}
+      </g>
+    </g>
+  </g>`;
+const creature = (state, viewBox = "0 0 200 230") =>
+  `<svg class="mz" data-state="${state}" viewBox="${viewBox}" aria-hidden="true" focusable="false">${FIGURE}</svg>`;
+
+/* Sample data */
+const QUOTES = [
+  ["Well begun is half done.", "Aristotle", "Politics"],
+  ["The journey of a thousand miles begins with a single step.", "Laozi", "Tao Te Ching"],
+  ["‘Hope’ is the thing with feathers that perches in the soul.", "Emily Dickinson", ""],
+  ["We are such stuff as dreams are made on.", "William Shakespeare", "The Tempest"],
+  ["Happy families are all alike; every unhappy family is unhappy in its own way.", "Leo Tolstoy", "Anna Karenina"],
+  ["You were not made to live like beasts, but to follow virtue and knowledge.", "Dante Alighieri", "Inferno"],
+  ["How beautiful is youth, that flees away all the same.", "Lorenzo de’ Medici", "Canzona di Bacco"],
+  ["The unexamined life is not worth living.", "Socrates", "Plato’s Apology"],
+  ["I think, therefore I am.", "René Descartes", "Discourse on the Method"],
+  ["Fortune favours the bold.", "Terence", "Phormio"],
+];
+const CONNS = {
+  home: { name: "Home server", kind: "local", sub: "Ollama at 192.168.1.10:11434", models: 3 },
+  or: { name: "OpenRouter", kind: "remote", sub: "openrouter.ai", models: 342 },
+};
+// OpenRouter's models in the order of tokens used last week; names and prices are examples.
+const MODELS = [
+  { id: "qwen3-8b", name: "Qwen3 8B", conn: "home" },
+  { id: "gemma3-12b", name: "Gemma 3 12B", conn: "home" },
+  { id: "llama32-3b", name: "Llama 3.2 3B", conn: "home" },
+  { id: "deepseek", name: "DeepSeek V3.2", conn: "or", in: 0.27, out: 0.41 },
+  { id: "gemini-flash", name: "Gemini 2.5 Flash", conn: "or", in: 0.3, out: 2.5 },
+  { id: "gpt5-mini", name: "GPT-5 mini", conn: "or", in: 0.25, out: 2.0 },
+  { id: "qwen3-235b", name: "Qwen3 235B A22B", conn: "or", in: 0.13, out: 0.6 },
+  { id: "kimi-k2", name: "Kimi K2", conn: "or", in: 0.5, out: 2.4 },
+  { id: "mistral-medium", name: "Mistral Medium 3.1", conn: "or", in: 0.4, out: 2.0 },
+  { id: "glm", name: "GLM 4.6", conn: "or", in: 0.4, out: 1.75 },
+  { id: "llama4", name: "Llama 4 Maverick", conn: "or", in: 0.15, out: 0.6 },
+];
+const SEARCH_RESULTS = `<ol>
+  <li>Galleria Nazionale delle Marche, Palazzo Ducale <span>· gallerianazionalemarche.it</span></li>
+  <li>Casa natale di Raffaello <span>· casaraffaello.com</span></li>
+  <li>Urbino with children <span>· turismo.urbino.it</span></li></ol>`;
+const conversations = [
+  {
+    id: "urbino", title: "Weekend in Urbino with the kids", when: "Today", model: "deepseek",
+    messages: [
+      { role: "user", text: "We're going to Urbino this weekend with the kids, who are 7 and 10. What should we see, and where can we eat without a long wait?" },
+      {
+        role: "bot",
+        tools: [
+          { kind: "search", label: "Searched the web", meta: "Urbino with children, 3 results", body: SEARCH_RESULTS },
+          { kind: "read", label: "Read 3 pages", meta: "gallerianazionalemarche.it and 2 more", body: "<ol><li>Opening hours and family tickets</li><li>The house where Raphael was born</li><li>Walks, parks and lookouts</li></ol>" },
+          { kind: "write", label: "Saved urbino-weekend.md", meta: "in your workspace", body: "<pre>urbino-weekend.md · 1.4 KB</pre>" },
+        ],
+        html: `<p>Urbino is small and steep, so plan short walks with breaks in between. This weekend works for a 7- and a 10-year-old:</p>
+<h3>Saturday</h3>
+<ul><li><b>Palazzo Ducale</b> in the morning, before the groups arrive. The inlaid wooden cupboards of the Duke's study look like they hold real books and instruments, and children love spotting the tricks. Allow 90 minutes.</li>
+<li><b>Raphael's birthplace</b> after lunch. It's small, about 30 minutes, and shows how painters ground their colours.</li>
+<li>Sunset at the <b>Fortezza Albornoz</b> park, with room to run and the best view of the town.</li></ul>
+<h3>Sunday</h3>
+<ul><li>The frescoes in the <b>Oratorio di San Giovanni</b> tell a story scene by scene, almost like a comic.</li></ul>
+<h3>Eating without a long wait</h3>
+<div class="table"><table><thead><tr><th>Where</th><th>Why</th><th>Tip</th></tr></thead><tbody>
+<tr><td>A piadineria for crescia</td><td>Fast, and the local flatbread is a hit with kids</td><td>Order at the counter, eat on the steps</td></tr>
+<tr><td>A trattoria for lunch</td><td>A proper sit-down break in the middle of the day</td><td>Book before 12:30 on Saturday</td></tr></tbody></table></div>
+<p>I saved the plan as <code>urbino-weekend.md</code> in your workspace, so you can open it on your phone on the way.</p>`,
+      },
+      { role: "user", text: "Can you make a packing list too? It might rain." },
+      {
+        role: "bot",
+        tools: [{ kind: "write", label: "Saved packing-list.md", meta: "in your workspace", body: "<pre>packing-list.md · 0.6 KB</pre>" }],
+        html: `<p>Here's a list for two days with a chance of rain. Urbino's streets are cobbled and slippery when wet, so shoes matter most.</p>
+<ul class="checks"><li>Waterproof jackets with hoods, for everyone</li><li>Shoes with grip, plus a spare pair for the kids</li><li>A small umbrella that fits in a backpack</li><li>A sketchbook and pencils for the museum</li><li>Snacks and refillable water bottles</li><li>Chargers and a power bank</li></ul>
+<p>It's saved as <code>packing-list.md</code> next to the plan.</p>`,
+      },
+    ],
+  },
+  { id: "tap", title: "Fixing the dripping kitchen tap", when: "Yesterday", model: "qwen3-8b", messages: [
+    { role: "user", text: "The kitchen tap drips even when it's closed tight. Can I fix it myself?" },
+    { role: "bot", tools: [], html: "<p>Usually, yes. A drip from a closed tap almost always means a worn cartridge or washer. Turn off the water under the sink, open the tap to drain it, then take off the handle and look at the cartridge.</p><p>Take the old part with you to the hardware shop, so you can match the size.</p>" } ] },
+  { id: "fractions", title: "Fractions homework, step by step", when: "Previous 7 days", model: "gemini-flash", messages: [
+    { role: "user", text: "How do I explain 3/4 + 1/8 to a 10-year-old?" },
+    { role: "bot", tools: [], html: "<p>Start with a pizza cut into 8 slices. Three quarters is 6 slices, one eighth is 1 slice, so together that's 7 slices: <b>7/8</b>.</p><p>Then show the same thing on paper: make the bottoms the same first, and only then add the tops.</p>" } ] },
+  { id: "ragu", title: "Ragù for eight people", when: "Previous 7 days", model: "deepseek", messages: [
+    { role: "user", text: "Quantities for a ragù for eight people?" },
+    { role: "bot", tools: [], html: "<p>For eight: 800 g of mixed minced beef and pork, one onion, one carrot, one celery stalk, a glass of red wine and 700 g of passata. Let it simmer for at least two hours.</p>" } ] },
+  { id: "boiler", title: "Boiler shows error E10", when: "Previous 30 days", model: "qwen3-8b", messages: [
+    { role: "user", text: "The boiler shows E10 and the radiators are cold." },
+    { role: "bot", tools: [], html: "<p>On many boilers E10 means the water pressure is too low. Check the gauge: it should read between 1 and 1.5 bar when the heating is off. If it's lower, top it up with the filling loop, following the manual.</p>" } ] },
+];
+const TOOL_ICON = { search: "globe", read: "book", write: "filePen", run: "terminal" };
+
+const S = {
+  view: "home", convId: null, model: "deepseek", defaultModel: "deepseek",
+  running: false, stopRequested: false, editing: null, picker: false, pickerQuery: "",
+  quote: Math.floor(Math.random() * QUOTES.length), tab: "connections", theme: "system", accent: "red",
+  conns: [{ id: "home", ...CONNS.home, status: "ok" }, { id: "or", ...CONNS.or, status: "ok" }],
+  proto: false, pendingDialog: null,
+};
+const conv = () => conversations.find((c) => c.id === S.convId);
+const modelOf = (id) => MODELS.find((m) => m.id === id) || MODELS[3];
+const priceOf = (m) => (m.conn === "home" ? "Free · runs at home" : `$${m.in.toFixed(2)} in · $${m.out.toFixed(2)} out per million tokens`);
+
+/* Rendering */
+function render() {
+  const app = $("#app");
+  app.classList.toggle("bare", S.view === "signin");
+  app.classList.remove("drawer");
+  renderSidebar();
+  renderTopbar();
+  const view = $("#view");
+  if (S.view === "home") view.innerHTML = homeHTML();
+  else if (S.view === "chat") view.innerHTML = chatHTML();
+  else if (S.view === "settings") view.innerHTML = settingsHTML();
+  else if (S.view === "poses") view.innerHTML = posesHTML();
+  else view.innerHTML = signinHTML();
+  afterRender();
+}
+
+function renderSidebar() {
+  const groups = [];
+  for (const c of conversations) {
+    let g = groups.find((x) => x.when === c.when);
+    if (!g) groups.push((g = { when: c.when, items: [] }));
+    g.items.push(c);
+  }
+  $("#sidebar").innerHTML = `
+    <div class="side-top">
+      <button class="brand" data-action="home">${creature("still", "52 12 96 118")}<span>Mazzamurello</span></button>
+      <button class="icon-btn only-phone" data-action="close-menu" aria-label="Close the conversation list">${icon("x")}</button>
+    </div>
+    <button class="new-chat" data-action="new"><span class="plus">${icon("plus")}</span>New chat</button>
+    <nav class="convs" aria-label="Recent conversations">
+      ${groups.map((g) => `<h2>${g.when}</h2><ul>${g.items.map((c) =>
+        `<li><button class="conv" data-action="open" data-id="${c.id}" ${S.view === "chat" && c.id === S.convId ? 'aria-current="page"' : ""}>${esc(c.title)}</button></li>`).join("")}</ul>`).join("")}
+    </nav>
+    <div class="side-bottom">
+      <button class="side-link" data-action="settings">${icon("sliders")}Settings</button>
+      <div class="me">
+        <span class="avatar" aria-hidden="true">G</span>
+        <span class="me-name">Giulia<small>Rossi household</small></span>
+        <button class="icon-btn" data-action="signout" aria-label="Sign out" title="Sign out">${icon("logout")}</button>
+      </div>
+    </div>`;
+}
+
+function renderTopbar() {
+  const c = conv();
+  let title = "";
+  if (S.view === "chat" && c) title = `${esc(c.title)}${c.forkedFrom ? `<small>Forked from “${esc(c.forkedFrom)}”</small>` : ""}`;
+  if (S.view === "settings") title = "Settings";
+  if (S.view === "poses") title = "The mazzamurello";
+  $("#topbar").innerHTML = `
+    <button class="icon-btn only-phone" data-action="menu" aria-label="Open the conversation list">${icon("menu")}</button>
+    <div class="top-title">${title}</div>
+    <button class="icon-btn only-phone" data-action="new" aria-label="New chat">${icon("plus")}</button>`;
+}
+
+function greetingWord() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+function homeHTML() {
+  const [text, who, work] = QUOTES[S.quote];
+  return `<div class="home"><div class="home-inner">
+    <div class="greeting">
+      ${creature("greeting")}
+      <figure class="speech" aria-live="polite" style="margin:0">
+        <p class="hello">${greetingWord()}, Giulia.</p>
+        <blockquote>“${esc(text)}”</blockquote>
+        <figcaption class="by"><span>${esc(who)}${work ? `, <cite>${esc(work)}</cite>` : ""}</span>
+          <button class="icon-btn" data-action="quote" aria-label="Another quote" title="Another quote">${icon("refresh")}</button></figcaption>
+      </figure>
+    </div>
+    ${composerHTML("What can I help with?")}
+  </div></div>`;
+}
+
+function composerHTML(placeholder) {
+  const m = modelOf(S.model);
+  const local = m.conn === "home";
+  return `<div class="composer-wrap">
+    <form class="composer" id="composer">
+      <textarea id="prompt" rows="1" aria-label="Message" placeholder="${placeholder}"></textarea>
+      <div class="composer-bar">
+        <span class="grow"></span>
+        <button type="button" class="model-btn" data-action="picker" aria-haspopup="dialog" aria-expanded="${S.picker}">${icon(local ? "home" : "cloud")}<span>${esc(m.name)}</span>${icon("chevDown")}</button>
+        ${S.running
+          ? `<button type="button" class="send stop" data-action="stop" aria-label="Stop">${icon("stop")}</button>`
+          : `<button type="submit" class="send" id="send" aria-label="Send" disabled>${icon("arrowUp")}</button>`}
+      </div>
+      ${S.picker ? pickerHTML() : ""}
+    </form>
+    <p class="egress">${local ? `${icon("home")}Runs on your home server. Nothing leaves the household.` : `${icon("cloud")}Messages go to OpenRouter and the provider that runs the model.`}</p>
+  </div>`;
+}
+
+function pickerHTML() {
+  return `<div class="picker" role="dialog" aria-label="Choose a model">
+    <div class="picker-search"><input class="input" id="model-q" type="search" placeholder="Search all 345 models" autocomplete="off" value="${esc(S.pickerQuery)}"></div>
+    <div class="picker-list" id="picker-list">${pickerListHTML()}</div>
+    <div class="picker-foot">Prices are per million tokens. OpenRouter's list shows its most used models first.</div>
+  </div>`;
+}
+
+function pickerListHTML() {
+  const q = S.pickerQuery.trim().toLowerCase();
+  const fits = (m) => !q || m.name.toLowerCase().includes(q) || CONNS[m.conn].name.toLowerCase().includes(q);
+  const section = (connId, iconName, note) => {
+    const list = MODELS.filter((m) => m.conn === connId && fits(m));
+    if (!list.length) return "";
+    return `<h3>${icon(iconName)}${CONNS[connId].name}<em>${note}</em></h3>` + list.map((m) => `
+      <button type="button" class="opt" data-action="pick" data-id="${m.id}">
+        <span class="opt-name">${esc(m.name)}${m.id === S.defaultModel ? '<span class="badge">Default</span>' : ""}</span>
+        <span class="opt-meta">${priceOf(m)}</span>
+        <span class="opt-check">${m.id === S.model ? icon("check") : ""}</span>
+      </button>`).join("");
+  };
+  const html = section("home", "home", "Runs at home") + section("or", "cloud", "Most used this week");
+  return html || `<p class="picker-empty">No model matches “${esc(S.pickerQuery)}”.</p>`;
+}
+
+function toolHTML(t) {
+  return `<details class="tool"><summary>${icon(TOOL_ICON[t.kind])}<b>${esc(t.label)}</b><span>${esc(t.meta)}</span>${icon("chevRight", "chev")}</summary><div class="tool-body">${t.body}</div></details>`;
+}
+
+function chatHTML() {
+  const c = conv();
+  const lastBot = c.messages.map((m) => m.role).lastIndexOf("bot");
+  const msgs = c.messages.map((m, i) => {
+    if (m.role === "user") {
+      if (S.editing === i) {
+        return `<div class="msg user"><div class="edit-box">
+          <textarea id="edit-text" aria-label="Edit your message">${esc(m.text)}</textarea>
+          <div class="row"><small>Sending deletes the messages after this one.</small>
+            <button class="btn small" data-action="edit-cancel">Cancel</button>
+            <button class="btn small primary" data-action="edit-send" data-i="${i}">Send</button></div>
+        </div></div>`;
+      }
+      return `<div class="msg user"><div class="bubble">${esc(m.text)}</div>
+        <div class="msg-actions">
+          <button class="icon-btn" data-action="copy" data-i="${i}" aria-label="Copy" title="Copy">${icon("copy")}</button>
+          <button class="icon-btn" data-action="edit" data-i="${i}" aria-label="Edit" title="Edit"${S.running ? " disabled" : ""}>${icon("pencil")}</button>
+        </div></div>`;
+    }
+    const last = i === lastBot;
+    const run = last ? `<div class="run" role="status">${creature(m.live ? m.state : "still")}<span class="run-text ${m.live ? "live" : ""}">${m.live ? esc(m.status) : ""}</span></div>` : "";
+    return `<div class="msg bot ${last ? "last" : ""}" ${m.live ? "data-live" : ""}>
+      <div class="tools">${(m.tools || []).map(toolHTML).join("")}</div>
+      <div class="prose">${m.html || ""}</div>
+      ${run}
+      ${m.live ? "" : `<div class="msg-actions">
+        <button class="icon-btn" data-action="copy" data-i="${i}" aria-label="Copy" title="Copy">${icon("copy")}</button>
+        <button class="icon-btn" data-action="fork" data-i="${i}" aria-label="Fork from here" title="Fork from here">${icon("fork")}</button>
+      </div>`}
+    </div>`;
+  }).join("");
+  return `<div class="thread" id="thread"><div class="col">${msgs}</div></div>
+    <div class="dock"><div class="col">${composerHTML("Reply…")}</div></div>`;
+}
+
+function settingsHTML() {
+  const tab = S.tab;
+  const body = tab === "connections" ? `
+    <section>
+      <h2>Default model</h2>
+      <p class="hint">New conversations start with this model. Anyone in the household can switch models in a conversation.</p>
+      <div class="field" style="max-width:420px">
+        <label for="default-model" class="visually-hidden" hidden>Default model</label>
+        <select id="default-model" class="input" aria-label="Default model">
+          ${MODELS.map((m) => `<option value="${m.id}" ${m.id === S.defaultModel ? "selected" : ""}>${esc(m.name)} · ${CONNS[m.conn].name}</option>`).join("")}
+        </select>
+      </div>
+    </section>
+    <section>
+      <h2>Connections</h2>
+      <p class="hint">Each connection brings all of its models. Only household admins see this page.</p>
+      <div class="conns">${S.conns.map((c) => `
+        <div class="conn">
+          <span class="conn-icon">${icon(c.kind === "local" ? "home" : "cloud")}</span>
+          <span class="conn-name">${esc(c.name)}<span class="tag">${icon(c.kind === "local" ? "home" : "cloud")}${c.kind === "local" ? "Runs at home" : "Remote"}</span></span>
+          <span class="conn-sub">${esc(c.sub)}</span>
+          ${c.status === "ok" ? `<span class="pill">${icon("check")}${c.models} models</span>` : `<span class="pill checking">Checking</span>`}
+        </div>`).join("")}
+      </div>
+      <div class="add-row"><button class="btn" data-action="add-conn">${icon("plus")}Add a connection</button></div>
+    </section>` : `
+    <section>
+      <h2>Theme</h2>
+      <p class="hint">Follow the device, or always use one theme.</p>
+      <div class="themes">${["system", "light", "dark"].map((t) => `
+        <button class="theme-card" data-action="theme" data-v="${t}" aria-pressed="${S.theme === t}"><span class="swatch s-${t}"></span>${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}
+      </div>
+    </section>`;
+  return `<div class="page"><div class="page-inner">
+    <h1>Settings</h1>
+    <nav class="tabs" aria-label="Settings sections">
+      <button data-action="tab" data-v="connections" ${tab === "connections" ? 'aria-current="page"' : ""}>${icon("plug")}Models</button>
+      <button data-action="tab" data-v="appearance" ${tab === "appearance" ? 'aria-current="page"' : ""}>${icon("palette")}Appearance</button>
+    </nav>
+    <div class="sections">${body}</div>
+  </div></div>`;
+}
+
+function posesHTML() {
+  const poses = [
+    ["greeting", "Greeting", "On the home page, next to a quote"],
+    ["thinking", "Thinking", "The model is working on the answer"],
+    ["searching", "Searching the web", "Looking through a lens"],
+    ["reading", "Reading", "Pages, files and documents"],
+    ["writing", "Writing files", "In its notebook"],
+    ["knocking", "Running commands", "With the mallet it is named after"],
+    ["answering", "Answering", "While the text streams in"],
+    ["still", "Waiting", "The answer is done"],
+    ["error", "Something went wrong", "Holding a sign, in the error toast"],
+  ];
+  return `<div class="page"><div class="page-inner" style="grid-template-columns:minmax(0,1fr)">
+    <h1>The mazzamurello</h1>
+    <p class="hint" style="margin:-24px 0 0">Every state of the household's sprite. With reduced motion turned on in the system settings, it holds each pose still.</p>
+    <div class="poses">${poses.map(([s, t, d]) => `<div class="pose-card">${creature(s)}<b>${t}</b><span>${d}</span></div>`).join("")}</div>
+  </div></div>`;
+}
+
+function signinHTML() {
+  return `<div class="signin"><div class="signin-card">
+    ${creature("idle")}
+    <h1>Welcome back</h1>
+    <p>Sign in to the Rossi household.</p>
+    <form id="signin">
+      <div class="field"><label for="u">Username</label><input class="input" id="u" autocomplete="username" value="giulia"></div>
+      <div class="field"><label for="p">Password</label><input class="input" id="p" type="password" autocomplete="current-password" value="example-pass"></div>
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+  </div></div>`;
+}
+
+function renderProto() {
+  $("#proto").innerHTML = `
+    <button class="proto-pill" data-action="proto" aria-expanded="${S.proto}">${icon("flask")}Prototype</button>
+    ${S.proto ? `<div class="proto-card">
+      <div><div class="k">Theme</div><div class="seg">${["system", "light", "dark"].map((t) =>
+        `<button data-action="theme" data-v="${t}" aria-pressed="${S.theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div></div>
+      <div><div class="k">Accent</div><div class="seg">${[["red", "Hat red"], ["moss", "Moss"], ["dusk", "Dusk"]].map(([v, l]) =>
+        `<button data-action="accent" data-v="${v}" aria-pressed="${S.accent === v}">${l}</button>`).join("")}</div></div>
+      <div><div class="k">Try</div><div class="btns">
+        <button class="btn small" data-action="demo-run">Play a run</button>
+        <button class="btn small" data-action="demo-error">Show an error</button>
+        <button class="btn small" data-action="poses">All poses</button>
+        <button class="btn small" data-action="signout">Sign-in page</button>
+      </div></div>
+      <p>Sample data. Answers are scripted and nothing is saved.</p>
+    </div>` : ""}`;
+}
+
+function afterRender() {
+  const prompt = $("#prompt");
+  if (prompt) {
+    autosize(prompt);
+    if (S.view === "home" && !matchMedia("(hover: none)").matches) prompt.focus({ preventScroll: true });
+  }
+  const edit = $("#edit-text");
+  if (edit) { autosize(edit); edit.focus(); edit.setSelectionRange(edit.value.length, edit.value.length); }
+  const q = $("#model-q");
+  if (q) q.focus();
+  const thread = $("#thread");
+  if (thread && S.editing === null) thread.scrollTop = thread.scrollHeight;
+}
+
+function autosize(t) { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }
+
+/* Runs, scripted */
+function setLive(state, status) {
+  const m = conv() && conv().messages.at(-1);
+  if (m && m.live) { m.state = state; m.status = status; }
+  const live = document.querySelector("[data-live]");
+  if (!live) return;
+  live.querySelector(".mz").setAttribute("data-state", state);
+  const text = live.querySelector(".run-text");
+  text.textContent = status;
+}
+
+function addTool(m, tool) {
+  m.tools.push(tool);
+  const live = document.querySelector("[data-live] .tools");
+  if (live) live.insertAdjacentHTML("beforeend", toolHTML(tool));
+  scrollDown();
+}
+
+function scrollDown() { const t = $("#thread"); if (t) t.scrollTop = t.scrollHeight; }
+
+const ANSWER_TEXT = "This prototype makes up its answers, but the steps above are the real ones the assistant takes: it searched the web, read the pages, saved notes.md to your workspace and turned it into a PDF. Open any step to see what it did.";
+const ANSWER_HTML = `<p>This prototype makes up its answers, but the steps above are the real ones the assistant takes:</p>
+<ul><li>It <b>searched the web</b> and <b>read the pages</b> it found.</li><li>It <b>saved <code>notes.md</code></b> to your workspace and <b>turned it into a PDF</b>.</li></ul>
+<p>Open any step to see what it did. The mazzamurello below now waits for your next message.</p>`;
+
+async function startRun(c) {
+  S.running = true; S.stopRequested = false; S.picker = false;
+  const question = c.messages.at(-1).text;
+  const m = { role: "bot", tools: [], html: "", live: true, state: "thinking", status: "Thinking…" };
+  c.messages.push(m);
+  render();
+  const short = question.length > 34 ? question.slice(0, 32).trimEnd() + "…" : question;
+  const steps = [
+    ["thinking", "Thinking…", 1300],
+    ["searching", `Searching the web for “${short}”`, 2300, { kind: "search", label: "Searched the web", meta: "3 results", body: SEARCH_RESULTS }],
+    ["reading", "Reading 3 pages", 2000, { kind: "read", label: "Read 3 pages", meta: "gallerianazionalemarche.it and 2 more", body: "<ol><li>Opening hours and family tickets</li><li>The house where Raphael was born</li><li>Walks, parks and lookouts</li></ol>" }],
+    ["writing", "Writing notes.md", 1800, { kind: "write", label: "Saved notes.md", meta: "in your workspace", body: "<pre>notes.md · 1.2 KB</pre>" }],
+    ["knocking", "Running pandoc notes.md -o notes.pdf", 1900, { kind: "run", label: "Ran a command", meta: "pandoc notes.md -o notes.pdf", body: "<pre>$ pandoc notes.md -o notes.pdf\nDone in 0.8 s</pre>" }],
+  ];
+  for (const [state, status, ms, tool] of steps) {
+    if (S.stopRequested) break;
+    setLive(state, status);
+    await sleep(ms);
+    if (S.stopRequested) break;
+    if (tool) addTool(m, tool);
+  }
+  if (!S.stopRequested) {
+    setLive("answering", "Answering…");
+    const prose = document.querySelector("[data-live] .prose");
+    const words = ANSWER_TEXT.split(" ");
+    let shown = "";
+    for (const w of words) {
+      if (S.stopRequested) break;
+      shown += (shown ? " " : "") + w;
+      m.html = `<p>${esc(shown)}</p>`;
+      const p = document.querySelector("[data-live] .prose");
+      if (p) p.innerHTML = m.html;
+      scrollDown();
+      await sleep(45);
+    }
+    if (!S.stopRequested) m.html = ANSWER_HTML;
+    void prose;
+  }
+  if (S.stopRequested) m.html = (m.html || "") + '<p class="stopped">Stopped.</p>';
+  m.live = false;
+  S.running = false;
+  if (c.title === "New conversation") c.title = question.length > 40 ? question.slice(0, 38).trimEnd() + "…" : question;
+  if (S.view === "chat" && S.convId === c.id) render(); else renderSidebar();
+}
+
+function send(text) {
+  text = text.trim();
+  if (!text || S.running) return;
+  let c = conv();
+  if (S.view !== "chat" || !c) {
+    c = { id: "c" + Date.now(), title: "New conversation", when: "Today", model: S.model, messages: [] };
+    conversations.unshift(c);
+    S.convId = c.id; S.view = "chat";
+  }
+  c.model = S.model;
+  c.messages.push({ role: "user", text });
+  startRun(c);
+}
+
+/* Dialogs and toasts */
+function openDialog(html, onOk) {
+  S.pendingDialog = onOk;
+  $("#dialogs").innerHTML = `<div class="dialog-scrim" data-action="dlg-scrim">${html}</div>`;
+  const first = $("#dialogs").querySelector("input, select, [data-action='dlg-ok'], button");
+  if (first) first.focus();
+}
+function closeDialog() { $("#dialogs").innerHTML = ""; S.pendingDialog = null; }
+
+function toast(kind, title, text, action = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.setAttribute("role", kind === "error" ? "alert" : "status");
+  el.innerHTML = `${kind === "error" ? creature("error") : ""}
+    <div class="toast-text">${title ? `<strong>${title}</strong>` : ""}${text ? `<p>${text}</p>` : ""}${action}</div>
+    <button class="icon-btn" data-action="toast-close" aria-label="Dismiss">${icon("x")}</button>`;
+  $("#toasts").append(el);
+  if (kind !== "error") setTimeout(() => el.remove(), 2600);
+}
+
+function connectionDialog(type) {
+  const or = type === "or";
+  return `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
+    <h2 id="dlg-t">Add a connection</h2>
+    <div class="seg" role="group" aria-label="Kind of connection">
+      <button type="button" data-action="conn-type" data-v="or" aria-pressed="${or}">OpenRouter</button>
+      <button type="button" data-action="conn-type" data-v="server" aria-pressed="${!or}">Your own server</button>
+    </div>
+    <form id="conn-form" data-type="${type}">
+      ${or ? `
+        <div class="field"><label for="or-key">API key</label><input class="input" id="or-key" type="password" placeholder="sk-or-…" autocomplete="off" required>
+          <small>Create one at openrouter.ai, under Keys. Every OpenRouter model becomes available to the household, most used first.</small></div>`
+      : `
+        <div class="field"><label for="srv-name">Name</label><input class="input" id="srv-name" value="Gaming PC" required></div>
+        <div class="field"><label for="srv-url">Address</label><input class="input" id="srv-url" value="http://192.168.1.20:11434/v1" required>
+          <small>Ollama, llama.cpp, vLLM or LM Studio. Addresses on your network work because you also run this server.</small></div>
+        <div class="field"><label for="srv-key">API key <span style="font-weight:400;color:var(--muted)">(optional)</span></label><input class="input" id="srv-key" type="password" autocomplete="off"></div>`}
+      <div id="conn-result"></div>
+      <div class="sim" role="group" aria-label="Prototype: what the test finds">
+        <span class="k">Prototype: what the test finds</span>
+        <div class="seg">${SIMS[type].map(([v, l]) => `<button type="button" data-action="sim" data-v="${v}" aria-pressed="${S.sim === v}">${l}</button>`).join("")}</div>
+      </div>
+      <div class="dialog-actions" style="margin-top:4px">
+        <button type="button" class="btn" data-action="conn-test">Test connection</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" data-action="dlg-close">Cancel</button>
+        <button type="submit" class="btn primary">Connect</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+/* The connection test, scripted: each step with its result, and why it failed */
+const SIMS = {
+  or: [["ok", "Works"], ["auth", "Wrong key"], ["timeout", "Timeout"]],
+  server: [["ok", "Works"], ["refused", "Refused"], ["dns", "Unknown name"], ["notfound", "404"], ["timeout", "Timeout"], ["tls", "Bad certificate"]],
+};
+
+function testPlan(type, sim) {
+  const outcome = (stages, failAt, detail, title, fix, raw, failMs) => {
+    if (failAt === undefined) return { ok: true, stages, title, fix };
+    return {
+      ok: false, title, fix, raw,
+      stages: stages.map((s, i) => (i < failAt ? s : i === failAt ? { ...s, state: "fail", detail, ms: failMs ?? s.failMs } : { ...s, state: "skip", detail: "Not tried", ms: null })),
+    };
+  };
+  const st = (label, detail, ms, failMs = ms) => ({ label, detail, ms, failMs, state: "ok" });
+  if (type === "or") {
+    const stages = [
+      st("Find openrouter.ai", "104.18.2.115", 11),
+      st("Connect", "port 443", 19, 10000),
+      st("Secure connection", "TLS 1.3, certificate valid", 31),
+      st("Check the key", "GET /api/v1/key → 200 OK", 142),
+      st("List the models", "GET /api/v1/models → 200 OK, 342 models", 210),
+    ];
+    if (sim === "auth") return outcome(stages, 3, "GET /api/v1/key → 401 Unauthorized", "OpenRouter didn't accept the key",
+      "Copy the key again from openrouter.ai, under Keys. Keys start with sk-or-, and a deleted or disabled key stops working.",
+      'HTTP/1.1 401 Unauthorized\n{"error":{"message":"User not found.","code":401}}');
+    if (sim === "timeout") return outcome(stages, 1, "no answer after 10 s", "OpenRouter didn't answer",
+      "This server couldn't reach openrouter.ai within 10 seconds. Check that it can reach the internet, then try again.",
+      "connect ETIMEDOUT 104.18.2.115:443 (10000 ms)");
+    return outcome(stages, undefined, "", "Connected to OpenRouter", "The key works and 342 models are available. The test took 0.4 s.");
+  }
+  let url;
+  try { url = new URL($("#srv-url").value); } catch { url = new URL("http://192.168.1.20:11434/v1"); }
+  const host = url.hostname, https = url.protocol === "https:";
+  const port = url.port || (https ? "443" : "80");
+  const path = url.pathname.replace(/\/$/, "");
+  const ip = /^[\d.]+$/.test(host);
+  const stages = [
+    st(`Find ${host}`, ip ? "an IP address, nothing to look up" : "192.168.1.20", ip ? 0 : 4),
+    st("Connect", `port ${port}`, 3, 10000),
+    ...(https ? [st("Secure connection", "certificate valid", 12)] : []),
+    st("List the models", `GET ${path}/models → 200 OK`, 48),
+    st("Read the answer", "2 models: qwen3:8b, gemma3:12b", 1),
+  ];
+  const list = stages.findIndex((s) => s.label === "List the models");
+  if (sim === "refused") return outcome(stages, 1, `${host}:${port} refused the connection`, `Nothing answered on port ${port}`,
+    `The machine at ${host} is on, but no program listens on port ${port}. Check that the model server is running and listens on the network: Ollama listens only on 127.0.0.1 unless OLLAMA_HOST is set to 0.0.0.0.`,
+    `connect ECONNREFUSED ${host}:${port} (2 ms)`, 2);
+  if (sim === "dns") return outcome(stages, 0, "no such name", `${host} doesn't exist on your network`,
+    "This server can't find that name. Use the machine's IP address instead, or give it a fixed name in your router.",
+    `getaddrinfo ENOTFOUND ${host}`);
+  if (sim === "notfound") return outcome(stages, list, `GET ${path}/models → 404 Not Found`, "The address answers, but it isn't a model server",
+    "Most servers expect /v1 at the end of the address, for example http://192.168.1.20:11434/v1.",
+    `HTTP/1.1 404 Not Found\nContent-Type: text/plain\n\n404 page not found`);
+  if (sim === "timeout") return outcome(stages, 1, "no answer after 10 s", `${host} didn't answer`,
+    "The machine may be off or asleep, or a firewall drops the connection. Check that this server can reach it.",
+    `connect ETIMEDOUT ${host}:${port} (10000 ms)`);
+  if (sim === "tls") return outcome(stages, 2, "self-signed certificate", "The server's certificate isn't trusted",
+    "The server uses a certificate this server can't verify. On your home network, use http:// instead, or give the server a certificate from a trusted authority.",
+    "unable to verify the first certificate (DEPTH_ZERO_SELF_SIGNED_CERT)");
+  return outcome(stages, undefined, "", `Connected to ${$("#srv-name").value || host}`, "2 models are available. The test took 0.1 s.");
+}
+
+const stageHTML = (s) => {
+  const ico = s.state === "ok" ? icon("check") : s.state === "fail" ? icon("x") : s.state === "skip" ? "–" : "";
+  const ms = s.state === "run" || s.ms === null ? "" : s.ms >= 1000 ? `${(s.ms / 1000).toFixed(0)} s` : `${s.ms} ms`;
+  return `<li class="${s.state}"><span class="st-ico">${ico}</span><span class="st-label">${esc(s.label)}</span><span class="st-ms">${ms}</span>
+    ${s.state === "run" ? "" : `<span class="st-detail">${esc(s.detail)}</span>`}</li>`;
+};
+
+async function runConnectionTest() {
+  const form = $("#conn-form");
+  const box = $("#conn-result");
+  if (!form || !box || S.testing) return null;
+  S.testing = true;
+  const plan = testPlan(form.dataset.type, S.sim);
+  const shown = [];
+  for (const s of plan.stages) {
+    if (s.state === "skip") break;
+    box.innerHTML = `<div class="test-result" role="status"><div class="tr-head"><span class="spin"></span>Testing the connection…</div>
+      <ol class="stages">${[...shown, { ...s, state: "run" }].map(stageHTML).join("")}</ol></div>`;
+    await sleep(s.state === "fail" ? 900 : 380);
+    shown.push(s);
+  }
+  box.innerHTML = `<div class="test-result ${plan.ok ? "ok" : "fail"}" role="${plan.ok ? "status" : "alert"}">
+    <div class="tr-head">${icon(plan.ok ? "check" : "x")}${esc(plan.title)}</div>
+    <p>${esc(plan.fix)}</p>
+    <ol class="stages">${plan.stages.map(stageHTML).join("")}</ol>
+    ${plan.raw ? `<details><summary>Technical details</summary><pre>${esc(plan.raw)}</pre></details>` : ""}
+  </div>`;
+  S.testing = false;
+  return plan.ok;
+}
+
+/* Theme */
+function applyTheme() {
+  const root = document.documentElement;
+  if (S.theme === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", S.theme);
+  if (S.accent === "red") root.removeAttribute("data-accent"); else root.setAttribute("data-accent", S.accent);
+}
+
+/* Events */
+document.addEventListener("click", async (e) => {
+  const el = e.target.closest("[data-action]");
+  if (S.picker && !e.target.closest(".picker") && !e.target.closest(".model-btn")) { S.picker = false; S.pickerQuery = ""; rerenderComposer(); }
+  if (S.proto && !e.target.closest("#proto")) { S.proto = false; renderProto(); }
+  if (!el) return;
+  const a = el.dataset.action;
+  const i = Number(el.dataset.i);
+  const c = conv();
+  switch (a) {
+    case "home": case "new": S.view = "home"; S.editing = null; if (!S.running) S.model = S.defaultModel; render(); break;
+    case "open": { const t = conversations.find((x) => x.id === el.dataset.id); S.convId = t.id; S.model = t.model; S.view = "chat"; S.editing = null; render(); break; }
+    case "settings": S.view = "settings"; $("#toasts").innerHTML = ""; render(); break;
+    case "poses": S.view = "poses"; S.proto = false; renderProto(); render(); break;
+    case "signout": S.view = "signin"; S.proto = false; renderProto(); render(); break;
+    case "menu": $("#app").classList.add("drawer"); break;
+    case "close-menu": $("#app").classList.remove("drawer"); break;
+    case "quote": { let n; do { n = Math.floor(Math.random() * QUOTES.length); } while (n === S.quote); S.quote = n; render(); break; }
+    case "picker": S.picker = !S.picker; S.pickerQuery = ""; rerenderComposer(); break;
+    case "pick": S.model = el.dataset.id; if (c && S.view === "chat") c.model = S.model; S.picker = false; S.pickerQuery = ""; rerenderComposer(); break;
+    case "stop": S.stopRequested = true; setLive("still", "Stopping…"); break;
+    case "copy": {
+      const m = c.messages[i];
+      const text = m.text || el.closest(".msg").querySelector(".prose").innerText;
+      try { await navigator.clipboard.writeText(text); toast("info", "Copied"); } catch { toast("info", "Copying isn't allowed here"); }
+      break;
+    }
+    case "edit": if (!S.running) { S.editing = i; render(); } break;
+    case "edit-cancel": S.editing = null; render(); break;
+    case "edit-send": {
+      const text = $("#edit-text").value.trim();
+      if (!text) break;
+      const after = c.messages.length - i - 1;
+      const doIt = () => { c.messages = c.messages.slice(0, i); c.messages.push({ role: "user", text }); S.editing = null; closeDialog(); startRun(c); };
+      if (after === 0) { doIt(); break; }
+      openDialog(`<div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t" aria-describedby="dlg-d">
+        <h2 id="dlg-t">Send the edited message?</h2>
+        <p id="dlg-d">The ${after} ${after === 1 ? "message" : "messages"} after it will be deleted. This can't be undone.</p>
+        <p class="note">${icon("filePen")}Files in your workspace stay as they are.</p>
+        <div class="dialog-actions"><button class="btn" data-action="dlg-close">Cancel</button><button class="btn danger" data-action="dlg-ok">Delete and send</button></div>
+      </div>`, doIt);
+      break;
+    }
+    case "fork": {
+      const copy = { id: "f" + Date.now(), title: c.title, when: "Today", model: c.model, forkedFrom: c.title, messages: structuredClone(c.messages.slice(0, i + 1)) };
+      conversations.unshift(copy);
+      S.convId = copy.id; S.view = "chat"; render();
+      toast("info", "Forked into a new conversation", "The original stays as it was.");
+      break;
+    }
+    case "dlg-ok": if (S.pendingDialog) S.pendingDialog(); break;
+    case "dlg-close": closeDialog(); break;
+    case "dlg-scrim": if (e.target === el) closeDialog(); break;
+    case "toast-close": el.closest(".toast").remove(); break;
+    case "tab": S.tab = el.dataset.v; render(); break;
+    case "theme": S.theme = el.dataset.v; applyTheme(); renderProto(); if (S.view === "settings") render(); break;
+    case "accent": S.accent = el.dataset.v; applyTheme(); renderProto(); break;
+    case "proto": S.proto = !S.proto; renderProto(); break;
+    case "add-conn": S.sim = "ok"; openDialog(connectionDialog("or")); break;
+    case "conn-type": S.sim = "ok"; openDialog(connectionDialog(el.dataset.v)); break;
+    case "conn-test": runConnectionTest(); break;
+    case "sim": {
+      S.sim = el.dataset.v;
+      el.parentElement.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === el)));
+      $("#conn-result").innerHTML = "";
+      const address = $("#srv-url");
+      if (address) {
+        // A name to look up, or https to verify, makes those failures possible.
+        if (S.sim === "dns") address.value = "http://gaming-pc.home:11434/v1";
+        else if (S.sim === "tls") address.value = "https://192.168.1.20:8443/v1";
+        else if (S.sim === "notfound") address.value = "http://192.168.1.20:11434";
+        else address.value = "http://192.168.1.20:11434/v1";
+      }
+      break;
+    }
+    case "demo-run": {
+      S.proto = false; renderProto();
+      if (S.running) break;
+      if (S.view !== "chat") { S.view = "home"; render(); }
+      send("Find three rainy-day ideas for the kids in Urbino and save them as a PDF");
+      break;
+    }
+    case "demo-error":
+      S.proto = false; renderProto();
+      toast("error", "OpenRouter didn't accept the API key", "The answer stopped here. A household admin can replace the key in Settings, under Models.",
+        `<button class="btn small" data-action="settings">Open settings</button>`);
+      break;
+  }
+});
+
+function rerenderComposer() {
+  const wrap = document.querySelector(".composer-wrap");
+  if (!wrap) return;
+  const text = $("#prompt") ? $("#prompt").value : "";
+  wrap.outerHTML = composerHTML(S.view === "home" ? "What can I help with?" : "Reply…");
+  const p = $("#prompt");
+  p.value = text; autosize(p);
+  const send = $("#send"); if (send) send.disabled = !text.trim();
+  const q = $("#model-q"); if (q) q.focus(); else if (!matchMedia("(hover: none)").matches) p.focus({ preventScroll: true });
+}
+
+document.addEventListener("input", (e) => {
+  if (e.target.id === "prompt") { autosize(e.target); const s = $("#send"); if (s) s.disabled = !e.target.value.trim(); }
+  if (e.target.id === "edit-text") autosize(e.target);
+  if (e.target.id === "model-q") { S.pickerQuery = e.target.value; $("#picker-list").innerHTML = pickerListHTML(); }
+});
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "default-model") { S.defaultModel = e.target.value; toast("info", "Default model saved"); }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.id === "prompt" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(e.target.value); }
+  if (e.key === "Escape") {
+    if ($("#dialogs").innerHTML) closeDialog();
+    else if (S.picker) { S.picker = false; S.pickerQuery = ""; rerenderComposer(); }
+    else if (S.editing !== null) { S.editing = null; render(); }
+    else $("#app").classList.remove("drawer");
+  }
+});
+
+document.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (e.target.id === "composer") send($("#prompt").value);
+  if (e.target.id === "signin") { S.view = "home"; render(); }
+  if (e.target.id === "conn-form") {
+    // Connecting tests first; a connection that fails the test is not saved.
+    const or = e.target.dataset.type === "or";
+    const name = or ? "OpenRouter" : $("#srv-name").value || "Your server";
+    const sub = or ? "openrouter.ai · second key" : $("#srv-url").value;
+    if (!(await runConnectionTest())) return;
+    await sleep(700);
+    const entry = { id: "c" + Date.now(), name, kind: or ? "remote" : "local", sub, models: or ? 342 : 2, status: "ok" };
+    S.conns.push(entry);
+    closeDialog(); render();
+    toast("info", `${esc(entry.name)} is connected`, `${entry.models} models are now in the model list.`);
+  }
+});
+
+applyTheme();
+renderProto();
+render();
+</script>
+</body>
+</html>

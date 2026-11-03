@@ -1,10 +1,11 @@
-"""The model gateway, as a capability of the agent (MOD-001, MOD-002, MOD-005, MOD-006, ADR-0036).
+"""The model gateway, as a capability of the agent (MOD-001, MOD-002, MOD-005, MOD-006, MOD-014, ADR-0036).
 
-It turns the model reference of a run into a model of the configuration's
-API, OpenAI-compatible or OpenRouter (ADR-0057), decrypting the
-configuration's API key only to make the request, records
-every model request in the cost ledger, and stores the run's messages as
-they are produced (ADR-0052).
+It turns the model reference of a run, a connection and a model, into a
+model of the connection's API, OpenAI-compatible or OpenRouter (ADR-0057,
+ADR-0069), decrypting the connection's API key only to make the request. It
+withholds tools from a model that cannot call them, records every model
+request in the cost ledger, and stores the run's messages as they are
+produced (ADR-0052).
 """
 
 from __future__ import annotations
@@ -24,22 +25,21 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
+from pydantic_ai.tools import ToolDefinition
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from mazzamurello_server.database import Identity, transaction
 from mazzamurello_server.encryption import decrypt
 from mazzamurello_server.endpoints import tenant_http_client
-from mazzamurello_server.model_configurations import TABLES, endpoint_refusal
 
 MODEL_PREFIX = "mzm"
-TOKENS_PER_PRICE = Decimal(1_000_000)
-# The endpoint needs no key; OpenAI clients refuse an empty one.
+# The server needs no key; OpenAI clients refuse an empty one.
 NO_API_KEY = "none"
 
 
 class ModelUnavailableError(Exception):
-    """The run's model configuration is gone or may not be used."""
+    """The run's connection or model is gone or may not be used."""
 
 
 @dataclass
@@ -58,11 +58,15 @@ class RunDeps:
     sandboxd_token: str = ""
     provider: str = ""
     model: str = ""
+    # Whether the model may be given tools (MOD-014), and where it runs (MOD-010).
+    tools: bool = True
+    location: str = "remote"
     prices: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
-def model_reference(scope: str, configuration_id: str) -> str:
-    return f"{MODEL_PREFIX}:{scope}:{configuration_id}"
+def model_reference(connection_id: str, model: str) -> str:
+    """The model of a run, as the agent names it: the connection, then the model's own name."""
+    return f"{MODEL_PREFIX}:{connection_id}:{model}"
 
 
 def _ledger_id(run_id: uuid.UUID, request_number: int) -> uuid.UUID:
@@ -76,44 +80,43 @@ class Gateway(AbstractCapability[RunDeps]):
         prefix, _, rest = model_id.partition(":")
         if prefix != MODEL_PREFIX:
             return None
-        scope, _, configuration_id = rest.partition(":")
+        connection_id, _, model = rest.partition(":")
         deps = ctx.deps
         async with transaction(deps.engine, deps.identity) as connection:
             row = (
                 await connection.execute(
                     text(
-                        f"SELECT id, api, base_url, model, api_key_ciphertext, paid, input_price, cached_input_price,"  # noqa: S608
-                        f" output_price, currency FROM {TABLES['tenant' if scope == 'tenant' else 'instance']}"
-                        " WHERE id = :id"
+                        "SELECT c.id, c.kind, c.base_url, c.location, c.api_key_ciphertext, c.private_network, m.tools"
+                        " FROM connections c JOIN connection_models m ON m.connection_id = c.id"
+                        " WHERE c.id = :id AND m.model = :model"
                     ),
-                    {"id": uuid.UUID(configuration_id)},
+                    {"id": uuid.UUID(connection_id), "model": model},
                 )
             ).one_or_none()
         if row is None:
-            raise ModelUnavailableError("the model configuration no longer exists")
-        # Endpoints of tenant models are checked again on every request (ADR-0051).
-        if scope == "tenant" and await endpoint_refusal(row.base_url) is not None:
-            raise ModelUnavailableError("the endpoint of the tenant model is not allowed")
+            raise ModelUnavailableError("the connection no longer offers the model")
+        if not row.private_network and not str(row.base_url).startswith("https://"):
+            raise ModelUnavailableError("the connection's address is not allowed")
         api_key = NO_API_KEY
         if row.api_key_ciphertext is not None:
             api_key = decrypt(deps.secret_key, row.id, bytes(row.api_key_ciphertext))
-        deps.prices = {
-            "paid": row.paid,
-            "input": row.input_price,
-            "cached_input": row.cached_input_price,
-            "output": row.output_price,
-            "currency": row.currency,
-        }
-        # Tenant endpoints connect only to checked public addresses, without redirects (ADR-0061).
-        http_client = tenant_http_client() if scope == "tenant" else None
-        if row.api == "openrouter":
+        # A model known not to call tools runs without them; an unknown one is given them (MOD-014).
+        deps.tools = row.tools is not False
+        deps.location = row.location
+        # Addresses not set by the instance admin connect only to checked public addresses,
+        # without redirects (MOD-009, ADR-0061).
+        http_client = None if row.private_network else tenant_http_client()
+        if row.kind == "openrouter":
             # A client of our own: the provider would add attribution headers from the environment.
             # The SDK's signature names httpx2, and it also accepts a legacy httpx client, as here.
             legacy_client = cast("Any", http_client)
             client = AsyncOpenAI(base_url=row.base_url, api_key=api_key, http_client=legacy_client)
-            return OpenRouterModel(row.model, provider=OpenRouterProvider(openai_client=client))
+            return OpenRouterModel(model, provider=OpenRouterProvider(openai_client=client))
         provider = OpenAIProvider(base_url=row.base_url, api_key=api_key, http_client=http_client)
-        return OpenAIChatModel(row.model, provider=provider)
+        return OpenAIChatModel(model, provider=provider)
+
+    async def prepare_tools(self, ctx: RunContext[RunDeps], tool_defs: list[ToolDefinition]) -> list[ToolDefinition]:
+        return tool_defs if ctx.deps.tools else []
 
     async def before_model_request(
         self, ctx: RunContext[RunDeps], request_context: ModelRequestContext
@@ -132,25 +135,14 @@ class Gateway(AbstractCapability[RunDeps]):
 
 
 def _cost(deps: RunDeps, response: ModelResponse) -> tuple[Decimal | None, str | None, str]:
-    """The cost of a response, its currency and where the price came from (ADR-0042)."""
-    prices = deps.prices
-    configured_currency: str | None = prices.get("currency")
-    if not prices.get("paid", False):
+    """The cost of a response, its currency and where the price came from (ADR-0042, ADR-0069)."""
+    if deps.location == "local":
         # A cost of zero still names a currency; any one will do.
-        return Decimal(0), configured_currency or "USD", "free"
+        return Decimal(0), "USD", "free"
     reported = (response.provider_details or {}).get("cost")
     if isinstance(reported, int | float) and not isinstance(reported, bool):
         # OpenRouter reports the cost in credits of one US dollar each (ADR-0057).
         return Decimal(str(reported)), "USD", "provider"
-    usage = response.usage
-    if configured_currency is not None:
-        cached = usage.cache_read_tokens or 0
-        uncached = max(0, (usage.input_tokens or 0) - cached)
-        cached_price = prices["cached_input"] if prices["cached_input"] is not None else prices["input"]
-        cost = (
-            uncached * prices["input"] + cached * cached_price + (usage.output_tokens or 0) * prices["output"]
-        ) / TOKENS_PER_PRICE
-        return cost, configured_currency, "admin"
     try:
         estimate = response.cost()
     except (LookupError, ValueError):

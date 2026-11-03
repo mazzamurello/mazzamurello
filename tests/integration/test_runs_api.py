@@ -15,7 +15,7 @@ import pytest
 
 from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
 from tests.support.database import Database, uuid7
-from tests.support.fixtures import HarnessModel
+from tests.support.fixtures import HarnessModel, HouseholdModel
 from tests.support.model import COMPLETION_TOKENS, PROMPT_TOKENS
 from tests.support.runs import (
     create_conversation,
@@ -38,11 +38,16 @@ def account(database: Database) -> Account:
 
 
 @pytest.fixture
-def token(server: Server, account: Account, default_model: HarnessModel) -> str:
+def household(account: Account, default_model: HarnessModel) -> HouseholdModel:
+    return default_model.connect(account.tenant_id)
+
+
+@pytest.fixture
+def token(server: Server, account: Account, household: HouseholdModel) -> str:
     return login(server, account)
 
 
-def _endpoint_host(model: HarnessModel) -> str:
+def _endpoint_host(model: HarnessModel | HouseholdModel) -> str:
     return urllib.parse.urlsplit(model.endpoint.url).netloc
 
 
@@ -60,7 +65,7 @@ def test_a_run_streams_ag_ui_events_with_sequence_numbers(server: Server, token:
 
 
 @pytest.mark.spec("API-004", "AGT-009", "MOD-005")
-def test_a_finished_run_records_its_outcome(server: Server, token: str, default_model: HarnessModel) -> None:
+def test_a_finished_run_records_its_outcome(server: Server, token: str, household: HouseholdModel) -> None:
     conversation = create_conversation(server, token)
     run_id, events = start_run(server, token, conversation["id"], "hello")
     run = wait_for_run(server, token, run_id)
@@ -72,7 +77,11 @@ def test_a_finished_run_records_its_outcome(server: Server, token: str, default_
         "message",
     )
     assert run["error_code"] is None
-    assert run["model"] == {"provider": _endpoint_host(default_model), "model": "test-model"}
+    assert run["model"] == {
+        "connection_id": household.connection_id,
+        "provider": _endpoint_host(household),
+        "model": "test-model",
+    }
     assert run["last_event_seq"] == len(events)
     assert run["created_at"] <= run["started_at"] <= run["finished_at"]
     with server.client(token) as client:
@@ -94,8 +103,6 @@ def test_history_is_served_as_ag_ui_messages(server: Server, token: str) -> None
             "parent_run_id": None,
             "kind": "message",
             "message_ids": [m["id"] for m in page["items"]],
-            "versions": [run_id],
-            "version_tips": [run_id],
         }
     ]
 
@@ -164,13 +171,16 @@ def test_runs_continue_the_active_path(server: Server, token: str, default_model
     ]
 
 
-@pytest.mark.spec("CNV-002")
-def test_only_the_path_of_a_run_reaches_the_model(server: Server, token: str, default_model: HarnessModel) -> None:
+@pytest.mark.spec("CNV-002", "CNV-004")
+def test_what_rewinding_deleted_never_reaches_the_model(
+    server: Server, token: str, default_model: HarnessModel
+) -> None:
     conversation = create_conversation(server, token)
     first, _ = start_run(server, token, conversation["id"], "path a1")
     start_run(server, token, conversation["id"], "path a2")
-    # A new version of the second turn: it continues the first run.
-    other, _ = start_run(server, token, conversation["id"], "path b2", parent_run_id=first)
+    with server.client(token) as client:
+        assert client.post(f"/conversations/{conversation['id']}/rewind", json={"run_id": first}).status_code == 200
+    other, _ = start_run(server, token, conversation["id"], "path b2")
     (request,) = default_model.endpoint.requests_with("path b2")
     assert request.user_texts() == ["path a1", "path b2"]
     third, _ = start_run(server, token, conversation["id"], "path b3")
@@ -204,26 +214,22 @@ def test_invalid_run_inputs_are_rejected(server: Server, token: str, problem: st
         case "no-messages":
             payload["messages"] = []
         case _:
+            # A conversation never branches: only the active run may be named (ADR-0068).
             payload["parentRunId"] = str(uuid7())
-            expected = (404, "resource.not_found")
+            expected = (409, "resource.conflict")
     with server.client(token) as client:
         assert_problem(client.post(f"/conversations/{conversation['id']}/runs", json=payload), *expected)
 
 
-@pytest.mark.spec("MOD-008")
-def test_runs_need_a_default_model(server: Server, token: str, default_model: HarnessModel) -> None:
+@pytest.mark.spec("MOD-008", "MOD-012")
+def test_runs_need_a_model(database: Database, server: Server) -> None:
+    # A household without connections has no default model.
+    token = login(server, create_account(database, create_tenant(database)))
     conversation = create_conversation(server, token)
-    with server.client(default_model.admin_token) as client:
-        client.patch(f"/instance/models/{default_model.id}", json={"is_default": False})
-    try:
-        with server.client(token) as client:
-            response = client.post(
-                f"/conversations/{conversation['id']}/runs", json=run_input(conversation["id"], "hello")
-            )
-        assert_problem(response, 409, "model.unavailable")
-    finally:
-        with server.client(default_model.admin_token) as client:
-            client.patch(f"/instance/models/{default_model.id}", json={"is_default": True})
+    assert conversation["model"] is None
+    with server.client(token) as client:
+        response = client.post(f"/conversations/{conversation['id']}/runs", json=run_input(conversation["id"], "hello"))
+    assert_problem(response, 409, "model.unavailable")
 
 
 @pytest.mark.spec("CNV-003")
@@ -268,25 +274,21 @@ def test_a_failing_model_fails_the_run_visibly(server: Server, token: str) -> No
 
 
 @pytest.mark.spec("MOD-002", "MOD-008")
-def test_the_api_key_reaches_only_the_model(server: Server, token: str, default_model: HarnessModel) -> None:
+def test_the_api_key_reaches_only_the_model(server: Server, token: str, household: HouseholdModel) -> None:
     secret = f"sk-{uuid7()}"
-    with server.client(default_model.admin_token) as client:
-        client.patch(f"/instance/models/{default_model.id}", json={"api_key": secret})
-    try:
-        conversation = create_conversation(server, token)
-        run_id, events = start_run(server, token, conversation["id"], "with key")
-        (request,) = default_model.endpoint.requests_with("with key")
-        assert request.authorization == f"Bearer {secret}"
-        visible = str(events) + str(get_run(server, token, run_id)) + str(messages(server, token, conversation["id"]))
-        assert secret not in visible
-    finally:
-        with server.client(default_model.admin_token) as client:
-            client.patch(f"/instance/models/{default_model.id}", json={"api_key": None})
+    with server.client(household.admin_token) as client:
+        assert client.patch(f"/tenant/connections/{household.connection_id}", json={"api_key": secret}).is_success
+    conversation = create_conversation(server, token)
+    run_id, events = start_run(server, token, conversation["id"], "with key")
+    (request,) = household.endpoint.requests_with("with key")
+    assert request.authorization == f"Bearer {secret}"
+    visible = str(events) + str(get_run(server, token, run_id)) + str(messages(server, token, conversation["id"]))
+    assert secret not in visible
 
 
 @pytest.mark.spec("MOD-006", "MOD-005")
 def test_every_model_request_is_in_the_cost_ledger(
-    database: Database, server: Server, account: Account, token: str, default_model: HarnessModel
+    database: Database, server: Server, account: Account, token: str, household: HouseholdModel
 ) -> None:
     conversation = create_conversation(server, token)
     run_id, _ = start_run(server, token, conversation["id"], "hello")
@@ -303,7 +305,7 @@ def test_every_model_request_is_in_the_cost_ledger(
             conversation["id"],
             run_id,
             "run",
-            _endpoint_host(default_model),
+            _endpoint_host(household),
             "test-model",
             PROMPT_TOKENS,
             COMPLETION_TOKENS,
@@ -314,24 +316,29 @@ def test_every_model_request_is_in_the_cost_ledger(
 
 
 @pytest.mark.spec("MOD-006")
-def test_paid_models_are_priced_from_the_configuration(
-    database: Database, server: Server, token: str, default_model: HarnessModel
+def test_remote_servers_are_priced_from_the_catalog(
+    database: Database, server: Server, token: str, household: HouseholdModel
 ) -> None:
-    prices = {"input": "2", "output": "8", "currency": "EUR"}
-    with server.client(default_model.admin_token) as client:
-        client.patch(f"/instance/models/{default_model.id}", json={"paid": True, "prices": prices})
-    try:
-        conversation = create_conversation(server, token)
-        run_id, _ = start_run(server, token, conversation["id"], "priced")
-    finally:
-        with server.client(default_model.admin_token) as client:
-            client.patch(f"/instance/models/{default_model.id}", json={"paid": False, "prices": None})
+    # A remote server that does not report costs, serving a model the catalog knows (ADR-0069).
+    with server.client(household.admin_token) as client:
+        response = client.post(
+            "/tenant/connections",
+            json={"name": "Remote", "kind": "openai", "base_url": household.endpoint.url, "location": "remote"},
+        )
+        assert response.status_code == 201, response.text
+        remote = {"connection_id": body(response)["id"], "model": "gpt-4o-mini"}
+    conversation = create_conversation(server, token)
+    with server.client(token) as client:
+        assert client.patch(f"/conversations/{conversation['id']}", json={"model": remote}).status_code == 200
+    run_id, _ = start_run(server, token, conversation["id"], "priced")
     with database.superuser() as conn:
         row = conn.execute(
             "SELECT cost, currency, price_source FROM usage_ledger WHERE run_id = %s", (run_id,)
         ).fetchone()
-    expected = (Decimal(PROMPT_TOKENS) * 2 + Decimal(COMPLETION_TOKENS) * 8) / 1_000_000
-    assert row == (expected, "EUR", "admin")
+    assert row is not None
+    cost, currency, source = row
+    assert (source, currency) == ("catalog", "USD")
+    assert cost > 0
 
 
 @pytest.mark.spec("API-003", "TEN-009", "MOD-006")

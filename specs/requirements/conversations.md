@@ -6,7 +6,7 @@ journeys J1 to J5, J10 and J13 of the [product description](../product.md).
 
 ## CNV-001: Message versions
 
-- **Status:** implemented
+- **Status:** deprecated
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
@@ -16,7 +16,7 @@ answer to it, without losing what followed it. The earlier continuation MUST
 be kept as another version, and the user MUST be able to list the versions,
 switch between them and continue from any of them (ADR-0037).
 
-Rationale: journey J2.
+Replaced by CNV-016: editing rewinds, and a fork keeps both ways (ADR-0068).
 
 ## CNV-002: Only the active path reaches the model
 
@@ -27,8 +27,8 @@ Rationale: journey J2.
 
 A run MUST receive as history only the messages on the path from the start of
 the conversation to the turn it continues, possibly compacted (ADR-0041).
-Messages of other versions MUST NOT be sent to the model or used by tools in
-that run.
+Messages that rewinding deleted (CNV-004) MUST NOT be sent to the model or
+used by tools in that run.
 
 ## CNV-003: Stopping a run
 
@@ -47,13 +47,14 @@ Rationale: journey J1.
 
 - **Status:** implemented
 - **Priority:** MUST
-- **Phase:** 0
+- **Phase:** 1
 - **Verification:** integration
 
-A user MUST be able to rewind a conversation to any earlier turn of its
-active path and continue from there. What followed that turn MUST be kept as
-another version (CNV-001). Rewinding MUST NOT change files in the user's
-workspace, and the API contract MUST say so; clients tell the user (UX-010).
+A user MUST be able to rewind a conversation to any earlier turn, or to
+before its first turn, and continue from there. What followed that turn MUST
+be deleted: its messages, runs and run events (ADR-0068). Rewinding MUST NOT
+change files in the user's workspace, and the API contract MUST say so;
+clients ask first and tell the user (UX-010).
 
 Rationale: journey J2.
 
@@ -221,3 +222,17 @@ in, including a run in progress, whose events a second device receives from
 the start (API-004).
 
 Rationale: journey J1.
+
+## CNV-016: Editing a message
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, e2e
+
+A user MUST be able to edit one of their earlier messages. Editing MUST
+rewind the conversation to the turn before that message (CNV-004) and send
+the edited message as a new turn. To keep what followed as well, the user
+forks the conversation first (CNV-005, ADR-0068).
+
+Rationale: journey J2.

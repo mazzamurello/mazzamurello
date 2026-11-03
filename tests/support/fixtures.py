@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pytest
 
-from tests.support.accounts import body, create_account, create_tenant, login
-from tests.support.database import Database, start_database, uuid7
+from tests.support.accounts import body, create_account, login
+from tests.support.database import Database, start_database
 from tests.support.model import ModelServer, start_model_server
 from tests.support.sandbox import Driver, start_sandboxes
 from tests.support.server import Server, start_server
@@ -36,12 +37,48 @@ def server(request: pytest.FixtureRequest, database: Database, sandboxes: Driver
 
 
 @dataclass(frozen=True)
-class HarnessModel:
-    """The instance model served by the tests, and an instance admin who manages it."""
+class HouseholdModel:
+    """The harness model as one household reaches it: its connection and default model (ADR-0069)."""
 
-    id: str
+    connection_id: str
+    # A user of the household who is its tenant admin and the instance admin.
     admin_token: str
     endpoint: ModelServer
+
+
+@dataclass(frozen=True)
+class HarnessModel:
+    """The model served by the tests, which households reach through a connection of their own."""
+
+    endpoint: ModelServer
+    database: Database
+    server: Server
+    households: dict[uuid.UUID, HouseholdModel] = field(default_factory=dict[uuid.UUID, HouseholdModel])
+
+    def connect(self, tenant_id: uuid.UUID) -> HouseholdModel:
+        """Give the tenant a connection to the harness model and make `test-model` its default model.
+
+        The connection is added by a user who is also the instance admin, since
+        only such a connection may use the loopback address (MOD-009).
+        """
+        household = self.households.get(tenant_id)
+        if household is None:
+            admin = create_account(self.database, tenant_id, "tenant_admin", instance_admin=True)
+            token = login(self.server, admin)
+            with self.server.client(token) as client:
+                response = client.post(
+                    "/tenant/connections",
+                    json={"name": "Test server", "kind": "openai", "base_url": self.endpoint.url, "location": "local"},
+                )
+            assert response.status_code == 201, response.text
+            household = HouseholdModel(body(response)["id"], token, self.endpoint)
+            self.households[tenant_id] = household
+        with self.server.client(household.admin_token) as client:
+            response = client.put(
+                "/tenant/default-model", json={"connection_id": household.connection_id, "model": "test-model"}
+            )
+        assert response.status_code == 200, response.text
+        return household
 
 
 @pytest.fixture(scope="session")
@@ -53,27 +90,10 @@ def model_server() -> Iterator[ModelServer]:
 
 @pytest.fixture(scope="session")
 def harness_model(database: Database, server: Server, model_server: ModelServer) -> HarnessModel:
-    admin = create_account(database, create_tenant(database), "tenant_admin", instance_admin=True)
-    token = login(server, admin)
-    with server.client(token) as client:
-        response = client.post(
-            "/instance/models",
-            json={
-                "name": f"Test model {uuid7()}",
-                "base_url": model_server.url,
-                "model": "test-model",
-                "paid": False,
-                "is_default": True,
-            },
-        )
-    assert response.status_code == 201, response.text
-    return HarnessModel(body(response)["id"], token, model_server)
+    return HarnessModel(model_server, database, server)
 
 
 @pytest.fixture
-def default_model(server: Server, harness_model: HarnessModel) -> HarnessModel:
-    """The harness model, made the instance default again in case a test changed it."""
-    with server.client(harness_model.admin_token) as client:
-        response = client.patch(f"/instance/models/{harness_model.id}", json={"is_default": True})
-    assert response.status_code == 200, response.text
+def default_model(harness_model: HarnessModel) -> HarnessModel:
+    """The harness model; tests connect the households that need a model with `connect`."""
     return harness_model

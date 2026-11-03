@@ -9,7 +9,10 @@ export type MessagePage = Schemas["MessagePage"];
 export type PathRun = Schemas["PathRun"];
 export type Run = Schemas["Run"];
 export type User = Schemas["User"];
-export type ModelConfiguration = Schemas["ModelConfiguration"];
+export type Connection = Schemas["Connection"];
+export type ConnectionTest = Schemas["ConnectionTest"];
+export type ModelOption = Schemas["ModelOption"];
+export type ModelChoice = Schemas["ModelChoice"];
 export type Problem = Schemas["Problem"];
 
 export const API_BASE = "/v1";
@@ -29,6 +32,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    // The rest of the problem, such as the result of a failed connection test.
+    readonly problem: Partial<Problem> & Record<string, unknown> = {},
   ) {
     super(code);
   }
@@ -37,8 +42,8 @@ export class ApiError extends Error {
 /** The data of a successful answer, or else an `ApiError`. */
 export function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
   if (result.error !== undefined || result.data === undefined) {
-    const problem = result.error as Partial<Problem> | undefined;
-    throw new ApiError(result.response.status, problem?.code ?? "internal.error");
+    const problem = (result.error ?? {}) as Partial<Problem> & Record<string, unknown>;
+    throw new ApiError(result.response.status, problem.code ?? "internal.error", problem);
   }
   return result.data;
 }

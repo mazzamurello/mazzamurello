@@ -21,8 +21,9 @@ class RunWorkflowInput:
     run_id: str
     parent_run_id: str | None
     user_text: str
-    model_scope: str
-    model_id: str
+    # The connection and the model that answer (MOD-012).
+    connection_id: str
+    model: str
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))

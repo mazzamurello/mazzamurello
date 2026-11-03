@@ -99,13 +99,15 @@ beyond keeping them configurable and updatable.
 | T-21 | A framework capability fetches URLs, runs commands or reaches MCP servers from the control plane, bypassing the sandbox (SSRF to the LAN or host) | X1 | AGT-013, SBX-009 |
 | T-22 | Active content in an artifact (scripts in a web page or SVG), possibly derived from untrusted content, runs with the user's session and calls the API or reads other data | X1 | ART-003, UX-002 |
 | T-23 | Notifications leak conversation content to the push services of browser vendors | — | UX-004 |
-| T-24 | Content of a version the user abandoned, or of a temporary conversation, reaches the model, memory or another conversation | X1 | CNV-002, CNV-011 |
+| T-24 | Content the user rewound past, or of a temporary conversation, reaches the model, memory or another conversation | X1 | CNV-002, CNV-004, CNV-011 |
 | T-25 | An imported skill carries injected instructions or malicious scripts | X1 | AGT-003, AGT-004, AGT-017 |
 | T-26 | A file of one user's library is read by another user or reaches another user's sandbox | X2 | CNV-012, TEN-008 |
-| T-27 | A tenant admin configures a model endpoint that leads the control plane to the household's network or the host, through a private address, DNS rebinding or a redirect | X2 | MOD-009 |
+| T-27 | A tenant admin who is not the instance admin configures a connection that leads the control plane to the household's network or the host, through a private address, DNS rebinding or a redirect | X2 | MOD-009 |
 | T-28 | Injected instructions, such as a crafted log line, make the agent run commands or change files on a user's connected device | X1 | AGT-003, AGT-018, DEV-007 |
 | T-29 | A remote MCP server, malicious or compromised, injects instructions through its tool descriptions or results | X1, X5 | AGT-003, AGT-018, AGT-019 |
 | T-30 | A stolen device credential lets an attacker pose as the device, receive its tool calls and return forged results | X4 | DEV-001, DEV-002 |
+| T-31 | A tenant admin uses connection tests to probe the household's network, or to read what internal services answer, through the details of failed steps | X2 | MOD-009, MOD-013 |
+| T-32 | A dependency or an asset of the web app contacts a third party at run time, telling it who uses the instance and when, or making the instance depend on it | X5 | OBS-001, OBS-006 |
 
 ## The lethal trifecta in Mazzamurello
 

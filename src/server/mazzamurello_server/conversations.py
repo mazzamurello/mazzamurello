@@ -1,7 +1,8 @@
-"""Conversations and their history (API-003, ADR-0031, ADR-0037).
+"""Conversations, their model and their history (API-003, CNV-004, MOD-012, ADR-0031, ADR-0037, ADR-0068).
 
 History is a projection of the stored Pydantic AI messages to AG-UI
-messages, along the path of runs from the first run to the chosen one.
+messages, along the chain of runs from the first run to the active one.
+Rewinding deletes the runs after the turn it rewinds to.
 """
 
 from __future__ import annotations
@@ -23,12 +24,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mazzamurello_server import errors, schemas
 from mazzamurello_server.auth import Authenticated, Engine
+from mazzamurello_server.connections import default_model, offered
 from mazzamurello_server.credentials import uuid7
 from mazzamurello_server.database import transaction
 
 router = APIRouter()
 
-CONVERSATION_COLUMNS = "id, title, archived_at IS NOT NULL AS archived, active_run_id, created_at, updated_at"
+CONVERSATION_COLUMNS = (
+    "id, title, archived_at IS NOT NULL AS archived, active_run_id, connection_id, model, created_at, updated_at"
+)
 ACTIVE_STATUSES = ("queued", "running")
 
 type Limit = Annotated[int, Query(ge=1, le=100)]
@@ -50,6 +54,10 @@ def conversation_response(row: Any) -> schemas.Conversation:
         title=row.title,
         archived=row.archived,
         active_run_id=row.active_run_id,
+        # A model whose connection was removed is no model the client can show or choose.
+        model=None
+        if row.connection_id is None or row.model is None
+        else schemas.ModelChoiceOut(connection_id=row.connection_id, model=row.model),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -84,11 +92,16 @@ async def create_conversation(
     identity: Authenticated, engine: Engine, body: schemas.CreateConversationRequest | None = None
 ) -> schemas.Conversation:
     async with transaction(engine, identity) as connection:
+        # The chosen model, or else the household's default (MOD-012).
+        choice = body.model if body is not None else None
+        if choice is not None and not await offered(connection, choice):
+            raise errors.invalid("/model", "not_offered")
+        model = choice or await default_model(connection)
         row = (
             await connection.execute(
                 text(
-                    "INSERT INTO conversations (id, tenant_id, owner_id, title, created_at, updated_at)"  # noqa: S608
-                    " VALUES (:id, :tenant_id, :owner_id, :title, now(), now())"
+                    "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, created_at,"  # noqa: S608
+                    " updated_at) VALUES (:id, :tenant_id, :owner_id, :title, :connection_id, :model, now(), now())"
                     f" RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 {
@@ -97,6 +110,8 @@ async def create_conversation(
                     "owner_id": identity.user_id,
                     # Untitled until named (ADR-0052).
                     "title": body.title if body is not None and body.title is not None else "",
+                    "connection_id": None if model is None else model.connection_id,
+                    "model": None if model is None else model.model,
                 },
             )
         ).one()
@@ -153,25 +168,17 @@ async def update_conversation(
     present = body.model_fields_set
     if not present:
         raise errors.invalid("/", "empty")
+    if "model" in present and body.model is None:
+        raise errors.invalid("/model", "null")
     async with transaction(engine, identity) as connection:
         await find_conversation(connection, conversation_id, lock=True)
-        if "active_run_id" in present:
-            # Switching versions or rewinding, or with null to before the first turn (ADR-0037).
-            await _refuse_while_active(connection, conversation_id)
-        if "active_run_id" in present and body.active_run_id is not None:
-            owned = (
-                await connection.execute(
-                    text("SELECT 1 FROM runs WHERE id = :run AND conversation_id = :conversation"),
-                    {"run": body.active_run_id, "conversation": conversation_id},
-                )
-            ).one_or_none()
-            if owned is None:
-                raise errors.invalid("/active_run_id", "not_in_conversation")
+        if body.model is not None and not await offered(connection, body.model):
+            raise errors.invalid("/model", "not_offered")
         changes = {
             "title": body.title if "title" in present else None,
             "archived": body.archived if "archived" in present else None,
-            "active_run_id": body.active_run_id if "active_run_id" in present else None,
-            "clear_active_run": "active_run_id" in present and body.active_run_id is None,
+            "connection_id": None if body.model is None else body.model.connection_id,
+            "model": None if body.model is None else body.model.model,
         }
         row = (
             await connection.execute(
@@ -179,11 +186,74 @@ async def update_conversation(
                     "UPDATE conversations SET title = coalesce(:title, title),"  # noqa: S608
                     " archived_at = CASE WHEN CAST(:archived AS boolean) IS NULL THEN archived_at"
                     " WHEN CAST(:archived AS boolean) THEN coalesce(archived_at, now()) ELSE NULL END,"
-                    " active_run_id = CASE WHEN CAST(:clear_active_run AS boolean) THEN NULL"
-                    " ELSE coalesce(CAST(:active_run_id AS uuid), active_run_id) END, updated_at = now()"
+                    " connection_id = coalesce(CAST(:connection_id AS uuid), connection_id),"
+                    " model = coalesce(CAST(:model AS text), model), updated_at = now()"
                     f" WHERE id = :id RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 changes | {"id": conversation_id},
+            )
+        ).one()
+    return conversation_response(row)
+
+
+@router.post("/conversations/{conversation_id}/rewind", response_model=schemas.Conversation)
+async def rewind_conversation(
+    conversation_id: uuid.UUID, body: schemas.RewindRequest, identity: Authenticated, engine: Engine, durable: Durable
+) -> schemas.Conversation:
+    """Make a run the last of the conversation, deleting the runs after it (CNV-004, ADR-0068)."""
+    async with transaction(engine, identity) as connection:
+        await find_conversation(connection, conversation_id, lock=True)
+        await _refuse_while_active(connection, conversation_id)
+        pending = (
+            await connection.execute(
+                text("SELECT pending_approvals IS NOT NULL FROM conversations WHERE id = :id"), {"id": conversation_id}
+            )
+        ).scalar_one()
+        if pending:
+            raise errors.ApiError(409, "run.interrupt_pending", "An approval is pending")
+        if body.run_id is not None:
+            owned = (
+                await connection.execute(
+                    text("SELECT 1 FROM runs WHERE id = :run AND conversation_id = :conversation"),
+                    {"run": body.run_id, "conversation": conversation_id},
+                )
+            ).one_or_none()
+            if owned is None:
+                raise errors.invalid("/run_id", "not_in_conversation")
+        # The first run after the kept one; its descendants follow by cascade.
+        following = (
+            await connection.execute(
+                text(
+                    "SELECT id FROM runs WHERE conversation_id = :conversation"
+                    " AND parent_run_id IS NOT DISTINCT FROM CAST(:run AS uuid)"
+                ),
+                {"conversation": conversation_id, "run": body.run_id},
+            )
+        ).one_or_none()
+        if following is not None:
+            deleted = [
+                str(row.id)
+                for row in await connection.execute(
+                    text(
+                        "WITH RECURSIVE chain AS (SELECT id FROM runs WHERE id = :first"
+                        " UNION ALL SELECT r.id FROM runs r JOIN chain c ON r.parent_run_id = c.id)"
+                        " SELECT id FROM chain"
+                    ),
+                    {"first": following.id},
+                )
+            ]
+            # The workflows hold the runs' content without row-level security, so
+            # they go first; their IDs come from the row-level-secured runs (TEN-009).
+            await durable.delete_workflows_async(deleted)
+            # Messages follow by cascade; ledger entries are detached (ADR-0042).
+            await connection.execute(text("DELETE FROM runs WHERE id = :id"), {"id": following.id})
+        row = (
+            await connection.execute(
+                text(
+                    "UPDATE conversations SET active_run_id = CAST(:run AS uuid), updated_at = now()"  # noqa: S608
+                    f" WHERE id = :id RETURNING {CONVERSATION_COLUMNS}"
+                ),
+                {"run": body.run_id, "id": conversation_id},
             )
         ).one()
     return conversation_response(row)
@@ -256,25 +326,8 @@ async def stored_messages(connection: AsyncConnection, run_ids: Sequence[uuid.UU
     return by_run
 
 
-async def _version_tips(connection: AsyncConnection, version_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, uuid.UUID]:
-    """For each version, the most recent run that continues it, itself included (CNV-001)."""
-    if not version_ids:
-        return {}
-    rows = await connection.execute(
-        text(
-            "WITH RECURSIVE tree AS ("
-            " SELECT id AS version, id, created_at FROM runs WHERE id = ANY(:versions)"
-            " UNION ALL"
-            " SELECT tree.version, runs.id, runs.created_at FROM runs JOIN tree ON runs.parent_run_id = tree.id"
-            ") SELECT DISTINCT ON (version) version, id FROM tree ORDER BY version, created_at DESC, id DESC"
-        ),
-        {"versions": list(set(version_ids))},
-    )
-    return {row.version: row.id for row in rows}
-
-
 def message_id(run_id: uuid.UUID, position: int) -> uuid.UUID:
-    """The ID of a run's message in history, from the run and its position in it (CNV-001)."""
+    """The ID of a run's message in history, from the run and its position in it (API-003)."""
     return uuid.uuid5(run_id, f"message-{position}")
 
 
@@ -283,7 +336,6 @@ async def list_messages(
     conversation_id: uuid.UUID,
     identity: Authenticated,
     engine: Engine,
-    run_id: uuid.UUID | None = None,
     cursor: str | None = None,
     limit: Limit = 50,
 ) -> schemas.MessagePage:
@@ -292,50 +344,26 @@ async def list_messages(
         raise errors.invalid("cursor", "invalid")
     async with transaction(engine, identity) as connection:
         conversation = await find_conversation(connection, conversation_id)
-        last = run_id or conversation.active_run_id
+        last = conversation.active_run_id
         if last is None:
             return schemas.MessagePage(items=[], runs=[], next_cursor=None)
         path = await path_runs(connection, conversation_id, last)
         if not path:
             raise errors.not_found()
         stored = await stored_messages(connection, [run.id for run in path])
-        versions = {
-            run.id: [
-                row.id
-                for row in await connection.execute(
-                    text(
-                        "SELECT id FROM runs WHERE conversation_id = :conversation AND kind = 'message'"
-                        " AND parent_run_id IS NOT DISTINCT FROM CAST(:parent AS uuid) ORDER BY created_at, id"
-                    ),
-                    {"conversation": conversation_id, "parent": run.parent_run_id},
-                )
-            ]
-            for run in path
-        }
-        tips = await _version_tips(connection, [version for listed in versions.values() for version in listed])
     flattened: list[tuple[Any, dict[str, Any]]] = []
     for run in path:
         model_messages = ModelMessagesTypeAdapter.validate_python(stored[run.id])
         for position, message in enumerate(AGUIAdapter.dump_messages(model_messages)):
             dumped = message.model_dump(mode="json", by_alias=True, exclude_none=True)
-            # The same ID on every read, and in every version that contains the message.
+            # The same ID on every read.
             dumped["id"] = str(message_id(run.id, position))
             flattened.append((run, dumped))
     page = flattened[start : start + limit]
     runs: list[schemas.PathRun] = []
     for run, message in page:
         if not runs or runs[-1].run_id != run.id:
-            listed: list[uuid.UUID] = versions[run.id] if run.kind == "message" else [run.id]
-            runs.append(
-                schemas.PathRun(
-                    run_id=run.id,
-                    parent_run_id=run.parent_run_id,
-                    kind=run.kind,
-                    message_ids=[],
-                    versions=listed,
-                    version_tips=[tips.get(version) or version for version in listed],
-                )
-            )
+            runs.append(schemas.PathRun(run_id=run.id, parent_run_id=run.parent_run_id, kind=run.kind, message_ids=[]))
         runs[-1].message_ids.append(str(message["id"]))
     next_cursor = _encode(start + limit) if start + limit < len(flattened) else None
     return schemas.MessagePage(items=[message for _, message in page], runs=runs, next_cursor=next_cursor)

@@ -33,21 +33,19 @@ def test_logs_carry_no_passwords_keys_or_content(
     assert refused.status_code == 401
     token = login(server, account)
     api_key = f"sk-key-{mark}"
-    with server.client(default_model.admin_token) as client:
-        assert client.patch(f"/instance/models/{default_model.id}", json={"api_key": api_key}).status_code == 200
-    try:
-        message = f"message-text-{mark}"
-        conversation = create_conversation(server, token)
-        run_id, events = start_run(server, token, conversation["id"], message)
-        assert message in text_of(events)
-        # The tool's argument holds `argument-<mark>-$((6*7))`; only its output holds `-42`.
-        argument, output = f"argument-{mark}", f"argument-{mark}-42"
-        run_id, events = start_run(server, token, conversation["id"], f"run:echo {argument}-$((6*7))")
-        assert wait_for_run(server, token, run_id)["status"] == "completed"
-        assert output in text_of(events)
-    finally:
-        with server.client(default_model.admin_token) as client:
-            client.patch(f"/instance/models/{default_model.id}", json={"api_key": None})
+    household = default_model.connect(account.tenant_id)
+    with server.client(household.admin_token) as client:
+        path = f"/tenant/connections/{household.connection_id}"
+        assert client.patch(path, json={"api_key": api_key}).status_code == 200
+    message = f"message-text-{mark}"
+    conversation = create_conversation(server, token)
+    run_id, events = start_run(server, token, conversation["id"], message)
+    assert message in text_of(events)
+    # The tool's argument holds `argument-<mark>-$((6*7))`; only its output holds `-42`.
+    argument, output = f"argument-{mark}", f"argument-{mark}-42"
+    run_id, events = start_run(server, token, conversation["id"], f"run:echo {argument}-$((6*7))")
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    assert output in text_of(events)
     logs = {"api": server.api.output(), "worker": server.worker.output(), "sandbox driver": sandboxes.process.output()}
     found = [
         f"{what} in the output of the {process}"

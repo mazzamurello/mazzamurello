@@ -76,6 +76,12 @@ server accepted with a `2xx` status. A mismatch fails the test. The harness
 keeps the output of every process it starts, the API, the worker and the
 sandbox driver, for tests that check what they log (ADR-0058).
 
+The harness also records the outbound connections of the API and the worker
+(OBS-006, ADR-0072): it starts both with an audit hook, through Python's
+`sitecustomize` on `PYTHONPATH`, that appends every connection and name
+lookup to a file named by `TEST_OUTBOUND_LOG`. The server needs no code for
+it, and the variable is not an `MZM_*` one.
+
 Tests choose the source address of each request with `X-Forwarded-For`, so
 that rate limits (ADR-0047) count only the attempts of the test that made
 them. Users that a test does not create through the API are arranged in the
@@ -86,12 +92,14 @@ database as superuser, with password hashes in the Argon2id encoded format
 
 Tests never reach a real model. The test suite serves its own model: an
 OpenAI-compatible chat completions endpoint on `127.0.0.1`, whose answers
-the tests script, and configures it through the API as an instance model
-(ADR-0051). Endpoints on the loopback address are allowed only for instance
-models, so tests use instance models for runs.
+the tests script, and adds it through the API as a connection of the test's
+tenant (ADR-0069), set by a user who is the instance admin, since only such a
+connection may use the loopback address. It lists its models at `/models`,
+as OpenAI-compatible servers do.
 
-The served model also answers as OpenRouter's chat completions API does, for
-configurations whose `api` is `openrouter` (ADR-0057): keep-alive comments,
+The served model also answers as OpenRouter's API does, for connections of
+kind `openrouter` whose address points to it (ADR-0057): its model list with
+`supported_parameters` and `sort`, the key check at `/key`, keep-alive comments,
 a final usage chunk that repeats the finish reason and reports `cost`, and
 errors before and during a stream, as OpenRouter's documentation describes
 them. It records the headers of each request, so tests can check what the
@@ -111,6 +119,12 @@ before starting the API:
    model the test suite serves.
 4. On every screen a test visits, check accessibility with axe-core; any
    violation of WCAG 2.2 level AA fails the test (UX-007).
+
+Tests find elements by role and accessible name. The sprite is hidden from
+assistive technologies (UX-013), so the app marks it with
+`data-sprite-pose`, whose value names the pose it shows: `greeting`,
+`thinking`, `searching`, `reading`, `writing`, `running`, `answering`,
+`waiting` or `error` (ADR-0070).
 
 Unit tests of the app's own code run with Vitest, without a server. The
 cookie session's `Secure` attribute is accepted on `127.0.0.1` by Chromium,
