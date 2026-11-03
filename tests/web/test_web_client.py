@@ -208,7 +208,8 @@ def test_adding_a_connection_shows_its_test(page: Page, admin: Account, default_
     assert accessibility_violations(page) == []
     dialog.get_by_label("Address").fill(default_model.endpoint.url)
     dialog.get_by_role("button", name="Connect", exact=True).click()
-    expect(page.get_by_text(name)).to_be_visible(timeout=30_000)
+    # The name also appears in the default model list and the notice: look in the connections.
+    expect(page.get_by_role("main")).to_contain_text(f"{name}Runs at home", timeout=30_000)
     expect(page.get_by_role("main")).to_contain_text(f"{len(SERVER_MODELS)} models")
 
 
