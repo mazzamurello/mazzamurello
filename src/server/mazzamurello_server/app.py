@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from mazzamurello_server import admin, auth, conversations, health, model_configurations, runs, web
+from mazzamurello_server import admin, auth, connections, conversations, health, runs, web
 from mazzamurello_server.config import ApiConfiguration
 from mazzamurello_server.database import create_engine
 from mazzamurello_server.durable import create_client
@@ -39,7 +39,7 @@ def create_app(configuration: ApiConfiguration) -> FastAPI:
     app.state.configuration = configuration
     app.include_router(auth.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
-    app.include_router(model_configurations.router, prefix=API_PREFIX)
+    app.include_router(connections.router, prefix=API_PREFIX)
     app.include_router(conversations.router, prefix=API_PREFIX)
     app.include_router(runs.router, prefix=API_PREFIX)
     app.include_router(health.router, prefix=API_PREFIX)

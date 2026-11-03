@@ -4,6 +4,9 @@ import { useTranslation } from "react-i18next";
 
 import { api } from "../api/client";
 import { ME } from "../session";
+import { Sprite } from "./Sprite";
+
+const INPUT = "h-[42px] w-full rounded-[10px] border border-line-strong bg-surface px-3 text-base outline-none focus:border-accent";
 
 /** Sign in with a cookie session: the token never reaches the page's scripts (AUTH-005). */
 export function SignIn() {
@@ -35,26 +38,30 @@ export function SignIn() {
   }
 
   return (
-    <main className="flex min-h-full items-center justify-center p-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4" aria-describedby={error ? "sign-in-error" : undefined}>
-        <h1 className="text-2xl font-semibold">{t("signIn.title")}</h1>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">{t("signIn.username")}</span>
-          <input name="username" autoComplete="username" required autoCapitalize="none" className="w-full rounded-lg border border-stone-400 bg-white px-3 py-2 text-base text-stone-900" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">{t("signIn.password")}</span>
-          <input name="password" type="password" autoComplete="current-password" required className="w-full rounded-lg border border-stone-400 bg-white px-3 py-2 text-base text-stone-900" />
-        </label>
-        {error && (
-          <p id="sign-in-error" role="alert" className="text-sm text-red-800">
-            {error}
-          </p>
-        )}
-        <button type="submit" disabled={busy} className="w-full rounded-lg bg-stone-800 px-4 py-2 font-medium text-white disabled:opacity-60">
-          {busy ? t("signIn.submitting") : t("signIn.submit")}
-        </button>
-      </form>
+    <main className="flex min-h-full overflow-y-auto bg-bg px-4 py-6 text-fg">
+      <div className="m-auto flex w-full max-w-[360px] flex-col items-center gap-1">
+        <Sprite pose="waiting" className="h-[106px] w-[92px]" />
+        <h1 className="mt-1.5 text-center text-2xl font-bold tracking-tight">{t("signIn.title")}</h1>
+        <p className="mb-[18px] text-center text-muted">{t("signIn.subtitle")}</p>
+        <form onSubmit={submit} className="flex w-full flex-col gap-3.5" aria-describedby={error ? "sign-in-error" : undefined}>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13.5px] font-semibold">{t("signIn.username")}</span>
+            <input name="username" autoComplete="username" required autoCapitalize="none" className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13.5px] font-semibold">{t("signIn.password")}</span>
+            <input name="password" type="password" autoComplete="current-password" required className={INPUT} />
+          </label>
+          {error && (
+            <p id="sign-in-error" role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <button type="submit" disabled={busy} className="h-[42px] w-full rounded-[10px] bg-fg font-semibold text-bg disabled:opacity-60">
+            {busy ? t("signIn.submitting") : t("signIn.submit")}
+          </button>
+        </form>
+      </div>
     </main>
   );
 }

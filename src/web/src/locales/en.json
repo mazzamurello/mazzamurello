@@ -3,7 +3,8 @@
     "name": "Mazzamurello"
   },
   "signIn": {
-    "title": "Sign in to Mazzamurello",
+    "title": "Welcome back",
+    "subtitle": "Sign in to your household.",
     "username": "Username",
     "password": "Password",
     "submit": "Sign in",
@@ -17,10 +18,14 @@
     "conversations": "Conversations",
     "openMenu": "Open the conversation list",
     "closeMenu": "Close the conversation list",
-    "settings": "Model settings",
+    "settings": "Settings",
     "signOut": "Sign out",
     "untitled": "New conversation",
-    "empty": "No conversations yet."
+    "empty": "No conversations yet.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "week": "Previous 7 days",
+    "older": "Older"
   },
   "conversationMenu": {
     "label": "Options for {{title}}",
@@ -35,72 +40,216 @@
     "confirmDelete": "Delete"
   },
   "welcome": {
-    "title": "How can I help?",
-    "hint": "Ask anything. Commands run in your own sandbox."
+    "morning": "Good morning, {{name}}.",
+    "afternoon": "Good afternoon, {{name}}.",
+    "evening": "Good evening, {{name}}.",
+    "anotherQuote": "Another quote",
+    "placeholder": "What can I help with?"
   },
+  "quotes": [
+    {
+      "text": "Well begun is half done.",
+      "author": "Aristotle",
+      "work": "Politics"
+    },
+    {
+      "text": "The journey of a thousand miles begins with a single step.",
+      "author": "Laozi",
+      "work": "Tao Te Ching"
+    },
+    {
+      "text": "‘Hope’ is the thing with feathers that perches in the soul.",
+      "author": "Emily Dickinson",
+      "work": ""
+    },
+    {
+      "text": "We are such stuff as dreams are made on.",
+      "author": "William Shakespeare",
+      "work": "The Tempest"
+    },
+    {
+      "text": "Happy families are all alike; every unhappy family is unhappy in its own way.",
+      "author": "Leo Tolstoy",
+      "work": "Anna Karenina"
+    },
+    {
+      "text": "You were not made to live like beasts, but to follow virtue and knowledge.",
+      "author": "Dante Alighieri",
+      "work": "Inferno"
+    },
+    {
+      "text": "How beautiful is youth, that flees away all the same.",
+      "author": "Lorenzo de’ Medici",
+      "work": "Canzona di Bacco"
+    },
+    {
+      "text": "The unexamined life is not worth living.",
+      "author": "Socrates",
+      "work": "Plato’s Apology"
+    },
+    {
+      "text": "I think, therefore I am.",
+      "author": "René Descartes",
+      "work": "Discourse on the Method"
+    },
+    {
+      "text": "Fortune favours the bold.",
+      "author": "Terence",
+      "work": "Phormio"
+    }
+  ],
   "composer": {
     "label": "Message",
-    "placeholder": "Write a message",
+    "placeholder": "Reply…",
     "send": "Send",
-    "stop": "Stop"
+    "stop": "Stop",
+    "local": "Runs on your home server. Nothing leaves the household.",
+    "remote": "Messages go to {{connection}} and the provider that runs the model.",
+    "chatOnly": "This model can only chat: it cannot search, read or write files, or run commands.",
+    "noModel": "No model is set up yet. A household admin can add one in Settings."
+  },
+  "picker": {
+    "title": "Choose a model",
+    "search": "Search models",
+    "searchPlaceholder": "Search all {{count}} models",
+    "local": "Runs at home",
+    "remote": "Remote",
+    "free": "Free · runs at home",
+    "price": "${{input}} in · ${{output}} out per million tokens",
+    "unknownPrice": "Price not known",
+    "chatOnly": "Chat only",
+    "default": "Default",
+    "none": "No model matches “{{query}}”.",
+    "footer": "Prices are per million tokens. OpenRouter lists its most used models first."
   },
   "message": {
     "you": "You",
-    "assistant": "Assistant",
     "edit": "Edit",
     "editLabel": "Edit your message",
+    "editHint": "Sending deletes the messages after this one.",
     "saveEdit": "Send",
     "cancelEdit": "Cancel",
-    "regenerate": "New answer",
-    "rewind": "Go back to here",
     "copy": "Copy",
+    "copyMessage": "Copy text",
     "copied": "Copied",
-    "previousVersion": "Previous version",
-    "nextVersion": "Next version",
-    "version": "Version {{current}} of {{total}}",
-    "thinking": "Thinking…",
     "stopped": "Stopped.",
-    "failed": "The answer failed ({{code}}).",
-    "tool": "Used {{name}}",
-    "toolRunning": "Using {{name}}…",
     "toolArguments": "Arguments",
     "toolResult": "Result",
     "image": "image"
   },
+  "activity": {
+    "thinking": "Thinking…",
+    "searching": "Searching the web…",
+    "reading": "Reading…",
+    "writing": "Writing a file…",
+    "running": "Running a command…",
+    "answering": "Answering…",
+    "waiting": "Done.",
+    "searched": "Searched the web",
+    "read": "Read",
+    "wrote": "Wrote a file",
+    "ran": "Ran a command",
+    "used": "Used {{name}}"
+  },
   "rewind": {
-    "title": "Go back to this point?",
-    "body": "The conversation continues from here. What came after is kept as another version.",
-    "files": "Files in your workspace are not changed by going back.",
-    "confirm": "Go back",
+    "title": "Send the edited message?",
+    "bodyOne": "The {{count}} message after it will be deleted. This can't be undone.",
+    "bodyMany": "The {{count}} messages after it will be deleted. This can't be undone.",
+    "files": "Files in your workspace stay as they are.",
+    "confirm": "Delete and send",
     "cancel": "Cancel"
   },
   "settings": {
-    "title": "Models",
-    "instance": "Models for the whole instance",
-    "household": "Models for your household",
-    "none": "No models yet.",
-    "add": "Add a model",
-    "edit": "Edit",
-    "delete": "Delete",
-    "default": "Default",
-    "makeDefault": "Make default",
+    "title": "Settings",
+    "sections": "Settings sections",
+    "models": "Models",
+    "appearance": "Appearance",
+    "defaultModel": "Default model",
+    "defaultHint": "New conversations start with this model. Anyone in the household can switch models in a conversation.",
+    "noDefault": "No default model",
+    "connections": "Connections",
+    "connectionsHint": "Each connection brings all of its models. Only household admins see this section.",
+    "noConnections": "No connections yet.",
+    "add": "Add a connection",
+    "modelCountOne": "{{count}} model",
+    "modelCountMany": "{{count}} models",
+    "local": "Runs at home",
+    "remote": "Remote",
+    "test": "Test",
+    "remove": "Remove",
+    "removeTitle": "Remove {{name}}?",
+    "removeBody": "Its models leave the model list. Conversations that use one of them stop until someone chooses another model.",
+    "theme": "Theme",
+    "themeHint": "Follow the device, or always use one theme.",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark",
+    "saved": "Saved."
+  },
+  "connection": {
+    "title": "Add a connection",
+    "kind": "Kind of connection",
+    "openrouter": "OpenRouter",
+    "server": "Your own server",
     "name": "Name",
-    "api": "API",
-    "apiOpenai": "OpenAI-compatible",
-    "apiOpenrouter": "OpenRouter",
-    "baseUrl": "Endpoint",
-    "model": "Model name",
+    "address": "Address",
+    "addressHint": "Ollama, llama.cpp, vLLM or LM Studio, such as http://192.168.1.10:11434/v1. Addresses on your network work only for the server's administrator.",
     "apiKey": "API key",
-    "apiKeySet": "An API key is set. Leave empty to keep it.",
-    "paid": "Paid per token",
-    "save": "Save",
+    "apiKeyOptional": "API key (optional)",
+    "apiKeyHint": "Create one at openrouter.ai, under Keys. Every OpenRouter model becomes available to the household, most used first.",
+    "where": "Where it runs",
+    "atHome": "On the household's hardware",
+    "elsewhere": "At a provider",
+    "test": "Test connection",
+    "testing": "Testing the connection…",
+    "connect": "Connect",
     "cancel": "Cancel",
-    "saved": "Saved.",
-    "failed": "Saving failed ({{code}}).",
-    "notAllowed": "Only administrators can configure models."
+    "connected": "{{name}} is connected",
+    "connectedBodyOne": "{{count}} model is now in the model list.",
+    "connectedBodyMany": "{{count}} models are now in the model list.",
+    "passed": "The connection works",
+    "passedBodyOne": "{{count}} model found.",
+    "passedBodyMany": "{{count}} models found.",
+    "technical": "Technical details",
+    "steps": {
+      "resolve": "Find the address",
+      "connect": "Connect",
+      "tls": "Secure connection",
+      "authenticate": "Check the key",
+      "list_models": "List the models"
+    },
+    "reasons": {
+      "name_not_found": "The name was not found",
+      "connection_refused": "Nothing answered",
+      "timeout": "The server did not answer in time",
+      "tls_untrusted": "The server's certificate is not trusted",
+      "address_not_allowed": "This address is not allowed",
+      "http_error": "The server answered with an error",
+      "unauthorized": "The key was not accepted",
+      "not_a_model_server": "The address answers, but it is not a model server"
+    },
+    "fixes": {
+      "name_not_found": "This server can't find that name. Use the machine's IP address, or give it a fixed name in your router.",
+      "connection_refused": "The machine answers, but no program listens on that port. Check that the model server runs and listens on the network: Ollama listens only on 127.0.0.1 unless OLLAMA_HOST is set to 0.0.0.0.",
+      "timeout": "The machine may be off or asleep, or a firewall drops the connection. Check that this server can reach it.",
+      "tls_untrusted": "On your home network, use http:// instead, or give the server a certificate from a trusted authority.",
+      "address_not_allowed": "Only public https addresses are allowed, unless the server's administrator sets the address: requests leave from the server and must not reach your home network.",
+      "http_error": "Check the address: most servers expect /v1 at the end, such as http://192.168.1.10:11434/v1.",
+      "unauthorized": "Copy the key again. For OpenRouter, keys start with sk-or-, and a deleted or disabled key stops working.",
+      "not_a_model_server": "Check the address: it reaches something else, such as a router's page."
+    }
   },
   "errors": {
-    "generic": "Something went wrong ({{code}}).",
-    "notFound": "This conversation does not exist."
+    "title": "Something went wrong",
+    "notFound": "This conversation does not exist.",
+    "dismiss": "Dismiss",
+    "openSettings": "Open settings",
+    "model_unavailable": "The conversation's model can't be used. Choose another model in the message box, or ask a household admin to check its connection in Settings.",
+    "model_request_failed": "The model refused the request or failed to answer. Try again, or choose another model in the message box.",
+    "sandbox_unavailable": "Your workspace could not be started. Try again in a minute; if it keeps failing, tell the server's administrator.",
+    "run_worker_lost": "The answer was interrupted when the server restarted. Send your message again.",
+    "run_timeout": "The answer took too long and was stopped. Try a shorter request.",
+    "internal_error": "The server could not finish the answer. Try again; if it keeps failing, tell the server's administrator.",
+    "network": "The server can't be reached. Check your connection and try again."
   }
 }

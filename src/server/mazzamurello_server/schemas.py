@@ -107,13 +107,6 @@ class TenantPage(Response):
 type DecimalText = Annotated[str, Field(pattern=r"^[0-9]{1,10}(\.[0-9]{1,10})?$")]
 
 
-class ModelPrices(Request):
-    input: DecimalText
-    cached_input: DecimalText | None = None
-    output: DecimalText
-    currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
-
-
 class ModelPricesOut(Response):
     input: str
     # Left out when not set: the contract has no null price.
@@ -122,60 +115,117 @@ class ModelPricesOut(Response):
     currency: str
 
 
-# The API of a model's endpoint (ADR-0057).
-type ModelApi = Literal["openai", "openrouter"]
+# A connection reaches OpenRouter or a server with an OpenAI-compatible API (ADR-0057, ADR-0069).
+type ConnectionKind = Literal["openrouter", "openai"]
+# Where inference runs (MOD-010, ADR-0066).
+type Location = Literal["local", "remote"]
+type Address = Annotated[HttpUrl, UrlConstraints(max_length=2000)]
+type ApiKey = Annotated[str, Field(min_length=1, max_length=1000)]
 
 
-class CreateModelConfigurationRequest(Request):
+class CreateConnectionRequest(Request):
     name: Annotated[str, Field(min_length=1, max_length=100)]
-    api: ModelApi = "openai"
-    base_url: Annotated[HttpUrl, UrlConstraints(max_length=2000)]
-    model: Annotated[str, Field(min_length=1, max_length=200)]
-    api_key: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
-    paid: bool
-    prices: ModelPrices | None = None
-    is_default: bool = False
+    kind: ConnectionKind
+    base_url: Address | None = None
+    location: Location | None = None
+    api_key: ApiKey | None = None
 
 
-class UpdateModelConfigurationRequest(Request):
-    """Only the fields present change; `api_key` and `prices` set to null are removed."""
+class UpdateConnectionRequest(Request):
+    """Only the fields present change; `api_key` set to null is removed."""
 
     name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
-    api: ModelApi | None = None
-    base_url: Annotated[HttpUrl, UrlConstraints(max_length=2000)] | None = None
-    model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
-    api_key: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
-    paid: bool | None = None
-    prices: ModelPrices | None = None
-    is_default: bool | None = None
+    base_url: Address | None = None
+    location: Location | None = None
+    api_key: ApiKey | None = None
 
 
-class ModelConfiguration(Response):
+class Connection(Response):
     id: uuid.UUID
     name: str
-    api: ModelApi
+    kind: ConnectionKind
     base_url: str
-    model: str
+    location: Location
     has_api_key: bool
-    paid: bool
-    prices: ModelPricesOut | None
-    is_default: bool
+    private_network: bool
+    model_count: int
+    models_refreshed_at: Timestamp | None
     created_at: Timestamp
     updated_at: Timestamp
 
 
-class ModelConfigurationList(Response):
-    items: list[ModelConfiguration]
+class ConnectionList(Response):
+    items: list[Connection]
+
+
+type TestStepName = Literal["resolve", "connect", "tls", "authenticate", "list_models"]
+type TestReason = Literal[
+    "name_not_found",
+    "connection_refused",
+    "timeout",
+    "tls_untrusted",
+    "address_not_allowed",
+    "http_error",
+    "unauthorized",
+    "not_a_model_server",
+]
+
+
+class ConnectionTestStep(Response):
+    step: TestStepName
+    outcome: Literal["passed", "failed", "skipped"]
+    duration_ms: int | None
+    detail: str
+
+
+class ConnectionTest(Response):
+    passed: bool
+    steps: list[ConnectionTestStep]
+    reason: TestReason | None
+    http_status: int | None
+    technical_detail: str | None
+    model_count: int | None
+
+
+class ModelChoice(Request):
+    connection_id: uuid.UUID
+    model: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class ModelChoiceOut(Response):
+    connection_id: uuid.UUID
+    model: str
+
+
+class ModelOption(Response):
+    connection_id: uuid.UUID
+    connection_name: str
+    model: str
+    name: str
+    location: Location
+    prices: ModelPricesOut | None
+    context_window: int | None
+    tools: bool | None
+
+
+class ModelList(Response):
+    items: list[ModelOption]
+    default: ModelChoiceOut | None
 
 
 class CreateConversationRequest(Request):
     title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    model: ModelChoice | None = None
 
 
 class UpdateConversationRequest(Request):
     title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     archived: bool | None = None
-    active_run_id: uuid.UUID | None = None
+    model: ModelChoice | None = None
+
+
+class RewindRequest(Request):
+    run_id: uuid.UUID | None
 
 
 class Conversation(Response):
@@ -183,6 +233,7 @@ class Conversation(Response):
     title: str
     archived: bool
     active_run_id: uuid.UUID | None
+    model: ModelChoiceOut | None
     created_at: Timestamp
     updated_at: Timestamp
 
@@ -200,9 +251,6 @@ class PathRun(Response):
     parent_run_id: uuid.UUID | None
     kind: RunKind
     message_ids: list[str]
-    versions: list[uuid.UUID]
-    # The most recent run continuing each version, in the same order.
-    version_tips: list[uuid.UUID]
 
 
 class MessagePage(Response):
@@ -212,6 +260,7 @@ class MessagePage(Response):
 
 
 class ModelRef(Response):
+    connection_id: uuid.UUID | None
     provider: str
     model: str
 

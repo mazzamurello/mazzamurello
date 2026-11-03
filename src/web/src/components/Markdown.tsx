@@ -24,30 +24,30 @@ export function Markdown({ text }: { text: string }) {
 
 const COMPONENTS: Components = {
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-amber-800 underline dark:text-amber-300">
+    <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-accent underline underline-offset-2">
       {children}
     </a>
   ),
   // No remote resources: an image is shown as its description.
   img: ({ alt }) => <ImageText alt={alt} />,
   table: ({ children }) => (
-    <div className="overflow-x-auto">
-      <table className="border-collapse text-sm [&_td]:border [&_td]:border-stone-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-stone-300 [&_th]:px-2 [&_th]:py-1">
+    <div className="my-1 overflow-x-auto rounded-xl border border-line">
+      <table className="w-full border-collapse text-sm [&_td]:border-b [&_td]:border-line [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_th]:bg-hover [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:tracking-wide [&_th]:text-muted [&_th]:uppercase [&_tr:last-child_td]:border-b-0">
         {children}
       </table>
     </div>
   ),
-  ul: ({ children }) => <ul className="list-disc space-y-1 pl-6">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal space-y-1 pl-6">{children}</ol>,
-  h1: ({ children }) => <h3 className="text-xl font-semibold">{children}</h3>,
-  h2: ({ children }) => <h3 className="text-lg font-semibold">{children}</h3>,
-  h3: ({ children }) => <h4 className="font-semibold">{children}</h4>,
+  ul: ({ children }) => <ul className="list-disc space-y-1 pl-6 marker:text-faint">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal space-y-1 pl-6 marker:text-faint">{children}</ol>,
+  h1: ({ children }) => <h3 className="mt-2 text-xl font-bold tracking-tight">{children}</h3>,
+  h2: ({ children }) => <h3 className="mt-2 text-[17px] font-bold tracking-tight">{children}</h3>,
+  h3: ({ children }) => <h4 className="mt-1.5 font-bold">{children}</h4>,
   pre: ({ children }) => <>{children}</>,
   code: ({ className, children }) => {
     const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
     const code = String(children ?? "").replace(/\n$/, "");
     if (language === undefined && !code.includes("\n")) {
-      return <code className="rounded bg-stone-200 px-1 py-0.5 text-[0.9em] dark:bg-stone-700">{children}</code>;
+      return <code className="rounded-[5px] bg-hover px-[5px] py-px font-mono text-[0.86em]">{children}</code>;
     }
     return <CodeBlock code={code} language={language ?? "text"} />;
   },
@@ -73,12 +73,12 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   if (highlighted !== null) body = <div className="shiki-block" dangerouslySetInnerHTML={{ __html: highlighted }} />;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-300 dark:border-stone-600">
-      <div className="flex items-center justify-between bg-stone-200 px-3 py-1 text-xs dark:bg-stone-700">
+    <div className="overflow-hidden rounded-xl border border-line">
+      <div className="flex items-center justify-between bg-hover px-3 py-1 font-mono text-xs text-muted">
         <span>{language}</span>
         <button
           type="button"
-          className="rounded px-2 py-1 hover:bg-stone-300 dark:hover:bg-stone-600"
+          className="rounded-md px-2 py-1 font-sans hover:bg-hover hover:text-fg"
           onClick={() => {
             void navigator.clipboard.writeText(code).then(() => {
               setCopied(true);
@@ -89,7 +89,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           {copied ? t("message.copied") : t("message.copy")}
         </button>
       </div>
-      <pre className="overflow-x-auto bg-white p-3 text-sm dark:bg-stone-900">{body}</pre>
+      <pre className="overflow-x-auto bg-surface p-3 font-mono text-[13px]">{body}</pre>
     </div>
   );
 }

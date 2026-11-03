@@ -13,7 +13,7 @@ import logging
 import signal
 import uuid
 from collections.abc import AsyncIterable
-from typing import Any
+from typing import Any, cast
 
 from dbos import DBOS, DBOSConfig
 from pydantic_ai import Agent, RunContext
@@ -48,6 +48,8 @@ RETENTION_INTERVAL_SECONDS = 3600
 # output limits keep the rest in the workspace (AGT-014).
 SHELL_OUTPUT_CHARS = 64 * 1024 * 1024
 QUEUE_POLLING_SECONDS = 0.2
+# The most of a provider's refusal a run's error repeats.
+REASON_CHARS = 500
 # Until instructions and skills arrive (ADR-0044, ADR-0052).
 INSTRUCTIONS = (
     "You are Mazzamurello, an assistant for the people of a household. "
@@ -92,7 +94,7 @@ async def _handle_events(ctx: RunContext[RunDeps], events: AsyncIterable[AgentSt
 
 
 agent = Agent(
-    model_reference("instance", "unset"),
+    model_reference(str(uuid.UUID(int=0)), "unset"),
     name="mazzamurello",
     deps_type=RunDeps,
     instructions=INSTRUCTIONS,
@@ -217,7 +219,7 @@ async def _execute(
         result = await agent.run(
             run.user_text,
             message_history=history,
-            model=model_reference(run.model_scope, run.model_id),
+            model=model_reference(run.connection_id, run.model),
             deps=deps,
             run_id=run.run_id,
             conversation_id=run.conversation_id,
@@ -225,7 +227,7 @@ async def _execute(
     except (ModelUnavailableError, ModelAPIError) as error:
         code = _error_code(error)
         logger.warning("run %s failed: %s", run.run_id, code)
-        await _write_error(run.run_id, code)
+        await _write_error(run.run_id, code, _reason(error))
         await _set_status(identity, deps.run_id, "failed", code)
         return
     await store_messages(deps, result.new_messages())
@@ -234,8 +236,23 @@ async def _execute(
     await _set_status(identity, deps.run_id, "completed")
 
 
-async def _write_error(run_id: str, code: str) -> None:
-    await _write(run_id, {"type": "RUN_ERROR", "message": code, "code": code})
+def _reason(error: BaseException) -> str | None:
+    """What the provider said, for a refused request: such as a model that cannot call tools (MOD-014)."""
+    if not isinstance(error, ModelHTTPError):
+        return None
+    raw: object = error.body
+    if isinstance(raw, dict):
+        body = cast(dict[str, Any], raw)
+        nested = body.get("error")
+        message = cast(dict[str, Any], nested).get("message") if isinstance(nested, dict) else body.get("message")
+        if isinstance(message, str):
+            return message[:REASON_CHARS]
+    return str(error)[:REASON_CHARS]
+
+
+async def _write_error(run_id: str, code: str, reason: str | None = None) -> None:
+    message = code if reason is None else f"{code}: {reason}"
+    await _write(run_id, {"type": "RUN_ERROR", "message": message, "code": code})
 
 
 async def _apply_retention(days: int) -> None:
