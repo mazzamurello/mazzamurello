@@ -87,6 +87,9 @@ def test_every_member_sees_every_model_of_the_household(server: Server, househol
         "USD",
     )
     assert all(m["prices"] is None for m in local), "a local server costs nothing"
+    # A price that depends on the model a router picks is not known.
+    (router,) = [m for m in remote if m["model"] == "test/router"]
+    assert router["prices"] is None
 
 
 @pytest.mark.spec("MOD-011")

@@ -317,3 +317,26 @@ def test_errors_say_what_happened_and_what_to_do(page: Page, member: Account) ->
     assert "model.request_failed" not in text, "the notice shows an error code instead of words"
     expect(notice.locator("[data-sprite-pose]")).to_have_attribute("data-sprite-pose", "error")
     assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("UX-018")
+def test_typing_starts_in_the_expected_field(page: Page, member: Account) -> None:
+    page.goto("/")
+    expect(page.get_by_label("Username")).to_be_focused()
+    sign_in(page, member)
+    expect(page.get_by_label("Message")).to_be_focused()
+
+
+@pytest.mark.spec("UX-018")
+def test_touch_screens_keep_the_keyboard_closed(browser: Browser, web_origin: str, member: Account) -> None:
+    context = browser.new_context(
+        base_url=web_origin, viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
+    page = context.new_page()
+    try:
+        page.goto("/")
+        expect(page.get_by_label("Username")).not_to_be_focused()
+        sign_in(page, member)
+        expect(page.get_by_label("Message")).not_to_be_focused()
+    finally:
+        context.close()
