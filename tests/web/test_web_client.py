@@ -68,7 +68,7 @@ def test_messages_render_markdown_but_no_html_or_images(
     _send(page, message)
     answer = page.get_by_role("main")
     expect(answer.locator("table")).to_have_count(1, timeout=30_000)
-    expect(answer.get_by_role("button", name="Copy")).to_have_count(1)
+    expect(answer.get_by_role("button", name="Copy", exact=True)).to_have_count(1)
     expect(answer.locator(".katex").first).to_be_visible()
     expect(answer.locator("img")).to_have_count(0)
 
@@ -77,7 +77,7 @@ def test_messages_render_markdown_but_no_html_or_images(
 def test_tool_activity_is_summarized_and_expands(page: Page, member: Account, default_model: HarnessModel) -> None:
     sign_in(page, member)
     _send(page, "run:echo tool-output-42")
-    summary = page.locator("summary", has_text="Used")
+    summary = page.locator("summary", has_text="Ran a command")
     expect(summary).to_be_visible(timeout=30_000)
     # Collapsed by default; its details expand on request.
     expect(page.locator("details[open]")).to_have_count(0)
@@ -207,7 +207,7 @@ def test_adding_a_connection_shows_its_test(page: Page, admin: Account, default_
     expect(result).to_contain_text(re.compile("refused", re.I))
     assert accessibility_violations(page) == []
     dialog.get_by_label("Address").fill(default_model.endpoint.url)
-    dialog.get_by_role("button", name="Connect").click()
+    dialog.get_by_role("button", name="Connect", exact=True).click()
     expect(page.get_by_text(name)).to_be_visible(timeout=30_000)
     expect(page.get_by_role("main")).to_contain_text(f"{len(SERVER_MODELS)} models")
 
@@ -269,7 +269,7 @@ def _luminance(color: str) -> float:
 @pytest.mark.spec("UX-012")
 def test_the_sprite_greets_with_a_quote(page: Page, member: Account) -> None:
     sign_in(page, member)
-    sprite = page.locator("[data-sprite-pose]").first
+    sprite = page.get_by_role("main").locator("[data-sprite-pose]").first
     expect(sprite).to_have_attribute("data-sprite-pose", "greeting")
     expect(sprite).to_have_attribute("aria-hidden", "true")
     quote = page.get_by_role("main").locator("blockquote")
