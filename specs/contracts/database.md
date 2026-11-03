@@ -364,7 +364,7 @@ keys, not by privileges of `mzm_app`.
 | `login_attempts` | none |
 | `conversations` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |
-| `runs` | `SELECT`, `INSERT`, `UPDATE` |
+| `runs` | `SELECT`, `INSERT`, `UPDATE`, `DELETE`: rewinding deletes runs (ADR-0068) |
 | `usage_ledger` | `SELECT`, `INSERT`: entries never change (ADR-0042) |
 | `connections` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `connection_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
