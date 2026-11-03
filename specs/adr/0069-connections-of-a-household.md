@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-03
 - **Deciders:** @tapionx
-- **Related:** ADR-0011, ADR-0042, ADR-0051, ADR-0057, ADR-0061, ADR-0064, ADR-0066, MOD-002, MOD-005, MOD-006, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, UX-015, UX-016, T-27, T-31
+- **Related:** ADR-0011, ADR-0042, ADR-0051, ADR-0057, ADR-0061, ADR-0064, ADR-0066, MOD-002, MOD-005, MOD-006, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, UX-015, UX-016, T-27, T-31
 
 ## Context
 
@@ -49,26 +49,36 @@ addresses only when the tenant admin is also the instance admin.
    models from its API (`GET {address}/models`) when the connection is saved
    or tested, and again when its list is more than a day old, and keeps the
    list in the database, so that clients get every model of the household in
-   one request. From OpenRouter it asks only for models that can call tools,
-   which the agent needs (`supported_parameters=tools`), most used first by
-   the tokens they processed in the past week (`sort=top-weekly`), with their
-   prices and context windows. From other servers it takes every model, in
-   the order they are listed.
-4. **The person asking chooses the model.** A model is named by its connection
+   one request. From OpenRouter it takes every model that answers with text,
+   most used first by the tokens they processed in the past week
+   (`sort=top-weekly`), with their prices, context windows and whether they
+   can call tools (`supported_parameters`). From other servers it takes every
+   model, in the order they are listed; an Ollama server also says, for each
+   model, whether it can call tools.
+4. **Models that cannot call tools still chat.** Tools are how the assistant
+   searches, reads and writes files and runs commands, and most models
+   support them: 389 of the 454 text models OpenRouter listed on
+   2026-11-03, the others being mostly made for one task, such as
+   translation, images or moderation. A run with a model known not to call
+   tools runs without tools: the assistant answers from the conversation
+   alone, and clients say so before and while it is used (MOD-014). A model
+   whose support is unknown is given tools; if its server refuses them, the
+   run fails with that reason rather than quietly dropping them.
+5. **The person asking chooses the model.** A model is named by its connection
    and the provider's name for it. The tenant admin chooses the household's
    **default model**; a new conversation starts with it, and any user can
    choose another model of the household for a conversation, which applies
    from its next run. When a conversation's model is no longer offered, its
    runs fail with `model.unavailable` instead of quietly using another model,
    which could send local data to a remote provider (MOD-010).
-5. **Private addresses follow the person, as for MCP servers.** A connection
+6. **Private addresses follow the person, as for MCP servers.** A connection
    may use a private address, or plain `http`, only when its address was set
    by a user who is the instance admin as well as a tenant admin; the
    connection records it. Every other address is checked at connection time,
    requires `https` and never follows redirects, as ADR-0061 decided. A
    change of address by any other admin clears the record. This replaces
    ADR-0061 point 5, which allowed any address for instance models.
-6. **Connections are tested, step by step.** The server tests a connection
+7. **Connections are tested, step by step.** The server tests a connection
    before saving a new address or key, and whenever an admin asks, saved or
    not. The test follows the steps of a request: find the address, connect,
    secure the connection (for `https`), check the key (OpenRouter's
@@ -79,17 +89,13 @@ addresses only when the tenant admin is also the instance admin.
    requests and reports a refused address as such, without connecting.
    Details never contain the key, and quote at most 500 characters of a
    response.
-7. **Prices come from the providers.** Admins no longer enter prices.
+8. **Prices come from the providers.** Admins no longer enter prices.
    OpenRouter lists its prices and reports the cost of each request
    (ADR-0057); a `local` connection costs nothing; for other remote servers
    the catalog applies (ADR-0042), and a price that is unknown is shown as
    such.
-8. **Existing configurations become connections.** A migration turns every
-   tenant model into a connection of its tenant, and every instance model
-   into a connection of every tenant, marked as set by the instance admin.
-   Configurations of a tenant with the same kind, address and key become one
-   connection. A tenant's default model is its default tenant model, or else
-   the instance's default.
+9. **No conversion of model configurations.** Mazzamurello has not been
+   released, so the schema is rewritten rather than migrated (ADR-0071).
 
 ## Consequences
 
@@ -111,6 +117,9 @@ addresses only when the tenant admin is also the instance admin.
   needs; the person-based rule of ADR-0064 protects the network as well.
 - **Keep one configuration per model:** hundreds of identical entries for
   OpenRouter, and the admin would choose for everyone.
+- **Offer only models that can call tools:** simpler, but it hides models a
+  household may want for plain conversation, such as a small local model
+  that fits its graphics card.
 - **Read the model list on every request:** always fresh, but slow for
   OpenRouter's catalog and a request to the provider each time someone opens
   the picker.

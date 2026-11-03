@@ -4,7 +4,7 @@ The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
 ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0051,
-ADR-0052, ADR-0068, ADR-0069.
+ADR-0052, ADR-0068, ADR-0069, ADR-0071.
 
 ## Roles
 
@@ -284,7 +284,7 @@ It never contains content.
 | `input_tokens`, `cached_input_tokens`, `cache_write_tokens`, `output_tokens` | bigint | not null, default 0 |
 | `cost` | numeric(20, 10) | null when the price is unknown |
 | `currency` | text | ISO 4217 code, such as `USD`; null when `cost` is null |
-| `price_source` | text | `provider`, `catalog`, `free` or `unknown`; `admin` in entries from before ADR-0069 |
+| `price_source` | text | `provider`, `catalog`, `free` or `unknown` |
 | `created_at` | timestamptz | not null; indexed with `owner_id` |
 
 Totals per message, conversation, day and month are computed from these rows.
@@ -331,6 +331,7 @@ ADR-0069).
 | `name` | text | not null; the name to show |
 | `position` | integer | not null; the provider's order, from 1: for OpenRouter, most used in the past week first |
 | `context_window` | integer | null when unknown |
+| `tools` | boolean | whether the model can call tools; null when unknown (MOD-014) |
 | `input_price`, `cached_input_price`, `output_price` | numeric(20, 10) | price per million tokens, or null |
 | `currency` | text | ISO 4217 code; not null exactly when a price is set |
 
@@ -402,20 +403,12 @@ cost ledger are kept, detached from the conversation and its runs, so that
 spending totals stay correct (ADR-0042). Deletion is physical;
 there is no soft delete for user content.
 
-## Data migrations
+## Migrations
 
-Migrations that change existing rows, besides the schema:
-
-- **One chain per conversation (ADR-0068).** Runs that are not on the path
-  from the first run to the conversation's active run are deleted, with
-  their messages and the DBOS workflows of those runs; ledger entries are
-  detached as on rewinding.
-- **Connections replace model configurations (ADR-0069).** Every tenant model
-  becomes a connection of its tenant, and every instance model a connection
-  of every tenant with `private_network` true; configurations of one tenant
-  with the same kind, address and key become one connection. A tenant's
-  default model is its default tenant model, or else the instance's default.
-  `instance_models` and `tenant_models` are then dropped.
+Until the first release, `migrations/` holds a single initial migration that
+creates this schema, rewritten whenever the contract changes; existing
+databases are recreated (ADR-0071). From the first release on, migrations
+are only added, and upgrade every released version (OPS-005).
 
 ## Properties verified by design tests
 

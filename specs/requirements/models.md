@@ -133,8 +133,9 @@ Rationale: journey J12.
 - **Phase:** 1
 - **Verification:** integration
 
-A connection MUST offer every model its provider lists that the agent can
-use, without models being configured one by one. OpenRouter's models MUST be
+A connection MUST offer every model its provider lists that answers with
+text, without models being configured one by one, and say for each whether
+it can call tools when the provider tells. OpenRouter's models MUST be
 ordered by their use in the past week, most used first (ADR-0069).
 
 ## MOD-012: The model of a conversation
@@ -166,3 +167,16 @@ refused, the server did not answer in time, its certificate is not trusted,
 the address is not allowed, the server answered with an HTTP error, the
 credentials were rejected, or the answer is not a model list. Technical
 details MUST NOT contain the credentials (ADR-0069).
+
+## MOD-014: Models without tools
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, e2e
+
+A run with a model known not to call tools MUST run without tools, answering
+from the conversation alone, and clients MUST say so when the model is
+chosen and while the conversation uses it. When a model's server refuses
+tools that it was given, the run MUST fail with that reason instead of
+continuing without them (ADR-0069).
