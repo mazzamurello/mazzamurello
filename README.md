@@ -100,38 +100,57 @@ The web app now opens at `http://127.0.0.1:8080/` on the server itself, and
 the API answers at `http://127.0.0.1:8080/v1`; `curl
 http://127.0.0.1:8080/v1/health` says `degraded` until a model is configured.
 
-**Configure a model**
+**Connect a model**
 
-Sign in to the web app as the administrator and open **Model settings**:
-add a model with its endpoint, model name and, for paid providers, its API
-key, and make it the default. API keys are stored encrypted and never shown
-again.
+Sign in to the web app as the administrator, open **Settings**, then
+**Models**, and choose **Add a connection** (MOD-008):
 
-The same can be done through the API (MOD-008). With a local
-OpenAI-compatible server such as Ollama on your network:
+- **OpenRouter** needs only its API key, and brings every OpenRouter model,
+  most used first.
+- **Your own server**, such as Ollama, llama.cpp, vLLM or LM Studio, needs
+  its address, like `http://192.168.1.10:11434/v1`, and brings every model it
+  serves. Addresses on your home network work only for the server's
+  administrator, the account `setup` created (MOD-009).
+
+The connection is tested step by step before it is saved; if it fails, the
+test says which step failed and why. Then choose the **Default model** that
+new conversations start with. Anyone in the household can switch models in a
+conversation, from the message box. API keys are stored encrypted and never
+shown again.
+
+The same can be done through the API. With Ollama on your network:
 
 ```bash
 TOKEN=$(curl -s http://127.0.0.1:8080/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username": "YOUR-USERNAME", "password": "YOUR-PASSWORD", "device_name": "terminal"}' \
   | python3 -c 'import json, sys; print(json.load(sys.stdin)["token"])')
-curl -s http://127.0.0.1:8080/v1/instance/models \
+CONNECTION=$(curl -s http://127.0.0.1:8080/v1/tenant/connections \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name": "Local model", "base_url": "http://192.168.1.10:11434/v1", "model": "llama3.2", "paid": false, "is_default": true}'
+  -d '{"name": "Home server", "kind": "openai", "base_url": "http://192.168.1.10:11434/v1", "location": "local"}' \
+  | python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])')
+curl -s -X PUT http://127.0.0.1:8080/v1/tenant/default-model \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"connection_id\": \"$CONNECTION\", \"model\": \"llama3.2\"}"
 ```
 
-For OpenRouter, set `"api": "openrouter"`, so that the cost it reports for
-each answer is recorded as it is, in US dollars:
+For OpenRouter, send `{"name": "OpenRouter", "kind": "openrouter",
+"api_key": "sk-or-..."}` instead; it reports the cost of each answer, which
+is recorded as it is, in US dollars.
+
+**Updating before the first release**
+
+Until the first release, the database schema is rewritten instead of
+migrated (ADR-0071). After an update that changes it, set the installation
+up again, which deletes its conversations, accounts and settings; `deploy/.env`
+and its secrets stay:
 
 ```bash
-curl -s http://127.0.0.1:8080/v1/instance/models \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name": "OpenRouter", "api": "openrouter", "base_url": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini", "api_key": "sk-or-...", "paid": true, "is_default": true}'
+cd deploy
+docker compose down --volumes
+docker compose up --detach --build --wait
+docker compose run --rm setup
 ```
-
-For another remote OpenAI-compatible provider, use its endpoint, add
-`"api_key"`, set `"paid": true` and, optionally, its prices per million
-tokens. API keys are stored encrypted and never returned.
 
 **Reaching it from other devices**
 
