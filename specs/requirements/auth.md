@@ -26,7 +26,7 @@ self-registration MUST be disabled by default.
 
 - **Status:** draft
 - **Priority:** SHOULD
-- **Phase:** 2
+- **Phase:** 3
 - **Verification:** integration
 
 The system SHOULD support signing in through an external OpenID Connect
@@ -46,7 +46,7 @@ a revoked or expired token MUST be rejected on the next request (ADR-0025).
 
 ## AUTH-005: Cookie sessions protected against CSRF
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security
@@ -98,3 +98,18 @@ privileges or re-enable their own account.
 Disabling an account MUST revoke every session of that account in the same
 change, so that none of its tokens is accepted afterwards. Re-enabling the
 account MUST NOT restore any session.
+
+## AUTH-010: Passkeys as a second factor
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+A user MUST be able to register any number of passkeys (WebAuthn), including
+ones that use the device's biometrics. Once a user has a passkey, signing in
+MUST require their password and one of their passkeys. A tenant admin MUST be
+able to remove the passkeys of a user of their tenant, and an operator
+command MUST be able to remove the instance admin's, so that a lost passkey
+never locks a user out for good (ADR-0065).
+

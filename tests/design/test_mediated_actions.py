@@ -89,6 +89,8 @@ def test_components_run_no_host_commands_for_users() -> None:
     found = {
         (str(path.relative_to(ROOT)), function)
         for path in sorted((ROOT / "src").rglob("*.py"))
+        # The web app's dependencies are not components, and never run.
+        if "node_modules" not in path.parts
         for function in _host_commands(path)
     }
     assert found <= ALLOWED_HOST_COMMANDS, "new host commands: they must run in sandboxes instead"

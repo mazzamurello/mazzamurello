@@ -16,6 +16,7 @@ variable.
 | `MZM_HTTP_HOST` | no | `0.0.0.0` | Address the API listens on. |
 | `MZM_HTTP_PORT` | no | `8000` | Port the API listens on, from 1 to 65535. |
 | `MZM_TRUSTED_PROXIES` | no | empty | Comma-separated IP addresses or CIDR networks of trusted proxies. The source address of a request from a trusted proxy is the rightmost address of `X-Forwarded-For` that is not a trusted proxy; from any other peer, it is the peer's address. |
+| `MZM_WEB_ROOT` | no | the web app built into the image | Directory of the built web app, served at `/` (ADR-0067). When it does not exist, only the API is served. |
 | `MZM_SANDBOXD_URL` | yes | — | Base URL of the sandbox driver's API, for `/health` (ADR-0054). |
 | `MZM_SANDBOXD_TOKEN` | yes | — | The secret shared with the sandbox driver. |
 | `MZM_SECRET_KEY` | yes | — | 32 random bytes, base64url-encoded (for example `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Encrypts the API keys of model configurations (ADR-0051). The API and the worker must share it; changing it makes stored API keys unusable. |

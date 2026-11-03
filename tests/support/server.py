@@ -88,6 +88,8 @@ class Server:
     base_url: str
     api: Process = field(repr=False)
     worker: Process = field(repr=False)
+    # The API's environment, for tests that start another API process like it.
+    api_environment: Mapping[str, str] = field(repr=False, default_factory=dict[str, str])
 
     def client(self, token: str | None = None, source: str | None = None) -> httpx.Client:
         """An HTTP client for the API, authenticated by `token`, from source address `source`."""
@@ -97,6 +99,27 @@ class Server:
         return httpx.Client(
             base_url=self.base_url, headers=headers, timeout=30, event_hooks={"response": [response_hook]}
         )
+
+    def start_twin_api(self, **overrides: str) -> tuple[Process, str]:
+        """Another API process on the same database, driver and secret key, with `overrides`.
+
+        Returns the process, already serving, and its origin; the caller closes it.
+        """
+        port = _free_port()
+        api = Process("api-twin", {**self.api_environment, "MZM_HTTP_PORT": str(port), **overrides}, command="api")
+        origin = f"http://127.0.0.1:{port}"
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                if httpx.get(f"{origin}/v1/me", timeout=2).status_code == 401:
+                    return api, origin
+            except httpx.TransportError:
+                pass
+            if api.exited() is not None or time.monotonic() > deadline:
+                output = api.output()
+                api.close()
+                raise RuntimeError(f"the twin API did not start:\n{output}")
+            time.sleep(0.2)
 
     def crash_and_restart_worker(self) -> None:
         self.worker.kill()
@@ -154,17 +177,16 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
         "MZM_SANDBOXD_TOKEN": driver_token,
     }
     try:
-        api = Process(
-            "api",
+        api_environment = (
             base
             | shared
-            | {"MZM_HTTP_HOST": "127.0.0.1", "MZM_HTTP_PORT": str(port), "MZM_TRUSTED_PROXIES": "127.0.0.1"},
-            command="api",
+            | {"MZM_HTTP_HOST": "127.0.0.1", "MZM_HTTP_PORT": str(port), "MZM_TRUSTED_PROXIES": "127.0.0.1"}
         )
+        api = Process("api", api_environment, command="api")
         config.add_cleanup(api.close)
         worker = Process("worker", base | shared, command="worker")
         config.add_cleanup(worker.close)
-        server = Server(base_url=f"http://127.0.0.1:{port}/v1", api=api, worker=worker)
+        server = Server(base_url=f"http://127.0.0.1:{port}/v1", api=api, worker=worker, api_environment=api_environment)
         _wait_until_ready(api, worker, server.base_url)
     except BaseException as exc:
         config.stash[_SERVER] = exc

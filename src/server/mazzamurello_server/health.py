@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from mazzamurello_server import errors
-from mazzamurello_server.auth import Engine, authenticate
+from mazzamurello_server.auth import SESSION_COOKIE, Engine, authenticate
 from mazzamurello_server.database import Identity, transaction
 
 router = APIRouter()
@@ -64,7 +64,7 @@ async def _driver(request: Request) -> dict[str, Status]:
 
 async def _identity(request: Request, engine: Engine) -> Identity | None:
     """The caller, when signed in; health is also answered without a session."""
-    if not request.headers.get("authorization"):
+    if not request.headers.get("authorization") and not request.cookies.get(SESSION_COOKIE):
         return None
     try:
         return await authenticate(request, engine)

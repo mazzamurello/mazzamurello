@@ -149,6 +149,9 @@ request (ADR-0033).
 Framework capabilities that execute commands, fetch URLs, search the web
 locally or connect to MCP servers MUST NOT run in the control plane. They MUST
 run in the user's sandbox or use provider-native tools (ADR-0030, ADR-0035).
+The one exception is remote MCP servers over HTTP added by a tenant admin
+(AGT-019): the control plane calls them as a client, through the address
+rules of ADR-0064, and never starts MCP programs.
 
 ## AGT-014: Bounded tool output
 
@@ -210,3 +213,34 @@ be treated as untrusted content (AGT-003), and their scripts MUST run only in
 the user's sandbox (ADR-0044).
 
 Rationale: journey J13.
+
+## AGT-018: Every call to a device or an MCP server is approved
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+Every invocation of a tool of a connected device (DEV-003) or of a remote MCP
+server (AGT-019) MUST require the user's explicit approval, whatever its
+capability classes, in addition to AGT-006. The run MUST wait for the answer.
+Tools of the sandbox and Mazzamurello's own tools follow AGT-006 alone
+(ADR-0063, ADR-0064).
+
+## AGT-019: Remote MCP servers of a household
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+A tenant admin MUST be able to add remote MCP servers, reached over HTTP, to
+their tenant; their tools MUST be available to every user of that tenant and
+to no other tenant. Each server MUST have at most one credential, stored
+encrypted and never returned by the API or sent to sandboxes or clients
+(MOD-002). Only a tenant admin who is also the instance admin MAY use a
+private or local address; other tenant admins MUST use public `https`
+addresses, checked at connection time (ADR-0061). Results and tool
+descriptions from these servers MUST be treated as untrusted content
+(AGT-003) (ADR-0064).
+
