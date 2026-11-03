@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.6.1-draft
+  version: 0.7.0-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -415,17 +415,8 @@ paths:
     patch:
       tags: [conversations]
       operationId: updateConversation
-      summary: Rename, archive or unarchive a conversation, or switch the version shown.
-      description: |
-        Setting `active_run_id` switches to another version (CNV-001) or
-        rewinds to an earlier turn (CNV-004), as described in ADR-0037: the
-        run must belong to this conversation; the active path becomes the
-        path from the first run to that run. Setting it to `null` rewinds to
-        before the first turn, so that the next run is a new version of the
-        first turn. Workspace files are not changed. Refused with
-        `run.interrupt_pending` while an interrupt is pending, and with
-        `run.in_progress` while a run is queued or running.
-      x-requirements: [API-003, CNV-001, CNV-004, TEN-006]
+      summary: Rename, archive or unarchive a conversation.
+      x-requirements: [API-003, TEN-006]
       requestBody:
         required: true
         content:
@@ -439,7 +430,6 @@ paths:
               schema: { $ref: "#/components/schemas/Conversation" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/RunInProgress" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       tags: [conversations]
@@ -452,25 +442,53 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/RunInProgress" }
 
+  /conversations/{conversation_id}/rewind:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: [conversations]
+      operationId: rewindConversation
+      summary: Rewind to an earlier turn, deleting what followed it.
+      description: |
+        `run_id` names the run that becomes the last of the conversation; it
+        must belong to this conversation. Every run after it is deleted, with
+        its messages, run events and durable workflow; `null` deletes every
+        run, so that the next run is the first turn again (CNV-004,
+        ADR-0068). Workspace files are not changed. Entries of the cost
+        ledger are kept, detached from the deleted runs. Refused with
+        `run.interrupt_pending` while an interrupt is pending, and with
+        `run.in_progress` while a run is queued or running.
+      x-requirements: [CNV-004, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RewindRequest" }
+      responses:
+        "200":
+          description: The conversation, rewound.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunInProgress" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /conversations/{conversation_id}/messages:
     parameters:
       - $ref: "#/components/parameters/ConversationId"
     get:
       tags: [conversations]
       operationId: listMessages
-      summary: The history of a path, oldest first, as AG-UI messages.
+      summary: The history of the conversation, oldest first, as AG-UI messages.
       description: |
         A projection of the stored Pydantic AI messages (ADR-0031), in the AG-UI
-        message format, including tool calls and tool results. By default the
-        active path; with `run_id`, the path ending at that run, which lets a
-        client show another version without switching to it (ADR-0037). Each
-        page also describes the runs of its messages and their versions.
-      x-requirements: [API-003, CNV-001, TEN-006]
+        message format, including tool calls and tool results, from the first
+        run to the active run (ADR-0037, ADR-0068). Each page also describes
+        the runs of its messages.
+      x-requirements: [API-003, TEN-006]
       parameters:
-        - name: run_id
-          in: query
-          description: Last run of the path to read; defaults to the active run.
-          schema: { $ref: "#/components/schemas/Id" }
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
@@ -492,10 +510,9 @@ paths:
       description: |
         Accepts an AG-UI `RunAgentInput`. Only the last user message, the
         `resume` answers and `parentRunId` are used; history is managed by the
-        server (ADR-0031). Without `parentRunId` the run continues the active
-        path; with it, the run continues the path ending at that run, creating
-        a new version when that run already has children (CNV-001, ADR-0037).
-        The new run becomes the active run. The run executes in a worker and continues if the client
+        server (ADR-0031). The run continues the active run and becomes the
+        active run; a `parentRunId` other than the active run is refused with
+        `resource.conflict`, since a conversation never branches (ADR-0068). The run executes in a worker and continues if the client
         disconnects (AGT-009); reconnect with `GET /runs/{run_id}/events`.
         A `runId` that already exists in this conversation returns that run's
         stream from the beginning, so a retried request does not start a
@@ -503,7 +520,7 @@ paths:
         HTTP problems; errors after it starts arrive as `RUN_ERROR`. A run
         whose workflow cannot be queued fails at once with `internal.error`,
         so the conversation accepts new runs.
-      x-requirements: [AGT-009, AGT-010, API-003, API-004, CNV-001, CNV-002, TEN-006]
+      x-requirements: [AGT-009, AGT-010, API-003, API-004, CNV-002, TEN-006]
       requestBody:
         required: true
         content:
@@ -523,8 +540,9 @@ paths:
         "409":
           description: |
             A run is in progress (`run.in_progress`), an interrupt is pending
-            (`run.interrupt_pending`), or neither the tenant nor the instance
-            has a default model (`model.unavailable`, ADR-0052).
+            (`run.interrupt_pending`), `parentRunId` is not the active run
+            (`resource.conflict`), or neither the tenant nor the instance has a
+            default model (`model.unavailable`, ADR-0052).
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1002,7 +1020,15 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         archived: { type: boolean }
-        active_run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
+
+    RewindRequest:
+      type: object
+      required: [run_id]
+      additionalProperties: false
+      properties:
+        run_id:
+          description: The run that becomes the last of the conversation, or `null` to delete every run.
+          oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }]
 
     AgUiMessage:
       type: object
@@ -1017,8 +1043,8 @@ components:
           type: string
           description: |
             Stable: derived from the run that produced the message and its
-            position in that run, so a message has the same ID on every page
-            and in every version that contains it (CNV-001). It is neither the
+            position in that run, so a message has the same ID on every page.
+            It is neither the
             ID a client sent in its run input nor the one in the run's events;
             clients reload history after a run.
         role: { type: string }
@@ -1033,21 +1059,17 @@ components:
           items: { $ref: "#/components/schemas/AgUiMessage" }
         runs:
           type: array
-          description: The runs of the path that produced the messages of this page, in path order.
+          description: The runs that produced the messages of this page, in order.
           items: { $ref: "#/components/schemas/PathRun" }
         next_cursor: { type: [string, "null"] }
 
     PathRun:
       type: object
       description: |
-        One run of a path and its versions (ADR-0037). `versions` lists the
-        runs of kind `message` with the same parent, oldest first, including
-        this one; a client shows "2 / 3" from it and reads another version with
-        `run_id`. `version_tips` gives, for each version in the same order,
-        the most recent run that continues it, itself included: switching to
-        a version sets `active_run_id` to its tip, so that its later turns
-        come back with it.
-      required: [run_id, parent_run_id, kind, message_ids, versions, version_tips]
+        One run of the conversation (ADR-0037). A client rewinds to before a
+        user message by naming the parent of the run that holds it
+        (ADR-0068).
+      required: [run_id, parent_run_id, kind, message_ids]
       properties:
         run_id: { $ref: "#/components/schemas/Id" }
         parent_run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
@@ -1056,12 +1078,6 @@ components:
           type: array
           description: IDs of the AG-UI messages, in `items`, that this run produced.
           items: { type: string }
-        versions:
-          type: array
-          items: { $ref: "#/components/schemas/Id" }
-        version_tips:
-          type: array
-          items: { $ref: "#/components/schemas/Id" }
 
     RunAgentInput:
       type: object
@@ -1081,9 +1097,9 @@ components:
         parentRunId:
           $ref: "#/components/schemas/Id"
           description: |
-            The run to continue (AG-UI branching). Omit it to continue the
-            active path; never send `null`. Ignored when `resume` is given:
-            a resume always continues the interrupted run.
+            The run to continue. If given, it must be the active run
+            (ADR-0068); never send `null`. Ignored when `resume` is given: a
+            resume always continues the interrupted run.
         messages:
           type: array
           description: Only the last message is used, and it must have role `user`, unless `resume` is given.
@@ -1114,7 +1130,7 @@ components:
 
     RunKind:
       type: string
-      description: "`message` starts a turn or a version of one; `resume` answers an interrupt (ADR-0033)."
+      description: "`message` starts a turn; `resume` answers an interrupt (ADR-0033)."
       enum: [message, resume]
 
     Run:

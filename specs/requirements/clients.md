@@ -123,14 +123,16 @@ the user can answer.
 
 Rationale: journey J7.
 
-## UX-010: Rewinding says the files stay
+## UX-010: Rewinding asks first and says the files stay
 
-- **Status:** implemented
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
 
-When the user rewinds a conversation (CNV-004), clients MUST tell them that
-files in their workspace are not changed by rewinding.
+Before a conversation is rewound (CNV-004), including by editing an earlier
+message (CNV-016), clients MUST ask the user to confirm, say how many
+messages will be deleted, and tell them that files in their workspace are
+not changed by rewinding.
 
 Rationale: journey J2.

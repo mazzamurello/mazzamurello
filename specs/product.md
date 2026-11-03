@@ -55,11 +55,10 @@ any device where they are signed in, and continues there.
 
 ### J2 — Try another way (P1, P2, P3)
 
-Edits an earlier message, or asks for a different answer, without losing the
-previous one, and switches between the versions to compare them. Rewinds the
-conversation to an earlier turn and continues from there. Forks a
+Edits an earlier message and sends it again, replacing what followed it.
+Rewinds the conversation to an earlier turn and continues from there. Forks a
 conversation into a new one that starts from a chosen turn and goes its own
-way.
+way, to keep both.
 
 ### J3 — Find and organize conversations (all)
 
