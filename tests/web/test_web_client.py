@@ -43,6 +43,15 @@ def test_signing_in_and_chatting(page: Page, member: Account, default_model: Har
     _answer(page, f"Echo: hello {mark}")
 
 
+@pytest.mark.spec("UX-001", "AUTH-005")
+def test_signing_out_returns_to_sign_in_at_once(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    page.get_by_role("button", name=re.compile("^Sign out")).click()
+    expect(page.get_by_label("Username")).to_be_visible()
+    page.reload()
+    expect(page.get_by_label("Username")).to_be_visible()
+
+
 @pytest.mark.spec("UX-002")
 def test_messages_render_markdown_but_no_html_or_images(
     page: Page, member: Account, default_model: HarnessModel
