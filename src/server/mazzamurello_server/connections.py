@@ -428,6 +428,25 @@ async def store_models(
     )
 
 
+async def _default_if_none(
+    connection: AsyncConnection, connection_id: uuid.UUID, kind: str, models: list[ListedModel]
+) -> None:
+    """Give a household without a default model one of the connection's models (MOD-012, ADR-0069).
+
+    For OpenRouter, its most used free model that can call tools, which costs
+    nothing until an admin chooses; for another server, the first model it lists.
+    """
+    if not models or await default_model(connection) is not None:
+        return
+    pick = models[0]
+    if kind == "openrouter":
+        free = [listed for listed in models if listed.input_price == 0 and listed.output_price == 0]
+        pick = next((listed for listed in free if listed.tools), free[0] if free else models[0])
+    await connection.execute(
+        text("UPDATE connections SET default_model = :model WHERE id = :id"), {"model": pick.model, "id": connection_id}
+    )
+
+
 async def _read(connection: AsyncConnection, connection_id: uuid.UUID) -> schemas.Connection:
     row = (
         await connection.execute(text(f"SELECT {COLUMNS} FROM connections c WHERE c.id = :id"), {"id": connection_id})  # noqa: S608
@@ -471,6 +490,7 @@ async def create_connection(
                 },
             )
             await store_models(connection, identity.tenant_id, connection_id, models)
+            await _default_if_none(connection, connection_id, body.kind, models)
             return await _read(connection, connection_id)
     except DBAPIError as error:
         if (refusal := _unique(error)) is not None:
@@ -553,6 +573,7 @@ async def update_connection(
                     raise errors.not_found()
             if models is not None:
                 await store_models(connection, identity.tenant_id, connection_id, models)
+                await _default_if_none(connection, connection_id, row.kind, models)
             return await _read(connection, connection_id)
     except DBAPIError as error:
         if (refusal := _unique(error)) is not None:
@@ -582,6 +603,7 @@ async def test_connection(
     if test.passed:
         async with transaction(engine, identity) as connection:
             await store_models(connection, identity.tenant_id, connection_id, models)
+            await _default_if_none(connection, connection_id, target.kind, models)
     return test
 
 
