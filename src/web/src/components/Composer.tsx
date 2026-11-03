@@ -3,6 +3,7 @@ import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 
 import { useTranslation } from "react-i18next";
 
 import type { ModelChoice, ModelOption } from "../api/client";
+import { hasKeyboard } from "../focus";
 import { findModel, sameModel, shortPrice, useModels } from "../models";
 
 /** The message box: Enter sends, Shift+Enter starts a new line; while a run goes on, Stop. */
@@ -13,6 +14,8 @@ export function Composer(props: {
   model: ModelChoice | null;
   onModel: (choice: ModelChoice) => void;
   placeholder: string;
+  // Take the focus when shown, on devices with a keyboard (UX-018).
+  autoFocus?: boolean;
 }) {
   const { t } = useTranslation();
   const [text, setText] = useState("");
@@ -57,6 +60,7 @@ export function Composer(props: {
           onChange={(event) => setText(event.target.value)}
           onKeyDown={keyDown}
           rows={1}
+          autoFocus={props.autoFocus === true && hasKeyboard()}
           placeholder={props.placeholder}
           className="max-h-[220px] min-h-[26px] resize-none bg-transparent text-base leading-normal outline-none placeholder:text-faint"
         />

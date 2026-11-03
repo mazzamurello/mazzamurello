@@ -152,10 +152,16 @@ def _excerpt(response: httpx.Response) -> str:
 
 
 def _decimal(value: object) -> Decimal | None:
+    """A price, or None when it is missing or not a price.
+
+    OpenRouter lists `-1` for a router whose price depends on the model it
+    picks: that price is not known.
+    """
     try:
-        return None if value is None else Decimal(str(value))
+        price = None if value is None else Decimal(str(value))
     except InvalidOperation:
         return None
+    return price if price is not None and price.is_finite() and price >= 0 else None
 
 
 def _openrouter_models(payload: list[Any]) -> list[ListedModel]:

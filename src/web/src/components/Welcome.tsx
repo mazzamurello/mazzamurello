@@ -69,7 +69,7 @@ export function Welcome({ me }: { me: User }) {
             </figure>
           )}
         </div>
-        <Composer onSend={(text) => void start(text)} running={false} model={model} onModel={setChosen} placeholder={t("welcome.placeholder")} />
+        <Composer onSend={(text) => void start(text)} running={false} model={model} onModel={setChosen} placeholder={t("welcome.placeholder")} autoFocus />
       </div>
     </div>
   );
