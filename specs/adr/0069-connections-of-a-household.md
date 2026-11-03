@@ -70,7 +70,11 @@ addresses only when the tenant admin is also the instance admin.
    choose another model of the household for a conversation, which applies
    from its next run. When a conversation's model is no longer offered, its
    runs fail with `model.unavailable` instead of quietly using another model,
-   which could send local data to a remote provider (MOD-010).
+   which could send local data to a remote provider (MOD-010). A household
+   is never left without a default once it has a working connection: when a
+   connection is added or tested and the household has none, the default
+   becomes OpenRouter's most used free model that can call tools, which costs
+   nothing until an admin chooses, or else the first model a server lists.
 6. **Private addresses follow the person, as for MCP servers.** A connection
    may use a private address, or plain `http`, only when its address was set
    by a user who is the instance admin as well as a tenant admin; the

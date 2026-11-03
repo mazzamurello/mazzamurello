@@ -140,12 +140,15 @@ ordered by their use in the past week, most used first (ADR-0069).
 
 ## MOD-012: The model of a conversation
 
-- **Status:** implemented
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
-A new conversation MUST start with the tenant's default model. A user MUST
+A new conversation MUST start with the tenant's default model. When a tenant
+without a default model gets a working connection, the default model MUST
+become one of its models: for OpenRouter, its most used free model that can
+call tools; for another server, the first model it lists. A user MUST
 be able to choose, for a conversation, any model offered by the connections
 of their tenant; the choice applies from the conversation's next run. When
 the conversation's model is no longer offered, a run MUST fail instead of
