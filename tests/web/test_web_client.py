@@ -341,3 +341,105 @@ def test_touch_screens_keep_the_keyboard_closed(browser: Browser, web_origin: st
         expect(page.get_by_label("Message")).not_to_be_focused()
     finally:
         context.close()
+
+
+def _openrouter_default(server: Server, household: HouseholdModel) -> None:
+    _add_openrouter(server, household)
+    with server.client(household.admin_token) as client:
+        (option,) = [m for m in client.get("/models").json()["items"] if m["model"] == "test/popular"]
+        assert client.put(
+            "/tenant/default-model", json={"connection_id": option["connection_id"], "model": "test/popular"}
+        ).is_success
+
+
+@pytest.mark.spec("UX-008", "MOD-007")
+def test_costs_and_context_are_in_view(
+    page: Page, server: Server, member: Account, default_model: HarnessModel
+) -> None:
+    _openrouter_default(server, default_model.connect(member.tenant_id))
+    sign_in(page, member)
+    _send(page, "slow:6")
+    # While it streams: how much of the context window is used, and the run's cost so far.
+    expect(page.get_by_role("meter", name="Context used")).to_be_visible(timeout=30_000)
+    expect(page.get_by_role("status")).to_contain_text("$", timeout=30_000)
+    expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
+    # Each answer's cost beside it, the conversation's, and the last 24 hours' and 30 days'.
+    expect(page.get_by_role("main").get_by_text("$0.00042").first).to_be_visible()
+    expect(page.get_by_text("This conversation")).to_be_visible()
+    expect(page.get_by_text("Last 24 hours")).to_be_visible()
+    expect(page.get_by_text("Last 30 days")).to_be_visible()
+    assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("CNV-005", "UX-007")
+def test_forking_from_an_answer(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:8]
+    _send(page, f"fork one {mark}")
+    _answer(page, f"Echo: fork one {mark}")
+    _send(page, f"fork two {mark}")
+    _answer(page, f"Echo: fork two {mark}")
+    original = page.url
+    page.get_by_role("button", name="Fork from here").first.click()
+    expect(page).not_to_have_url(original)
+    _answer(page, f"Echo: fork one {mark}")
+    expect(page.get_by_role("main")).not_to_contain_text(f"fork two {mark}")
+    expect(page.get_by_role("main")).to_contain_text("Forked from")
+    assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("CNV-007", "CNV-008", "UX-007")
+def test_folders_pins_and_collapsing(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:6]
+    _send(page, f"folder talk {mark}")
+    _answer(page, f"Echo: folder talk {mark}")
+    nav = page.get_by_role("navigation", name="Conversations")
+    nav.get_by_role("button", name="New folder").click()
+    page.get_by_label("Folder name").fill(f"Family {mark}")
+    page.get_by_role("button", name="Create").click()
+    folder = nav.get_by_role("button", name=f"Family {mark}")
+    expect(folder).to_be_visible()
+    menu = nav.get_by_role("button", name=re.compile("^Options for"))
+    menu.first.click()
+    page.get_by_role("menuitem", name="Move to folder").click()
+    page.get_by_role("menuitem", name=f"Family {mark}").click()
+    expect(folder).to_have_attribute("aria-expanded", "true")
+    folder.click()
+    expect(folder).to_have_attribute("aria-expanded", "false")
+    page.reload()
+    expect(nav.get_by_role("button", name=f"Family {mark}")).to_have_attribute("aria-expanded", "false")
+    assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("CNV-008")
+def test_pinning_a_conversation(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:6]
+    for text in (f"first {mark}", f"second {mark}"):
+        page.goto("/")
+        page.get_by_label("Message").fill(text)
+        page.get_by_role("button", name="Send").click()
+        _answer(page, f"Echo: {text}")
+    nav = page.get_by_role("navigation", name="Conversations")
+    links = nav.get_by_role("link")
+    # Pin the older one: it moves to the top.
+    nav.get_by_role("button", name=re.compile("^Options for")).nth(1).click()
+    page.get_by_role("menuitem", name="Pin").click()
+    expect(nav.get_by_text("Pinned")).to_be_visible()
+    assert links.count() >= 2
+
+
+@pytest.mark.spec("CNV-009", "UX-007")
+def test_searching_conversations(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    word = f"rosemary{uuid4().hex[:6]}"
+    _send(page, f"a recipe with {word}")
+    _answer(page, f"Echo: a recipe with {word}")
+    page.goto("/")
+    page.get_by_role("searchbox", name="Search conversations").fill(word)
+    result = page.get_by_role("link", name=re.compile(word))
+    expect(result).to_be_visible(timeout=15_000)
+    assert accessibility_violations(page) == []
+    result.click()
+    expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
