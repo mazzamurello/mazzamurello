@@ -366,6 +366,9 @@ def test_costs_and_context_are_in_view(
     expect(page.get_by_role("meter", name="Context used")).to_be_visible(timeout=30_000)
     expect(page.get_by_role("status")).to_contain_text("$", timeout=30_000)
     expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
+    # After the run, the context stays in view: tokens used, the window, and the share of it.
+    expect(page.get_by_role("main")).to_contain_text(re.compile(r"Context \d[\d.]*k? of 131k tokens · \d+%"))
+    expect(page.get_by_role("meter", name="Context used")).to_be_visible()
     # Each answer's cost beside it, the conversation's, and the last 24 hours' and 30 days'.
     # Two priced requests: the tool call and the answer.
     expect(page.get_by_role("main").get_by_text("$0.00084").first).to_be_visible()
