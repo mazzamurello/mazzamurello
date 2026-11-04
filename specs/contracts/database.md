@@ -4,7 +4,7 @@ The PostgreSQL schema for phase 0. The schema is a contract (ADR-0003): it
 changes only through `spec/*` pull requests, and migrations in `migrations/`
 implement it. Background: ADR-0009, ADR-0025, ADR-0031, ADR-0033, ADR-0034,
 ADR-0037, ADR-0042, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0051,
-ADR-0052, ADR-0068, ADR-0069, ADR-0071.
+ADR-0052, ADR-0068, ADR-0069, ADR-0071, ADR-0073.
 
 ## Roles
 
@@ -207,6 +207,19 @@ from the verified credentials.
 No policies for `mzm_app`: accessed only through
 `auth_record_login_attempt`. Rows older than the rate-limit window are deleted.
 
+### `folders` (private)
+
+A user's groups of conversations (CNV-007, ADR-0073).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid | primary key |
+| `tenant_id`, `owner_id` | uuid | not null; (`tenant_id`, `owner_id`) references `users` |
+| `name` | text | not null |
+| `pinned_at` | timestamptz | when it was pinned; null when not pinned |
+| `collapsed` | boolean | not null, default false |
+| `created_at`, `updated_at` | timestamptz | not null |
+
 ### `conversations` (private)
 
 | Column | Type | Notes |
@@ -214,11 +227,15 @@ No policies for `mzm_app`: accessed only through
 | `id` | uuid | primary key; also Pydantic AI's `conversation_id` (ADR-0031) |
 | `tenant_id` | uuid | not null |
 | `owner_id` | uuid | not null; (`tenant_id`, `owner_id`) references `users` |
-| `title` | text | not null; empty while untitled (ADR-0052) |
+| `title` | text | not null; empty while untitled (ADR-0052), then named by its user or by its model (CNV-006); searched through a GIN index on its `simple` tsvector (CNV-009) |
 | `active_run_id` | uuid | the last run of the active path (ADR-0037); null before the first run; (`tenant_id`, `owner_id`, `active_run_id`) references `runs` on delete set null (`active_run_id`) |
 | `usage` | jsonb | Pydantic AI conversation usage |
 | `pending_approvals` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending (ADR-0033), else null |
 | `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
+| `folder_id` | uuid | its folder, or null; (`tenant_id`, `owner_id`, `folder_id`) references `folders` on delete set null (`folder_id`) |
+| `pinned_at` | timestamptz | when it was pinned; null when not pinned (CNV-008) |
+| `forked_from_conversation_id`, `forked_from_run_id` | uuid | where a fork came from (CNV-005); (`tenant_id`, `owner_id`, `forked_from_conversation_id`) references `conversations` on delete set null (`forked_from_conversation_id`), and the run likewise references `runs` |
+| `last_message_at` | timestamptz | not null; its creation, then the time a run last added messages; the list's order (CNV-008) |
 | `connection_id`, `model` | uuid, text | the model of the conversation (MOD-012): set from the tenant's default model on creation, or chosen by its user; both null when the tenant had no default model; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`), so a removed connection leaves `model` without a connection and runs fail |
 | `archived_at` | timestamptz | null when active |
 | `created_at` | timestamptz | not null |
@@ -238,9 +255,24 @@ History served to clients is a projection of these rows.
 | `tenant_id`, `owner_id` | uuid | as in `conversations` |
 | `conversation_id` | uuid | (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete cascade |
 | `message` | jsonb | one `ModelMessage`, serialized with Pydantic AI's `ModelMessagesTypeAdapter` |
+| `text` | text | not null, default empty; the text a person reads in it: the user's prompt or the assistant's answer, never tool calls or results (CNV-009) |
+| `search` | tsvector | generated from `text` with the `simple` configuration, stored; GIN index (ADR-0073) |
 | `created_at` | timestamptz | not null |
 
 Primary key (`run_id`, `seq`).
+
+### `compaction_checkpoints` (private)
+
+The history a model receives in place of the conversation up to a run, once
+it was compacted (AGT-016, ADR-0041). The stored messages never change.
+
+| Column | Type | Notes |
+|---|---|---|
+| `run_id` | uuid | primary key; the run at which compaction happened; (`tenant_id`, `owner_id`, `run_id`) references `runs` on delete cascade |
+| `tenant_id`, `owner_id` | uuid | as in `conversations` |
+| `conversation_id` | uuid | not null; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete cascade |
+| `messages` | jsonb | the compacted `ModelMessage`s that replace the history up to the run |
+| `created_at` | timestamptz | not null |
 
 ### `runs` (private)
 
@@ -287,7 +319,7 @@ It never contains content.
 | `price_source` | text | `provider`, `catalog`, `free` or `unknown` |
 | `created_at` | timestamptz | not null; indexed with `owner_id` |
 
-Totals per message, conversation, day and month are computed from these rows.
+Totals per run, conversation, the last 24 hours and the last 30 days are computed from these rows (MOD-007, ADR-0073).
 Per-user totals for tenant admins arrive in phase 1, through a function that
 returns only sums per user.
 
@@ -306,6 +338,7 @@ A household's access to one provider (MOD-008, ADR-0069).
 | `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `MZM_SECRET_KEY` (ADR-0051); null when the server needs no key |
 | `private_network` | boolean | not null, default false; true when `base_url` was set by a user who is the instance admin (MOD-009) |
 | `default_model` | text | the model of this connection that new conversations start with; at most one connection per tenant has one (MOD-012) |
+| `context_window` | integer | for `openai`, the context window of its models in tokens, at least 512, 8192 unless set; null for `openrouter` (ADR-0073) |
 | `models_refreshed_at` | timestamptz | when its models were last listed |
 | `created_at`, `updated_at` | timestamptz | not null |
 
@@ -340,8 +373,9 @@ listing the models again replaces the rows of the connection.
 
 ### Policies for private tables
 
-`device_sessions`, `conversations`, `conversation_messages`, `runs` and
-`usage_ledger` use the same policy for every operation:
+`device_sessions`, `folders`, `conversations`, `conversation_messages`,
+`compaction_checkpoints`, `runs` and `usage_ledger` use the same policy for
+every operation:
 
 ```sql
 USING      (tenant_id = app_tenant_id() AND owner_id = app_user_id())
@@ -362,7 +396,9 @@ keys, not by privileges of `mzm_app`.
 | `users` | `SELECT` on every column except `password_hash`; `INSERT`; `UPDATE` of `display_name`, `password_hash`, `role`, `disabled_at` |
 | `device_sessions` | `SELECT`, `INSERT`, `DELETE`; `UPDATE` of `revoked_at` |
 | `login_attempts` | none |
+| `folders` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `conversations` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `compaction_checkpoints` | `SELECT`, `INSERT`: checkpoints never change (ADR-0041) |
 | `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |
 | `runs` | `SELECT`, `INSERT`, `UPDATE`, `DELETE`: rewinding deletes runs (ADR-0068) |
 | `usage_ledger` | `SELECT`, `INSERT`: entries never change (ADR-0042) |

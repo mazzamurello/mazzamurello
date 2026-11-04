@@ -123,8 +123,8 @@ Sees what the assistant remembers about them, corrects it or deletes it
 ### J12 — Know what it costs (P1)
 
 Sees, while a conversation runs, how much of the model's context window is in
-use, and what each message, each conversation and the whole month cost on
-pay-per-token providers. Every model call is in their cost ledger, including
+use, and what each message and each conversation cost on pay-per-token
+providers, and what the last day and the last month cost. Every model call is in their cost ledger, including
 the calls that generate titles or compact history.
 
 ### J13 — Tailor the assistant (P1, P3)
