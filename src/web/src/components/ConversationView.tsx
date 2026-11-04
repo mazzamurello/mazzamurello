@@ -1,12 +1,13 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Copy, FilePen, Pencil } from "lucide-react";
+import { ChevronRight, Copy, FilePen, GitFork, Pencil } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { ApiError, api, unwrap, type ModelChoice, type MessagePage, type PathRun } from "../api/client";
-import { rewindConversation, updateConversation, useRefreshConversations } from "../conversations";
+import { forkConversation, rewindConversation, updateConversation, useRefreshConversations } from "../conversations";
+import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
 import { type LivePart, type LiveRun, poseOf, toolActivity, useLiveRun } from "../run";
 import { Composer } from "./Composer";
@@ -104,6 +105,7 @@ export function ConversationView() {
   const [hideFrom, setHideFrom] = useState<number | null>(null);
   const refresh = useCallback(async () => {
     await queries.invalidateQueries({ queryKey: ["conversation", conversationId] });
+    await queries.invalidateQueries({ queryKey: USAGE });
     await refreshList();
   }, [queries, refreshList, conversationId]);
   const runEnded = useCallback(async () => {
@@ -150,6 +152,17 @@ export function ConversationView() {
     if (element) element.scrollTop = element.scrollHeight;
   }, [live, history.data]);
 
+  /** A new conversation from a copy of this one up to the turn (CNV-005). */
+  async function fork(turn: Turn) {
+    try {
+      const copy = await forkConversation(conversationId, turn.run.run_id);
+      await refreshList();
+      await navigate(`/c/${copy.id}`);
+    } catch (error) {
+      notify({ kind: "error", title: t("errors.title"), text: t(`errors.${codeKey(error)}`) });
+    }
+  }
+
   async function chooseModel(choice: ModelChoice) {
     await updateConversation(conversationId, { model: choice });
     await refresh();
@@ -189,6 +202,18 @@ export function ConversationView() {
     <>
       <div ref={thread} className="min-h-0 flex-1 overflow-y-auto" aria-busy={running}>
         <ol className="mx-auto w-full max-w-[740px] px-4 pt-2 pb-6">
+          {conversation.data?.forked_from && (
+            <li className="mt-3 flex items-center gap-2 text-[13px] text-muted">
+              <GitFork className="size-4" aria-hidden="true" />
+              {conversation.data.forked_from.conversation_id ? (
+                <Link to={`/c/${conversation.data.forked_from.conversation_id}`} className="underline underline-offset-2 hover:text-fg">
+                  {t("message.forkedFrom")}
+                </Link>
+              ) : (
+                t("message.forkedFrom")
+              )}
+            </li>
+          )}
           {shown.map((turn, index) => (
             <TurnView
               key={turn.run.run_id}
@@ -199,6 +224,7 @@ export function ConversationView() {
               onEdit={() => setEditing(index)}
               onCancelEdit={() => setEditing(null)}
               onSendEdit={(text) => askToEdit(index, turn, text)}
+              onFork={() => void fork(turn)}
             />
           ))}
           {live && (
@@ -275,12 +301,31 @@ function Activity({ run }: { run: LiveRun }) {
       : working
         ? t(`activity.${pose}`)
         : "";
+  const usage = run.usage;
+  const share = usage ? Math.min(1, usage.context_tokens / Math.max(1, usage.context_window)) : 0;
+  const cost = usage?.cost && isPaid([usage.cost]) ? formatMoney([usage.cost]) : null;
   return (
     <div className="mt-0.5 flex min-h-[58px] items-center gap-2.5">
       <Sprite pose={pose} className="h-[53px] w-[46px] flex-none" />
-      <span role="status" className={`text-sm text-muted ${working ? "live-text" : ""}`}>
-        {words}
+      <span role="status" className="flex items-center gap-2 text-sm text-muted">
+        <span className={working ? "live-text" : ""}>{words}</span>
+        {working && cost && <span className="tabular-nums">· {cost}</span>}
       </span>
+      {working && usage && (
+        // How much of the model's context window the conversation uses (UX-008).
+        <span
+          role="meter"
+          aria-label={t("usage.context")}
+          aria-valuemin={0}
+          aria-valuemax={usage.context_window}
+          aria-valuenow={usage.context_tokens}
+          aria-valuetext={t("usage.contextValue", { percent: Math.round(share * 100) })}
+          title={t("usage.contextValue", { percent: Math.round(share * 100) })}
+          className="ml-auto h-1.5 w-16 overflow-hidden rounded-full bg-hover"
+        >
+          <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.max(4, share * 100)}%` }} />
+        </span>
+      )}
     </div>
   );
 }
@@ -293,6 +338,7 @@ function TurnView(props: {
   onEdit: () => void;
   onCancelEdit: () => void;
   onSendEdit: (text: string) => void;
+  onFork: () => void;
 }) {
   const { t } = useTranslation();
   const { turn, busy } = props;
@@ -341,8 +387,15 @@ function TurnView(props: {
         </div>
       )}
       {answerText && (
-        <div className={`flex gap-0.5 transition-opacity group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100 ${props.last ? "opacity-100" : "opacity-0"}`}>
-          <CopyButton text={answerText} />
+        <div className="flex items-center gap-0.5">
+          <div className={`flex gap-0.5 transition-opacity group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100 ${props.last ? "opacity-100" : "opacity-0"}`}>
+            <CopyButton text={answerText} />
+            <IconButton label={t("message.fork")} disabled={busy} onClick={props.onFork}>
+              <GitFork className="size-4" aria-hidden="true" />
+            </IconButton>
+          </div>
+          {/* Each answer's cost, beside its actions and always in view; a local model's is nothing to show (UX-008). */}
+          {isPaid(turn.run.cost) && <span className="pl-1.5 text-xs text-muted tabular-nums">{formatMoney(turn.run.cost)}</span>}
         </div>
       )}
     </li>
