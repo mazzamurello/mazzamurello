@@ -19,7 +19,7 @@ from tests.support.database import ROOT
 SERVER = ROOT / "src" / "server" / "mazzamurello_server"
 HTTP_METHODS = ("get", "put", "post", "delete", "patch")
 # Dotted names in the server that are not error codes: names of its own, and file names.
-NOT_ERROR_CODES = re.compile(r"^mazzamurello\.|\.(html|js|css|json|webmanifest)$")
+NOT_ERROR_CODES = re.compile(r"^(mazzamurello|mzm)\.|\.(html|js|css|json|webmanifest)$")
 DOTTED = re.compile(r"^[a-z]+\.[a-z_]+$")
 
 

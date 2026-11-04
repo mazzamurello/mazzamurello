@@ -325,7 +325,7 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 "model": body.get("model", "test-model"),
                 "choices": [choice],
                 "usage": _openrouter_usage() if self.openrouter else _usage(),
-            }
+            } | ({"provider": "OpenAI"} if self.openrouter else {})
 
         def _stream(self, body: dict[str, Any], pieces: list[tuple[str, float]]) -> None:
             self._start_stream()
