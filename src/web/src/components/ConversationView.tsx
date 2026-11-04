@@ -9,7 +9,7 @@ import { ApiError, api, unwrap, type ModelChoice, type MessagePage, type PathRun
 import { forkConversation, rewindConversation, updateConversation, useRefreshConversations } from "../conversations";
 import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
-import { type LivePart, type LiveRun, poseOf, toolActivity, useLiveRun } from "../run";
+import { type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { Sprite } from "./Sprite";
@@ -114,6 +114,14 @@ export function ConversationView() {
   }, [refresh]);
 
   const { live, start, follow, stop, running } = useLiveRun(runEnded);
+  // The latest context reading stays in view after the run, until another conversation opens.
+  const [contextUsage, setContextUsage] = useState<RunUsage | null>(null);
+  const [usageFor, setUsageFor] = useState(conversationId);
+  if (usageFor !== conversationId) {
+    setUsageFor(conversationId);
+    setContextUsage(null);
+  }
+  if (live?.usage && live.usage !== contextUsage) setContextUsage(live.usage);
   const [pending, setPending] = useState<PendingEdit | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const thread = useRef<HTMLDivElement>(null);
@@ -238,6 +246,7 @@ export function ConversationView() {
       </div>
       <div className="flex-none px-4 pt-1.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-[740px]">
+          {contextUsage && <ContextGauge usage={contextUsage} />}
           <Composer
             onSend={(text) => start({ conversationId, text })}
             onStop={() => void stop()}
@@ -302,7 +311,6 @@ function Activity({ run }: { run: LiveRun }) {
         ? t(`activity.${pose}`)
         : "";
   const usage = run.usage;
-  const share = usage ? Math.min(1, usage.context_tokens / Math.max(1, usage.context_window)) : 0;
   const cost = usage?.cost && isPaid([usage.cost]) ? formatMoney([usage.cost]) : null;
   return (
     <div className="mt-0.5 flex min-h-[58px] items-center gap-2.5">
@@ -311,21 +319,33 @@ function Activity({ run }: { run: LiveRun }) {
         <span className={working ? "live-text" : ""}>{words}</span>
         {working && cost && <span className="tabular-nums">· {cost}</span>}
       </span>
-      {working && usage && (
-        // How much of the model's context window the conversation uses (UX-008).
-        <span
-          role="meter"
-          aria-label={t("usage.context")}
-          aria-valuemin={0}
-          aria-valuemax={usage.context_window}
-          aria-valuenow={usage.context_tokens}
-          aria-valuetext={t("usage.contextValue", { percent: Math.round(share * 100) })}
-          title={t("usage.contextValue", { percent: Math.round(share * 100) })}
-          className="ml-auto h-1.5 w-16 overflow-hidden rounded-full bg-hover"
-        >
-          <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.max(4, share * 100)}%` }} />
-        </span>
-      )}
+    </div>
+  );
+}
+
+function compact(tokens: number): string {
+  return tokens >= 1000 ? `${Number((tokens / 1000).toFixed(tokens >= 100_000 ? 0 : 1))}k` : String(tokens);
+}
+
+/** How much of the model's context window the conversation uses: tokens, window, share and a gauge (UX-008). */
+function ContextGauge({ usage }: { usage: RunUsage }) {
+  const { t } = useTranslation();
+  const percent = Math.round(Math.min(1, usage.context_tokens / Math.max(1, usage.context_window)) * 100);
+  const text = t("usage.contextValue", { used: compact(usage.context_tokens), size: compact(usage.context_window), percent });
+  return (
+    <div className="mb-1.5 flex items-center justify-end gap-2 text-xs text-muted tabular-nums">
+      <span>{text}</span>
+      <span
+        role="meter"
+        aria-label={t("usage.context")}
+        aria-valuemin={0}
+        aria-valuemax={usage.context_window}
+        aria-valuenow={usage.context_tokens}
+        aria-valuetext={text}
+        className="h-1.5 w-20 overflow-hidden rounded-full bg-hover"
+      >
+        <span className={`block h-full rounded-full ${percent >= 80 ? "bg-danger" : "bg-accent"}`} style={{ width: `${Math.max(3, percent)}%` }} />
+      </span>
     </div>
   );
 }
