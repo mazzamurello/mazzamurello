@@ -80,8 +80,8 @@ Rationale: journeys J2 and J3.
 - **Verification:** integration
 
 A new conversation SHOULD receive a short title generated from its first
-exchange by the conversation's own model, unless the user has already named
-it. Title generation is a model call and is subject to the data egress
+message by the conversation's own model, while the first answer is being
+written, unless the user has already named it. Title generation is a model call and is subject to the data egress
 policy (MOD-003) and to the cost ledger (MOD-006, ADR-0073).
 
 ## CNV-007: Folders
