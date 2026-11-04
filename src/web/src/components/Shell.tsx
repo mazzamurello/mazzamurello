@@ -1,10 +1,9 @@
 import { LogOut, Menu as MenuIcon, Plus, SlidersHorizontal, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, Outlet, useLocation, useMatch } from "react-router";
+import { Link, Outlet, useLocation } from "react-router";
 
 import type { User } from "../api/client";
-import { useConversation } from "../conversations";
 import { formatMoney, useUsage } from "../costs";
 import { useSignOut } from "../session";
 import { ConversationList } from "./ConversationList";
@@ -24,7 +23,7 @@ export function Shell({ me }: { me: User }) {
   }
 
   return (
-    <div className="flex h-full bg-bg text-fg">
+    <div className="flex h-full overflow-hidden bg-bg text-fg">
       {open && <div className="fixed inset-0 z-30 bg-scrim md:hidden" aria-hidden="true" onClick={() => setOpen(false)} />}
       <nav
         aria-label={t("shell.conversations")}
@@ -78,19 +77,17 @@ export function Shell({ me }: { me: User }) {
   );
 }
 
-/** What the open conversation cost, and the last 24 hours and 30 days (UX-008). */
+/** The user's spend over the last 24 hours and 30 days (UX-008). */
 function UsageSummary() {
   const { t } = useTranslation();
   const usage = useUsage();
-  const open = useMatch("/c/:conversationId");
-  const conversationId = open?.params.conversationId;
-  const rows: [string, string][] = [];
-  if (usage.data) {
-    rows.push([t("usage.day"), formatMoney(usage.data.last_24_hours)], [t("usage.month"), formatMoney(usage.data.last_30_days)]);
-  }
+  if (!usage.data) return null;
+  const rows: [string, string][] = [
+    [t("usage.day"), formatMoney(usage.data.last_24_hours)],
+    [t("usage.month"), formatMoney(usage.data.last_30_days)],
+  ];
   return (
     <dl className="mx-1 mb-1 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-xl bg-hover px-3 py-2 text-[12.5px] tabular-nums">
-      {conversationId && <ConversationCost id={conversationId} />}
       {rows.map(([label, value]) => (
         <div key={label} className="contents">
           <dt className="text-muted">{label}</dt>
@@ -98,17 +95,5 @@ function UsageSummary() {
         </div>
       ))}
     </dl>
-  );
-}
-
-function ConversationCost({ id }: { id: string }) {
-  const { t } = useTranslation();
-  const conversation = useConversation(id);
-  if (!conversation.data) return null;
-  return (
-    <div className="contents">
-      <dt className="text-muted">{t("usage.conversation")}</dt>
-      <dd className="text-right font-semibold">{formatMoney(conversation.data.cost)}</dd>
-    </div>
   );
 }

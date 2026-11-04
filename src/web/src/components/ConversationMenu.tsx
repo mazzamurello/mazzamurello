@@ -38,7 +38,7 @@ export function ConversationMenu({ conversation, folders }: { conversation: Conv
           <Ellipsis className="size-4" aria-hidden="true" />
         </Menu.Trigger>
         <Menu.Portal>
-          <Menu.Content className="z-30 min-w-36 rounded-xl border border-line bg-raised p-1 text-fg shadow-soft">
+          <Menu.Content className="z-50 min-w-36 rounded-xl border border-line bg-raised p-1 text-fg shadow-soft">
             <Menu.Item className={ITEM} onSelect={() => setDialog("rename")}>
               {t("conversationMenu.rename")}
             </Menu.Item>
@@ -55,7 +55,7 @@ export function ConversationMenu({ conversation, folders }: { conversation: Conv
             <Menu.Sub>
               <Menu.SubTrigger className={ITEM}>{t("conversationMenu.move")}</Menu.SubTrigger>
               <Menu.Portal>
-                <Menu.SubContent className="z-30 min-w-40 rounded-xl border border-line bg-raised p-1 text-fg shadow-soft">
+                <Menu.SubContent className="z-50 min-w-40 rounded-xl border border-line bg-raised p-1 text-fg shadow-soft">
                   {folders.map((folder) => (
                     <Menu.Item
                       key={folder.id}

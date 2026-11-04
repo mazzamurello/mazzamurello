@@ -208,7 +208,7 @@ export function ConversationView() {
 
   return (
     <>
-      <div ref={thread} className="min-h-0 flex-1 overflow-y-auto" aria-busy={running}>
+      <div ref={thread} className="relative min-h-0 flex-1 overflow-y-auto" aria-busy={running}>
         <ol className="mx-auto w-full max-w-[740px] px-4 pt-2 pb-6">
           {conversation.data?.forked_from && (
             <li className="mt-3 flex items-center gap-2 text-[13px] text-muted">
@@ -246,7 +246,16 @@ export function ConversationView() {
       </div>
       <div className="flex-none px-4 pt-1.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-[740px]">
-          {contextUsage && <ContextGauge usage={contextUsage} />}
+          {/* The open conversation's cost and its context stay in view (UX-008). */}
+          <div className="mb-1.5 flex min-h-4 flex-wrap items-center justify-end gap-x-4 gap-y-1 text-xs text-muted tabular-nums">
+            {conversation.data && (
+              <span className="flex items-center gap-1.5">
+                <span>{t("usage.conversation")}</span>
+                <span className="font-semibold text-fg">{formatMoney(conversation.data.cost)}</span>
+              </span>
+            )}
+            {contextUsage && <ContextGauge usage={contextUsage} />}
+          </div>
           <Composer
             onSend={(text) => start({ conversationId, text })}
             onStop={() => void stop()}
@@ -333,7 +342,7 @@ function ContextGauge({ usage }: { usage: RunUsage }) {
   const percent = Math.round(Math.min(1, usage.context_tokens / Math.max(1, usage.context_window)) * 100);
   const text = t("usage.contextValue", { used: compact(usage.context_tokens), size: compact(usage.context_window), percent });
   return (
-    <div className="mb-1.5 flex items-center justify-end gap-2 text-xs text-muted tabular-nums">
+    <span className="flex items-center gap-2">
       <span>{text}</span>
       <span
         role="meter"
@@ -346,7 +355,7 @@ function ContextGauge({ usage }: { usage: RunUsage }) {
       >
         <span className={`block h-full rounded-full ${percent >= 80 ? "bg-danger" : "bg-accent"}`} style={{ width: `${Math.max(3, percent)}%` }} />
       </span>
-    </div>
+    </span>
   );
 }
 
