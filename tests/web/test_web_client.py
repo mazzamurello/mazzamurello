@@ -34,7 +34,7 @@ def _answer(page: Page, text: str) -> None:
 def test_signing_in_and_chatting(page: Page, member: Account, default_model: HarnessModel) -> None:
     page.goto("/")
     assert accessibility_violations(page) == []
-    sign_in(page, member)
+    sign_in(page, member, form=True)
     # The session is a cookie that scripts cannot read (AUTH-005).
     assert "mzm_session" not in page.evaluate("document.cookie")
     mark = uuid4().hex[:8]
@@ -50,7 +50,7 @@ def test_signing_in_and_chatting(page: Page, member: Account, default_model: Har
 
 @pytest.mark.spec("UX-001", "AUTH-005")
 def test_signing_out_returns_to_sign_in_at_once(page: Page, member: Account) -> None:
-    sign_in(page, member)
+    sign_in(page, member, form=True)
     page.get_by_role("button", name=re.compile("^Sign out")).click()
     expect(page.get_by_label("Username")).to_be_visible()
     page.reload()
@@ -284,7 +284,7 @@ def test_the_sprite_greets_with_a_quote(page: Page, member: Account) -> None:
 @pytest.mark.spec("UX-013")
 def test_the_sprite_acts_out_the_run_and_then_waits(page: Page, member: Account) -> None:
     sign_in(page, member)
-    _send(page, "run:sleep 4; echo acted")
+    _send(page, "run:sleep 2; echo acted")
     sprite = page.get_by_role("main").locator("[data-sprite-pose]").last
     expect(sprite).to_have_attribute("data-sprite-pose", "running", timeout=30_000)
     # The same activity is given as text.
@@ -326,7 +326,7 @@ def test_errors_say_what_happened_and_what_to_do(page: Page, member: Account) ->
 def test_typing_starts_in_the_expected_field(page: Page, member: Account) -> None:
     page.goto("/")
     expect(page.get_by_label("Username")).to_be_focused()
-    sign_in(page, member)
+    sign_in(page, member, form=True)
     expect(page.get_by_label("Message")).to_be_focused()
 
 
@@ -339,7 +339,7 @@ def test_touch_screens_keep_the_keyboard_closed(browser: Browser, web_origin: st
     try:
         page.goto("/")
         expect(page.get_by_label("Username")).not_to_be_focused()
-        sign_in(page, member)
+        sign_in(page, member, form=True)
         expect(page.get_by_label("Message")).not_to_be_focused()
     finally:
         context.close()
@@ -361,7 +361,7 @@ def test_costs_and_context_are_in_view(
     _openrouter_default(server, default_model.connect(member.tenant_id))
     sign_in(page, member)
     # A command that takes a while: the run's first model response, its tool call, is already priced.
-    _send(page, "run:sleep 4; echo priced")
+    _send(page, "run:sleep 2; echo priced")
     # While it runs: how much of the context window is used, and the run's cost so far.
     expect(page.get_by_role("meter", name="Context used")).to_be_visible(timeout=30_000)
     expect(page.get_by_role("status")).to_contain_text("$", timeout=30_000)
