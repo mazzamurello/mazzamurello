@@ -1267,7 +1267,7 @@ components:
         folder_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
         pinned: { type: boolean }
         forked_from:
-          description: The conversation and run this one was forked from; either is `null` once deleted (CNV-005).
+          description: The conversation and run this one was forked from; the conversation is `null` once deleted, and the run is the original run's identifier even then (CNV-005).
           oneOf:
             - type: object
               required: [conversation_id, run_id]

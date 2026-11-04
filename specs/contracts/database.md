@@ -234,7 +234,7 @@ A user's groups of conversations (CNV-007, ADR-0073).
 | `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
 | `folder_id` | uuid | its folder, or null; (`tenant_id`, `owner_id`, `folder_id`) references `folders` on delete set null (`folder_id`) |
 | `pinned_at` | timestamptz | when it was pinned; null when not pinned (CNV-008) |
-| `forked_from_conversation_id`, `forked_from_run_id` | uuid | where a fork came from (CNV-005); (`tenant_id`, `owner_id`, `forked_from_conversation_id`) references `conversations` on delete set null (`forked_from_conversation_id`), and the run likewise references `runs` |
+| `forked_from_conversation_id`, `forked_from_run_id` | uuid | where a fork came from (CNV-005); (`tenant_id`, `owner_id`, `forked_from_conversation_id`) references `conversations` on delete set null (`forked_from_conversation_id`); the run is kept as an identifier, without a reference, so that a fork stays one when its original is gone |
 | `last_message_at` | timestamptz | not null; its creation, then the time a run last added messages; the list's order (CNV-008) |
 | `connection_id`, `model` | uuid, text | the model of the conversation (MOD-012): set from the tenant's default model on creation, or chosen by its user; both null when the tenant had no default model; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`), so a removed connection leaves `model` without a connection and runs fail |
 | `archived_at` | timestamptz | null when active |
