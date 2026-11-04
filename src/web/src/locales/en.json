@@ -269,6 +269,6 @@
     "day": "Last 24 hours",
     "month": "Last 30 days",
     "context": "Context used",
-    "contextValue": "{{percent}}% of the context window"
+    "contextValue": "Context {{used}} of {{size}} tokens · {{percent}}%"
   }
 }
