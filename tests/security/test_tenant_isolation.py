@@ -73,11 +73,24 @@ def _new_row(table: str, owner: User) -> tuple[LiteralString, tuple[Any, ...]]:
                 " last_used_at, expires_at) VALUES (%s, %s, %s, %s, 'intruder', now(), now(), now())",
                 (uuid7(), tenant, user, uuid.uuid4().bytes * 2),
             )
-        case "conversations":
+        case "folders":
             return (
-                "INSERT INTO conversations (id, tenant_id, owner_id, title, created_at, updated_at)"
+                "INSERT INTO folders (id, tenant_id, owner_id, name, created_at, updated_at)"
                 " VALUES (%s, %s, %s, 'intruder', now(), now())",
                 (uuid7(), tenant, user),
+            )
+        case "conversations":
+            return (
+                "INSERT INTO conversations (id, tenant_id, owner_id, title, last_message_at, created_at, updated_at)"
+                " VALUES (%s, %s, %s, 'intruder', now(), now(), now())",
+                (uuid7(), tenant, user),
+            )
+        case "compaction_checkpoints":
+            # Row-level security refuses it before the victim's existing checkpoint would conflict.
+            return (
+                "INSERT INTO compaction_checkpoints (run_id, tenant_id, owner_id, conversation_id, messages,"
+                " created_at) VALUES (%s, %s, %s, %s, '[]', now())",
+                (owner.run_id, tenant, user, owner.conversation_id),
             )
         case "runs":
             return (

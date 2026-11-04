@@ -106,7 +106,7 @@ def test_the_ledger_records_the_cost_openrouter_reports(
     run_id, _ = start_run(server, token, conversation["id"], "priced by the provider")
     with database.superuser() as conn:
         rows = conn.execute(
-            "SELECT model, cost, currency, price_source FROM usage_ledger WHERE run_id = %s", (run_id,)
+            "SELECT model, cost, currency, price_source FROM usage_ledger WHERE run_id = %s AND purpose = 'run'", (run_id,)
         ).fetchall()
     assert rows == [("test/popular", Decimal(str(OPENROUTER_COST)), "USD", "provider")]
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import socket
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -40,7 +41,8 @@ def test_signing_in_and_chatting(page: Page, member: Account, default_model: Har
     _send(page, f"hello {mark}")
     _answer(page, f"Echo: hello {mark}")
     expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
-    expect(page.get_by_role("navigation")).to_contain_text("New conversation")
+    # The conversation is listed, under the title its model gives it (CNV-006).
+    expect(page.get_by_role("navigation").locator(f"a[href='{urlsplit(page.url).path}']")).to_be_visible()
     assert accessibility_violations(page) == []
     page.reload()
     _answer(page, f"Echo: hello {mark}")
@@ -358,16 +360,18 @@ def test_costs_and_context_are_in_view(
 ) -> None:
     _openrouter_default(server, default_model.connect(member.tenant_id))
     sign_in(page, member)
-    _send(page, "slow:6")
-    # While it streams: how much of the context window is used, and the run's cost so far.
+    # A command that takes a while: the run's first model response, its tool call, is already priced.
+    _send(page, "run:sleep 4; echo priced")
+    # While it runs: how much of the context window is used, and the run's cost so far.
     expect(page.get_by_role("meter", name="Context used")).to_be_visible(timeout=30_000)
     expect(page.get_by_role("status")).to_contain_text("$", timeout=30_000)
     expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
     # Each answer's cost beside it, the conversation's, and the last 24 hours' and 30 days'.
-    expect(page.get_by_role("main").get_by_text("$0.00042").first).to_be_visible()
-    expect(page.get_by_text("This conversation")).to_be_visible()
-    expect(page.get_by_text("Last 24 hours")).to_be_visible()
-    expect(page.get_by_text("Last 30 days")).to_be_visible()
+    # Two priced requests: the tool call and the answer.
+    expect(page.get_by_role("main").get_by_text("$0.00084").first).to_be_visible()
+    expect(page.get_by_text("This conversation", exact=True)).to_be_visible()
+    expect(page.get_by_text("Last 24 hours", exact=True)).to_be_visible()
+    expect(page.get_by_text("Last 30 days", exact=True)).to_be_visible()
     assert accessibility_violations(page) == []
 
 
