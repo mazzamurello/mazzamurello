@@ -492,35 +492,36 @@ def test_the_model_picker_fits_in_the_window(
 def test_a_long_conversation_scrolls_in_one_place(page: Page, member: Account, default_model: HarnessModel) -> None:
     page.set_viewport_size({"width": 1280, "height": 600})
     sign_in(page, member)
-    for number in range(6):
-        _send(page, f"line {number} " + "word " * 80)
-        _answer(page, f"Echo: line {number}")
+    # A long message and its echo are taller than the window; the next message is below them.
+    for text in ("long " + "word " * 400, "short"):
+        _send(page, text)
+        _answer(page, f"Echo: {text[:5]}")
         expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
+    assert page.evaluate("document.querySelector('[aria-busy]').scrollHeight > innerHeight")
     # Only the conversation scrolls; the page itself does not.
     assert page.evaluate("document.scrollingElement.scrollHeight <= innerHeight")
 
 
 @pytest.mark.spec("UX-001", "CNV-007")
-def test_the_conversation_menu_opens_over_the_list(
-    browser: Browser, web_origin: str, member: Account, default_model: HarnessModel
-) -> None:
+def test_the_conversation_menu_opens_over_the_list(page: Page, member: Account, default_model: HarnessModel) -> None:
+    page.set_viewport_size({"width": 1280, "height": 800})
+    sign_in(page, member)
+    _send(page, "a conversation with a menu")
+    _answer(page, "Echo: a conversation with a menu")
+    # On a computer, and on a phone, where the list slides over the conversation.
     for width, height in ((1280, 800), (390, 844)):
-        context = browser.new_context(base_url=web_origin, viewport={"width": width, "height": height})
-        page = context.new_page()
-        try:
-            sign_in(page, member)
-            _send(page, "a conversation with a menu")
-            _answer(page, "Echo: a conversation with a menu")
-            if width < 768:
-                page.get_by_role("button", name="Open the conversation list").click()
-            page.get_by_role("button", name=re.compile("^Options for")).first.click()
-            expect(page.get_by_role("menuitem", name="Rename")).to_be_visible()
-            assert _inside_window(page, "[role=menu]")
-            page.get_by_role("menuitem", name="Move to folder").hover()
-            expect(page.get_by_text("No folders yet.")).to_be_visible()
-            assert _inside_window(page, "[role=menu] >> nth=1")
-        finally:
-            context.close()
+        page.set_viewport_size({"width": width, "height": height})
+        if width < 768:
+            page.get_by_role("button", name="Open the conversation list").click()
+        page.get_by_role("button", name=re.compile("^Options for")).first.click()
+        expect(page.get_by_role("menuitem", name="Rename")).to_be_visible()
+        assert _inside_window(page, "[role=menu]")
+        page.get_by_role("menuitem", name="Move to folder").hover()
+        expect(page.get_by_text("No folders yet.")).to_be_visible()
+        assert _inside_window(page, "[role=menu] >> nth=1")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("menu")).to_have_count(0)
 
 
 @pytest.mark.spec("UX-015", "MOD-012")
