@@ -26,10 +26,13 @@ prefers fixed behavior over settings.
    (MOD-003, MOD-010), and their cost is the conversation's (MOD-006). This
    replaces ADR-0041 point 3: there is no per-model strategy and no summary
    model to configure.
-2. **Titles.** When the first run of an untitled conversation completes, the
-   worker asks the model for a title of a few words, in the language of the
-   conversation, and stores it, unless the user named the conversation
-   meanwhile. The request is recorded in the cost ledger with the purpose
+2. **Titles.** When the first run of an untitled conversation starts, the
+   worker asks the model, alongside the answer, for a title of a few words
+   for the first message, in its language, and stores it, unless the user
+   named the conversation meanwhile. The title does not wait for the answer:
+   once stored, it is announced on the run's event stream with a `CUSTOM`
+   event named `mzm.title`, so clients name the conversation while it is
+   answered. The run finishes only after its title request did. The request is recorded in the cost ledger with the purpose
    `title`. A failed request leaves the conversation untitled.
 3. **Compaction** follows ADR-0041 points 1, 2 and 4 with a fixed strategy:
    when the history of a run would exceed 80% of the model's context window,
