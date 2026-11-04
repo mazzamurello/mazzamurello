@@ -4,10 +4,11 @@ import { Check, Cloud, House, Palette, Plug, Plus, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ApiError, api, unwrap, type Connection, type ConnectionTest, type User } from "../api/client";
+import { ApiError, api, unwrap, type Connection, type ConnectionTest, type ModelChoice, type User } from "../api/client";
 import { MODELS, useModels } from "../models";
 import { useNotify } from "../notices";
 import { type Theme, useTheme } from "../theme";
+import { ModelSelect } from "./ModelPicker";
 
 const CONNECTIONS = ["connections"] as const;
 const BUTTON = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] border border-line-strong bg-surface px-4 text-sm font-semibold hover:bg-hover disabled:opacity-50";
@@ -24,7 +25,7 @@ export function Settings({ me }: { me: User }) {
     { id: "appearance", label: t("settings.appearance"), icon: <Palette className="size-[18px]" aria-hidden="true" /> },
   ];
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="relative min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto grid max-w-[900px] grid-cols-1 gap-[18px] px-4 pt-6 pb-14 md:grid-cols-[190px_minmax(0,1fr)] md:gap-9">
         <h1 className="text-[26px] font-bold tracking-tight md:col-span-2">{t("settings.title")}</h1>
         <nav aria-label={t("settings.sections")} className="flex gap-0.5 overflow-x-auto md:flex-col">
@@ -92,10 +93,8 @@ function ModelsSection() {
     await queries.invalidateQueries({ queryKey: MODELS });
   }
 
-  async function chooseDefault(value: string) {
-    const option = models.data?.items.find((item) => `${item.connection_id} ${item.model}` === value);
-    if (!option) return;
-    unwrap(await api.PUT("/tenant/default-model", { body: { connection_id: option.connection_id, model: option.model } }));
+  async function chooseDefault(choice: ModelChoice) {
+    unwrap(await api.PUT("/tenant/default-model", { body: choice }));
     await refresh();
     notify({ kind: "info", title: t("settings.saved") });
   }
@@ -118,17 +117,7 @@ function ModelsSection() {
       <section>
         <h2 className="mb-1 text-base font-bold">{t("settings.defaultModel")}</h2>
         <p className="mb-3.5 max-w-[62ch] text-sm text-muted">{t("settings.defaultHint")}</p>
-        <label className="sr-only" htmlFor="default-model">
-          {t("settings.defaultModel")}
-        </label>
-        <select id="default-model" className={`${INPUT} max-w-[420px]`} value={current ? `${current.connection_id} ${current.model}` : ""} onChange={(event) => void chooseDefault(event.target.value)}>
-          {!current && <option value="">{t("settings.noDefault")}</option>}
-          {models.data?.items.map((item) => (
-            <option key={`${item.connection_id} ${item.model}`} value={`${item.connection_id} ${item.model}`}>
-              {item.name} · {item.connection_name}
-            </option>
-          ))}
-        </select>
+        <ModelSelect value={current ?? null} onChange={(choice) => void chooseDefault(choice)} label={t("settings.defaultModel")} placeholder={t("settings.noDefault")} />
       </section>
       <section>
         <h2 className="mb-1 text-base font-bold">{t("settings.connections")}</h2>

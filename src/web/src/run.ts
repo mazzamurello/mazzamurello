@@ -1,8 +1,10 @@
 // A run as it streams: its text and tool calls, built from AG-UI events (ADR-0032).
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
 import { api } from "./api/client";
 import { followRun, startRun, type RunEvent, type StartRun } from "./api/stream";
+import { CONVERSATIONS } from "./conversations";
 import type { Pose } from "./components/Sprite";
 
 export type LivePart =
@@ -76,6 +78,7 @@ export function apply(run: LiveRun, event: RunEvent): LiveRun {
 export function useLiveRun(onEnd: () => Promise<void>) {
   const [live, setLive] = useState<LiveRun | null>(null);
   const runId = useRef<string | null>(null);
+  const queries = useQueryClient();
 
   const consume = useCallback(
     async (initial: LiveRun, events: Promise<AsyncGenerator<RunEvent>>) => {
@@ -86,6 +89,11 @@ export function useLiveRun(onEnd: () => Promise<void>) {
         for await (const event of await events) {
           current = apply(current, event);
           setLive(current);
+          // The conversation got its title while it is answered (CNV-006).
+          if (event.type === "CUSTOM" && event.name === "mzm.title") {
+            void queries.invalidateQueries({ queryKey: CONVERSATIONS });
+            void queries.invalidateQueries({ queryKey: ["conversation"] });
+          }
         }
       } catch (error) {
         const code = error instanceof Error && "code" in error ? String(error.code) : "internal.error";
@@ -97,7 +105,7 @@ export function useLiveRun(onEnd: () => Promise<void>) {
       // A failed run stays visible until the next one; a finished one is in the history now.
       setLive(current.status === "failed" ? current : null);
     },
-    [onEnd],
+    [onEnd, queries],
   );
 
   const start = useCallback(

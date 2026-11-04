@@ -13,6 +13,7 @@ import logging
 import signal
 import uuid
 from collections.abc import AsyncIterable
+from dataclasses import replace
 from typing import Any, cast
 
 from dbos import DBOS, DBOSConfig
@@ -82,6 +83,8 @@ _WORKER = _Worker()
 _ENCODERS: dict[str, AGUIEventStream[Any, Any]] = {}
 # Events written to each run's stream by this process.
 _WRITTEN: dict[str, int] = {}
+# The title request of each first run executing in this process, until announced (CNV-006).
+_TITLES: dict[str, asyncio.Task[str | None]] = {}
 
 
 async def _write(run_id: str, event: dict[str, Any]) -> None:
@@ -101,6 +104,16 @@ async def _handle_events(ctx: RunContext[RunDeps], events: AsyncIterable[AgentSt
     async for event in events:
         async for encoded in encoder.handle_event(event):
             await _write(run_id, _encoded(encoded))
+        title = _TITLES.get(run_id)
+        if title is not None and title.done():
+            await _announce_title(run_id)
+
+
+async def _announce_title(run_id: str) -> None:
+    """Wait for the run's title request, and name the conversation on the run's stream (CNV-006, ADR-0073)."""
+    title = await _TITLES.pop(run_id)
+    if title is not None:
+        await _write(run_id, {"type": "CUSTOM", "name": "mzm.title", "value": {"title": title}})
 
 
 agent = Agent(
@@ -239,6 +252,10 @@ async def _execute(
 ) -> None:
     async for event in encoder.before_stream():
         await _write(run.run_id, _encoded(event))
+    if run.parent_run_id is None:
+        # The title is asked for alongside the answer, from the first message (CNV-006, ADR-0073);
+        # the step's place in the workflow is taken here, before the agent's.
+        _TITLES[run.run_id] = asyncio.create_task(_title(run, replace(deps, emit=None)))
     try:
         result = await agent.run(
             run.user_text,
@@ -251,27 +268,43 @@ async def _execute(
     except (ModelUnavailableError, ModelAPIError) as error:
         code = _error_code(error)
         logger.warning("run %s failed: %s", run.run_id, code)
+        if run.run_id in _TITLES:
+            await _announce_title(run.run_id)
         await _write_error(run.run_id, code, _reason(error))
         await _set_status(identity, deps.run_id, "failed", code)
         return
+    except BaseException:
+        if (title := _TITLES.pop(run.run_id, None)) is not None:
+            title.cancel()
+        raise
     await store_messages(deps, result.new_messages())
+    if run.run_id in _TITLES:
+        await _announce_title(run.run_id)
     async for event in encoder.after_stream():
         await _write(run.run_id, _encoded(event))
     await _set_status(identity, deps.run_id, "completed")
-    if run.parent_run_id is None:
-        await _title(run, deps, str(result.output))
 
 
 TITLE_PROMPT = (
-    "Write a title of at most six words for this conversation, in its language. Answer with the title only,"
-    " without quotes.\n\n"
+    "Write a title of at most six words for a conversation that starts with this message, in its language."
+    " Answer with the title only, without quotes.\n\n"
 )
 TITLE_CHARS = 80
+TITLE_INPUT_CHARS = 2000
 
 
 @DBOS.step()
-async def _title(run: RunWorkflowInput, deps: RunDeps, answer: str) -> None:
-    """Name an untitled conversation after its first exchange, by its own model (CNV-006, ADR-0073)."""
+async def _title(run: RunWorkflowInput, deps: RunDeps) -> str | None:
+    """Name an untitled conversation after its first message, by its own model; the title, if stored."""
+    try:
+        return await _name_conversation(run, deps)
+    except Exception as error:
+        # A title is a courtesy: whatever goes wrong, the run it goes with is unaffected.
+        logger.warning("run %s got no title: %s", run.run_id, _error_code(error))
+        return None
+
+
+async def _name_conversation(run: RunWorkflowInput, deps: RunDeps) -> str | None:
     async with transaction(_engine(), deps.identity) as connection:
         title = (
             await connection.execute(
@@ -279,32 +312,25 @@ async def _title(run: RunWorkflowInput, deps: RunDeps, answer: str) -> None:
             )
         ).scalar_one_or_none()
     if title != "":
-        return
-    try:
-        model = await connection_model(deps, uuid.UUID(run.connection_id), run.model)
-        response = await model.request(
-            [
-                ModelRequest(
-                    parts=[UserPromptPart(f"{TITLE_PROMPT}User: {run.user_text}\n\nAssistant: {answer[:2000]}")]
-                )
-            ],
-            None,
-            ModelRequestParameters(),
-        )
-    except Exception as error:
-        # A title is a courtesy: whatever goes wrong, the run it follows stays complete.
-        logger.warning("run %s got no title: %s", run.run_id, _error_code(error))
-        return
+        return None
+    model = await connection_model(deps, uuid.UUID(run.connection_id), run.model)
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart(TITLE_PROMPT + run.user_text[:TITLE_INPUT_CHARS])])],
+        None,
+        ModelRequestParameters(),
+    )
     await record_usage(deps, uuid.uuid5(deps.run_id, "title"), response, "title")
     lines = [line.strip(" \t\"'*#") for line in readable_text(response).splitlines() if line.strip()]
     if not lines:
-        return
+        return None
+    title = lines[0][:TITLE_CHARS]
     async with transaction(_engine(), deps.identity) as connection:
         # Unless the user named it meanwhile.
-        await connection.execute(
+        result = await connection.execute(
             text("UPDATE conversations SET title = :title WHERE id = :id AND title = ''"),
-            {"title": lines[0][:TITLE_CHARS], "id": deps.conversation_id},
+            {"title": title, "id": deps.conversation_id},
         )
+    return title if result.rowcount == 1 else None
 
 
 def _reason(error: BaseException) -> str | None:
