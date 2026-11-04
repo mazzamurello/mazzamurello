@@ -60,7 +60,7 @@ Rationale: journey J2.
 
 ## CNV-005: Forking
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -74,7 +74,7 @@ Rationale: journeys J2 and J3.
 
 ## CNV-006: Automatic titles
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** integration
@@ -86,7 +86,7 @@ policy (MOD-003) and to the cost ledger (MOD-006, ADR-0073).
 
 ## CNV-007: Folders
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -101,7 +101,7 @@ Rationale: journey J3.
 
 ## CNV-008: Conversation list
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -120,7 +120,7 @@ Rationale: journey J3.
 
 ## CNV-009: Search
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration

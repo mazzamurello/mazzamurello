@@ -183,7 +183,7 @@ Rationale: journey J7.
 
 ## AGT-016: Automatic compaction
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, eval

@@ -114,7 +114,7 @@ egress policy (MOD-003) relies on the same statement (ADR-0066, ADR-0069).
 
 ## MOD-007: Live usage reporting
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
