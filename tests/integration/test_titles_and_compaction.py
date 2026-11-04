@@ -42,15 +42,21 @@ def _purposes(database: Database, conversation_id: str) -> list[str]:
 def test_a_new_conversation_gets_a_title_from_its_model(database: Database, server: Server, member: Member) -> None:
     conversation = create_conversation(server, member.token)
     assert conversation["title"] == ""
-    run_id, _ = start_run(server, member.token, conversation["id"], f"plan a trip {secrets.token_hex(3)}")
+    run_id, events = start_run(server, member.token, conversation["id"], f"plan a trip {secrets.token_hex(3)}")
     assert wait_for_run(server, member.token, run_id)["status"] == "completed"
     deadline = time.monotonic() + TITLE_SECONDS
     while not (title := _conversation(server, member.token, conversation["id"])["title"]):
         assert time.monotonic() < deadline, "the conversation got no title"
         time.sleep(0.3)
     assert 0 < len(title) <= 200
-    # The title is a model request of the conversation's own model, in the ledger.
-    assert _purposes(database, conversation["id"]) == ["run", "title"]
+    # The run announces the title before it finishes, so clients show it while it is answered.
+    (announced,) = [e for e in events if e.type == "CUSTOM" and e.data.get("name") == "mzm.title"]
+    assert announced.data["value"] == {"title": title}
+    finished = next(index for index, e in enumerate(events) if e.type == "RUN_FINISHED")
+    assert events.index(announced) < finished
+    # The title is a model request of the conversation's own model, in the ledger; it is made
+    # alongside the answer, so either may be recorded first.
+    assert sorted(_purposes(database, conversation["id"])) == ["run", "title"]
     with database.superuser() as conn:
         models = conn.execute(
             "SELECT DISTINCT model FROM usage_ledger WHERE conversation_id = %s", (conversation["id"],)

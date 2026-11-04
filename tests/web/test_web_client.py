@@ -450,3 +450,91 @@ def test_searching_conversations(page: Page, member: Account) -> None:
     assert accessibility_violations(page) == []
     result.click()
     expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
+
+
+def _inside_window(page: Page, element: str) -> bool:
+    """Whether the element is wholly in the window, and on top of what it covers."""
+    return bool(
+        page.evaluate(
+            """(element) => {
+                const box = element.getBoundingClientRect();
+                // An open menu turns off pointer events around it, which would hide what covers it.
+                const pointerEvents = document.body.style.pointerEvents;
+                document.body.style.pointerEvents = "auto";
+                const points = [[0.5, 0.5], [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]];
+                const onTop = points.every(([x, y]) =>
+                    element.contains(document.elementFromPoint(box.left + box.width * x, box.top + box.height * y)));
+                document.body.style.pointerEvents = pointerEvents;
+                return box.top >= 0 && box.left >= 0 && box.bottom <= innerHeight && box.right <= innerWidth && onTop;
+            }""",
+            page.locator(element).element_handle(),
+        )
+    )
+
+
+@pytest.mark.spec("UX-001", "UX-015")
+def test_the_model_picker_fits_in_the_window(
+    page: Page, server: Server, member: Account, default_model: HarnessModel
+) -> None:
+    _add_openrouter(server, default_model.connect(member.tenant_id))
+    sign_in(page, member)
+    # The message box is in the middle of a new chat, and at the bottom of a short window.
+    for height in (900, 560):
+        page.set_viewport_size({"width": 1280, "height": height})
+        page.get_by_role("button", name=re.compile("test-model")).click()
+        expect(page.get_by_role("dialog", name="Choose a model")).to_be_visible()
+        assert _inside_window(page, "[role=dialog]")
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("dialog", name="Choose a model")).to_have_count(0)
+
+
+@pytest.mark.spec("UX-001")
+def test_a_long_conversation_scrolls_in_one_place(page: Page, member: Account, default_model: HarnessModel) -> None:
+    page.set_viewport_size({"width": 1280, "height": 600})
+    sign_in(page, member)
+    for number in range(6):
+        _send(page, f"line {number} " + "word " * 80)
+        _answer(page, f"Echo: line {number}")
+        expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
+    # Only the conversation scrolls; the page itself does not.
+    assert page.evaluate("document.scrollingElement.scrollHeight <= innerHeight")
+
+
+@pytest.mark.spec("UX-001", "CNV-007")
+def test_the_conversation_menu_opens_over_the_list(
+    browser: Browser, web_origin: str, member: Account, default_model: HarnessModel
+) -> None:
+    for width, height in ((1280, 800), (390, 844)):
+        context = browser.new_context(base_url=web_origin, viewport={"width": width, "height": height})
+        page = context.new_page()
+        try:
+            sign_in(page, member)
+            _send(page, "a conversation with a menu")
+            _answer(page, "Echo: a conversation with a menu")
+            if width < 768:
+                page.get_by_role("button", name="Open the conversation list").click()
+            page.get_by_role("button", name=re.compile("^Options for")).first.click()
+            expect(page.get_by_role("menuitem", name="Rename")).to_be_visible()
+            assert _inside_window(page, "[role=menu]")
+            page.get_by_role("menuitem", name="Move to folder").hover()
+            expect(page.get_by_text("No folders yet.")).to_be_visible()
+            assert _inside_window(page, "[role=menu] >> nth=1")
+        finally:
+            context.close()
+
+
+@pytest.mark.spec("UX-015", "MOD-012")
+def test_the_default_model_is_chosen_with_the_model_picker(
+    page: Page, server: Server, admin: Account, default_model: HarnessModel
+) -> None:
+    _add_openrouter(server, default_model.connect(admin.tenant_id))
+    sign_in(page, admin)
+    page.get_by_role("link", name="Settings").click()
+    page.get_by_role("button", name="Default model").click()
+    picker = page.get_by_role("dialog", name="Choose a model")
+    expect(picker).to_be_visible()
+    picker.get_by_role("searchbox").fill("popular")
+    picker.get_by_role("button", name=re.compile("Test: Popular")).click()
+    expect(page.get_by_role("button", name="Default model")).to_contain_text("Test: Popular")
+    page.get_by_role("link", name="New chat").click()
+    expect(page.get_by_role("button", name=re.compile("Test: Popular"))).to_be_visible()
