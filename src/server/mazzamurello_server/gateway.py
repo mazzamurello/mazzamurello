@@ -11,7 +11,9 @@ produced (ADR-0052).
 from __future__ import annotations
 
 import json
+import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, cast
@@ -19,8 +21,15 @@ from typing import Any, cast
 from openai import AsyncOpenAI
 from pydantic_ai import RunContext
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse
-from pydantic_ai.models import Model, ModelRequestContext, ModelResolutionContext
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UserPromptPart,
+)
+from pydantic_ai.models import Model, ModelRequestContext, ModelRequestParameters, ModelResolutionContext
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -29,11 +38,23 @@ from pydantic_ai.tools import ToolDefinition
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from mazzamurello_server.costs import amount
 from mazzamurello_server.database import Identity, transaction
 from mazzamurello_server.encryption import decrypt
 from mazzamurello_server.endpoints import tenant_http_client
 
+logger = logging.getLogger(__name__)
+
 MODEL_PREFIX = "mzm"
+DEFAULT_CONTEXT_WINDOW = 8192
+# Compaction starts when the history would exceed this share of the window (ADR-0073).
+COMPACTION_SHARE = 0.8
+# A rough count of tokens: four characters each.
+CHARS_PER_TOKEN = 4
+SUMMARY_PROMPT = (
+    "Summarize the conversation below for yourself, so that you can continue it without it: keep facts, names,"
+    " decisions, numbers and open questions. Write the summary in the language of the conversation.\n\n"
+)
 # The server needs no key; OpenAI clients refuse an empty one.
 NO_API_KEY = "none"
 
@@ -62,6 +83,17 @@ class RunDeps:
     tools: bool = True
     location: str = "remote"
     prices: dict[str, Any] = field(default_factory=dict[str, Any])
+    # The model's context window, and what the run used so far (MOD-007, ADR-0073).
+    context_window: int = DEFAULT_CONTEXT_WINDOW
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost: Decimal | None = Decimal(0)
+    currency: str = "USD"
+    # Writes an event to the run's stream; set by the worker.
+    emit: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+    # The summary that replaces the oldest history in this run's requests, once made (AGT-016).
+    compacted: tuple[int, list[ModelMessage]] | None = None
+    compactions: int = 0
 
 
 def model_reference(connection_id: str, model: str) -> str:
@@ -74,6 +106,75 @@ def _ledger_id(run_id: uuid.UUID, request_number: int) -> uuid.UUID:
     return uuid.uuid5(run_id, f"model-request-{request_number}")
 
 
+async def connection_model(deps: RunDeps, connection_id: uuid.UUID, model: str) -> Model:
+    """The model a connection offers, ready to request, with the run's facts about it in `deps`."""
+    async with transaction(deps.engine, deps.identity) as connection:
+        row = (
+            await connection.execute(
+                text(
+                    "SELECT c.id, c.kind, c.base_url, c.location, c.api_key_ciphertext, c.private_network, m.tools,"
+                    " coalesce(c.context_window, m.context_window) AS context_window"
+                    " FROM connections c JOIN connection_models m ON m.connection_id = c.id"
+                    " WHERE c.id = :id AND m.model = :model"
+                ),
+                {"id": connection_id, "model": model},
+            )
+        ).one_or_none()
+    if row is None:
+        raise ModelUnavailableError("the connection no longer offers the model")
+    if not row.private_network and not str(row.base_url).startswith("https://"):
+        raise ModelUnavailableError("the connection's address is not allowed")
+    api_key = NO_API_KEY
+    if row.api_key_ciphertext is not None:
+        api_key = decrypt(deps.secret_key, row.id, bytes(row.api_key_ciphertext))
+    # A model known not to call tools runs without them; an unknown one is given them (MOD-014).
+    deps.tools = row.tools is not False
+    deps.location = row.location
+    deps.context_window = row.context_window or DEFAULT_CONTEXT_WINDOW
+    # Addresses not set by the instance admin connect only to checked public addresses,
+    # without redirects (MOD-009, ADR-0061).
+    http_client = None if row.private_network else tenant_http_client()
+    if row.kind == "openrouter":
+        # A client of our own: the provider would add attribution headers from the environment.
+        # The SDK's signature names httpx2, and it also accepts a legacy httpx client, as here.
+        legacy_client = cast("Any", http_client)
+        client = AsyncOpenAI(base_url=row.base_url, api_key=api_key, http_client=legacy_client)
+        return OpenRouterModel(model, provider=OpenRouterProvider(openai_client=client))
+    provider = OpenAIProvider(base_url=row.base_url, api_key=api_key, http_client=http_client)
+    return OpenAIChatModel(model, provider=provider)
+
+
+def readable_text(message: ModelMessage) -> str:
+    """What a person reads in a message: the user's prompt or the assistant's text, never tools (CNV-009)."""
+    texts: list[str] = []
+    for part in message.parts:
+        if isinstance(part, UserPromptPart):
+            content = part.content
+            if isinstance(content, str):
+                texts.append(content)
+            else:
+                texts.extend(item for item in content if isinstance(item, str))
+        elif isinstance(part, TextPart):
+            texts.append(part.content)
+    return "\n".join(texts)
+
+
+def _estimated_tokens(messages: list[ModelMessage]) -> int:
+    return (
+        sum(len(json.dumps(item)) for item in ModelMessagesTypeAdapter.dump_python(messages, mode="json"))
+        // CHARS_PER_TOKEN
+    )
+
+
+def _turn_start(messages: list[ModelMessage], limit: int) -> int:
+    """The index of the last user prompt before `limit`, where a turn starts; 0 when there is none."""
+    for index in range(limit - 1, 0, -1):
+        message = messages[index]
+        if isinstance(message, ModelRequest) and any(isinstance(part, UserPromptPart) for part in message.parts):
+            return index
+    return 0
+
+
 @dataclass
 class Gateway(AbstractCapability[RunDeps]):
     async def resolve_model_id(self, ctx: ModelResolutionContext[RunDeps], *, model_id: str) -> Model | None:
@@ -81,39 +182,7 @@ class Gateway(AbstractCapability[RunDeps]):
         if prefix != MODEL_PREFIX:
             return None
         connection_id, _, model = rest.partition(":")
-        deps = ctx.deps
-        async with transaction(deps.engine, deps.identity) as connection:
-            row = (
-                await connection.execute(
-                    text(
-                        "SELECT c.id, c.kind, c.base_url, c.location, c.api_key_ciphertext, c.private_network, m.tools"
-                        " FROM connections c JOIN connection_models m ON m.connection_id = c.id"
-                        " WHERE c.id = :id AND m.model = :model"
-                    ),
-                    {"id": uuid.UUID(connection_id), "model": model},
-                )
-            ).one_or_none()
-        if row is None:
-            raise ModelUnavailableError("the connection no longer offers the model")
-        if not row.private_network and not str(row.base_url).startswith("https://"):
-            raise ModelUnavailableError("the connection's address is not allowed")
-        api_key = NO_API_KEY
-        if row.api_key_ciphertext is not None:
-            api_key = decrypt(deps.secret_key, row.id, bytes(row.api_key_ciphertext))
-        # A model known not to call tools runs without them; an unknown one is given them (MOD-014).
-        deps.tools = row.tools is not False
-        deps.location = row.location
-        # Addresses not set by the instance admin connect only to checked public addresses,
-        # without redirects (MOD-009, ADR-0061).
-        http_client = None if row.private_network else tenant_http_client()
-        if row.kind == "openrouter":
-            # A client of our own: the provider would add attribution headers from the environment.
-            # The SDK's signature names httpx2, and it also accepts a legacy httpx client, as here.
-            legacy_client = cast("Any", http_client)
-            client = AsyncOpenAI(base_url=row.base_url, api_key=api_key, http_client=legacy_client)
-            return OpenRouterModel(model, provider=OpenRouterProvider(openai_client=client))
-        provider = OpenAIProvider(base_url=row.base_url, api_key=api_key, http_client=http_client)
-        return OpenAIChatModel(model, provider=provider)
+        return await connection_model(ctx.deps, uuid.UUID(connection_id), model)
 
     async def prepare_tools(self, ctx: RunContext[RunDeps], tool_defs: list[ToolDefinition]) -> list[ToolDefinition]:
         return tool_defs if ctx.deps.tools else []
@@ -123,6 +192,7 @@ class Gateway(AbstractCapability[RunDeps]):
     ) -> ModelRequestContext:
         # The user's message is kept even if the run stops before the answer.
         await store_messages(ctx.deps, ctx.messages[ctx.deps.history_length :])
+        request_context.messages = await _compacted(ctx, list(request_context.messages))
         return request_context
 
     async def after_model_request(
@@ -130,8 +200,86 @@ class Gateway(AbstractCapability[RunDeps]):
     ) -> ModelResponse:
         deps = ctx.deps
         await store_messages(deps, [*ctx.messages[deps.history_length :], response])
-        await _record_usage(deps, ctx.run_step, response)
+        await record_usage(deps, _ledger_id(deps.run_id, ctx.run_step), response)
+        await _report_usage(deps, response)
         return response
+
+
+async def _compacted(ctx: RunContext[RunDeps], messages: list[ModelMessage]) -> list[ModelMessage]:
+    """The history the model receives: the oldest turns summarized once it would fill the window (AGT-016).
+
+    Only the model sees the summary; it is kept as a checkpoint of the run, and
+    the stored conversation never changes (ADR-0041, ADR-0073). Replacing the
+    request's messages leaves the run's own history whole, so later requests
+    of the run reuse the summary.
+    """
+    deps = ctx.deps
+    if deps.compacted is not None:
+        cut, summary = deps.compacted
+        return [*summary, *messages[cut:]]
+    if _estimated_tokens(messages) <= deps.context_window * COMPACTION_SHARE:
+        return messages
+    cut = _turn_start(messages, deps.history_length)
+    model = ctx.model
+    if cut == 0 or not isinstance(model, Model):
+        return messages
+    transcript = "\n\n".join(said for message in messages[:cut] if (said := readable_text(message)))
+    try:
+        response = await model.request(
+            [ModelRequest(parts=[UserPromptPart(SUMMARY_PROMPT + transcript)])], None, ModelRequestParameters()
+        )
+    except Exception:
+        # Without a summary, the request goes as it is; the model may then see less than all of it.
+        logger.warning("run %s could not be compacted", deps.run_id, exc_info=True)
+        return messages
+    deps.compactions += 1
+    await record_usage(deps, uuid.uuid5(deps.run_id, f"compaction-{deps.compactions}"), response, "compaction")
+    # A request and its answer: two requests in a row would be merged into one.
+    summary: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart("Summary of the conversation so far:\n" + readable_text(response))]),
+        ModelResponse(parts=[TextPart("Noted. I will continue from this summary.")]),
+    ]
+    deps.compacted = (cut, summary)
+    checkpoint = ModelMessagesTypeAdapter.dump_python([*summary, *messages[cut : deps.history_length]], mode="json")
+    async with transaction(deps.engine, deps.identity) as connection:
+        await connection.execute(
+            text(
+                "INSERT INTO compaction_checkpoints (run_id, tenant_id, owner_id, conversation_id, messages,"
+                " created_at) VALUES (:run_id, :tenant_id, :owner_id, :conversation_id,"
+                " CAST(:messages AS jsonb), now()) ON CONFLICT (run_id) DO NOTHING"
+            ),
+            {
+                "run_id": deps.run_id,
+                "tenant_id": deps.identity.tenant_id,
+                "owner_id": deps.identity.user_id,
+                "conversation_id": deps.conversation_id,
+                "messages": json.dumps(checkpoint),
+            },
+        )
+    return [*summary, *messages[cut:]]
+
+
+async def _report_usage(deps: RunDeps, response: ModelResponse) -> None:
+    """The context in use and the run's tokens and cost so far, as an AG-UI event (MOD-007, ADR-0073)."""
+    usage = response.usage
+    deps.input_tokens += usage.input_tokens or 0
+    deps.output_tokens += usage.output_tokens or 0
+    if deps.emit is None:
+        return
+    cost = None if deps.cost is None else {"amount": amount(deps.cost), "currency": deps.currency}
+    await deps.emit(
+        {
+            "type": "CUSTOM",
+            "name": "mzm.usage",
+            "value": {
+                "context_window": deps.context_window,
+                "context_tokens": usage.input_tokens or 0,
+                "input_tokens": deps.input_tokens,
+                "output_tokens": deps.output_tokens,
+                "cost": cost,
+            },
+        }
+    )
 
 
 def _cost(deps: RunDeps, response: ModelResponse) -> tuple[Decimal | None, str | None, str]:
@@ -150,20 +298,27 @@ def _cost(deps: RunDeps, response: ModelResponse) -> tuple[Decimal | None, str |
     return Decimal(str(estimate.total_price)), "USD", "catalog"
 
 
-async def _record_usage(deps: RunDeps, request_number: int, response: ModelResponse) -> None:
+async def record_usage(deps: RunDeps, entry_id: uuid.UUID, response: ModelResponse, purpose: str = "run") -> None:
+    """Record a model request in the cost ledger, once, and add its cost to the run's (MOD-006)."""
     cost, currency, price_source = _cost(deps, response)
+    if cost is None:
+        deps.cost = None
+    elif deps.cost is not None:
+        deps.cost += cost
+        deps.currency = currency or deps.currency
     usage = response.usage
     async with transaction(deps.engine, deps.identity) as connection:
         await connection.execute(
             text(
                 "INSERT INTO usage_ledger (id, tenant_id, owner_id, conversation_id, run_id, purpose, provider, model,"
                 " input_tokens, cached_input_tokens, cache_write_tokens, output_tokens, cost, currency, price_source,"
-                " created_at) VALUES (:id, :tenant_id, :owner_id, :conversation_id, :run_id, 'run', :provider,"
+                " created_at) VALUES (:id, :tenant_id, :owner_id, :conversation_id, :run_id, :purpose, :provider,"
                 " :model, :input, :cached, :cache_write, :output, :cost, :currency, :price_source, now())"
                 " ON CONFLICT (id) DO NOTHING"
             ),
             {
-                "id": _ledger_id(deps.run_id, request_number),
+                "id": entry_id,
+                "purpose": purpose,
                 "tenant_id": deps.identity.tenant_id,
                 "owner_id": deps.identity.user_id,
                 "conversation_id": deps.conversation_id,
@@ -191,8 +346,8 @@ async def store_messages(deps: RunDeps, messages: list[ModelMessage]) -> None:
             await connection.execute(
                 text(
                     "INSERT INTO conversation_messages (run_id, seq, tenant_id, owner_id, conversation_id, message,"
-                    " created_at) VALUES (:run_id, :seq, :tenant_id, :owner_id, :conversation_id,"
-                    " CAST(:message AS jsonb), now()) ON CONFLICT (run_id, seq) DO NOTHING"
+                    " text, created_at) VALUES (:run_id, :seq, :tenant_id, :owner_id, :conversation_id,"
+                    " CAST(:message AS jsonb), :text, now()) ON CONFLICT (run_id, seq) DO NOTHING"
                 ),
                 {
                     "run_id": deps.run_id,
@@ -201,5 +356,10 @@ async def store_messages(deps: RunDeps, messages: list[ModelMessage]) -> None:
                     "owner_id": deps.identity.user_id,
                     "conversation_id": deps.conversation_id,
                     "message": json.dumps(message),
+                    "text": readable_text(messages[seq - 1]),
                 },
             )
+        # The list orders conversations by their latest message (CNV-008).
+        await connection.execute(
+            text("UPDATE conversations SET last_message_at = now() WHERE id = :id"), {"id": deps.conversation_id}
+        )

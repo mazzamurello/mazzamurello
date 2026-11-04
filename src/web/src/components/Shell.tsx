@@ -1,41 +1,19 @@
 import { LogOut, Menu as MenuIcon, Plus, SlidersHorizontal, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, NavLink, Outlet, useLocation } from "react-router";
+import { Link, Outlet, useLocation, useMatch } from "react-router";
 
-import type { Conversation, User } from "../api/client";
-import { useConversations } from "../conversations";
+import type { User } from "../api/client";
+import { useConversation } from "../conversations";
+import { formatMoney, useUsage } from "../costs";
 import { useSignOut } from "../session";
-import { ConversationMenu } from "./ConversationMenu";
+import { ConversationList } from "./ConversationList";
 import { Sprite } from "./Sprite";
-
-const DAY = 24 * 60 * 60 * 1000;
-
-/** Conversations by how recently they changed: today, yesterday, the past week, older. */
-function grouped(conversations: Conversation[]): [string, Conversation[]][] {
-  const midnight = new Date();
-  midnight.setHours(0, 0, 0, 0);
-  const groups = new Map<string, Conversation[]>();
-  for (const conversation of conversations) {
-    const updated = new Date(conversation.updated_at).getTime();
-    const key =
-      updated >= midnight.getTime()
-        ? "today"
-        : updated >= midnight.getTime() - DAY
-          ? "yesterday"
-          : updated >= midnight.getTime() - 7 * DAY
-            ? "week"
-            : "older";
-    groups.set(key, [...(groups.get(key) ?? []), conversation]);
-  }
-  return [...groups.entries()];
-}
 
 /** The conversation list beside the conversation; on phones the list slides over it. */
 export function Shell({ me }: { me: User }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const conversations = useConversations();
   const signOut = useSignOut();
   const location = useLocation();
   // Close the list on phones after choosing a conversation.
@@ -44,8 +22,6 @@ export function Shell({ me }: { me: User }) {
     setShownFor(location.pathname);
     setOpen(false);
   }
-  const groupName = (key: string) =>
-    key === "today" ? t("shell.today") : key === "yesterday" ? t("shell.yesterday") : key === "week" ? t("shell.week") : t("shell.older");
 
   return (
     <div className="flex h-full bg-bg text-fg">
@@ -69,27 +45,8 @@ export function Shell({ me }: { me: User }) {
           </span>
           {t("shell.newChat")}
         </Link>
-        <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto">
-          {conversations.data?.length === 0 && <p className="px-2.5 py-2 text-sm text-muted">{t("shell.empty")}</p>}
-          {grouped(conversations.data ?? []).map(([key, items]) => (
-            <section key={key}>
-              <h2 className="mx-2.5 mt-3.5 mb-1 text-xs font-semibold text-faint">{groupName(key)}</h2>
-              <ul>
-                {items.map((conversation) => (
-                  <li key={conversation.id} className="group flex items-center rounded-[9px] hover:bg-hover">
-                    <NavLink
-                      to={`/c/${conversation.id}`}
-                      className={({ isActive }) => `min-w-0 flex-1 truncate rounded-[9px] px-2.5 py-[7px] text-sm ${isActive ? "bg-hover font-semibold" : ""}`}
-                    >
-                      {conversation.title || t("shell.untitled")}
-                    </NavLink>
-                    <ConversationMenu conversation={conversation} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+        <ConversationList />
+        <UsageSummary />
         <div className="flex flex-col gap-0.5 border-t border-line pt-2">
           <Link to="/settings" className="flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-sm hover:bg-hover">
             <SlidersHorizontal className="size-[18px]" aria-hidden="true" />
@@ -117,6 +74,41 @@ export function Shell({ me }: { me: User }) {
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+/** What the open conversation cost, and the last 24 hours and 30 days (UX-008). */
+function UsageSummary() {
+  const { t } = useTranslation();
+  const usage = useUsage();
+  const open = useMatch("/c/:conversationId");
+  const conversationId = open?.params.conversationId;
+  const rows: [string, string][] = [];
+  if (usage.data) {
+    rows.push([t("usage.day"), formatMoney(usage.data.last_24_hours)], [t("usage.month"), formatMoney(usage.data.last_30_days)]);
+  }
+  return (
+    <dl className="mx-1 mb-1 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-xl bg-hover px-3 py-2 text-[12.5px] tabular-nums">
+      {conversationId && <ConversationCost id={conversationId} />}
+      {rows.map(([label, value]) => (
+        <div key={label} className="contents">
+          <dt className="text-muted">{label}</dt>
+          <dd className="text-right font-semibold">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ConversationCost({ id }: { id: string }) {
+  const { t } = useTranslation();
+  const conversation = useConversation(id);
+  if (!conversation.data) return null;
+  return (
+    <div className="contents">
+      <dt className="text-muted">{t("usage.conversation")}</dt>
+      <dd className="text-right font-semibold">{formatMoney(conversation.data.cost)}</dd>
     </div>
   );
 }

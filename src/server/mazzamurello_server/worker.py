@@ -19,7 +19,8 @@ from dbos import DBOS, DBOSConfig
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
-from pydantic_ai.messages import AgentStreamEvent, ModelMessage, ModelMessagesTypeAdapter
+from pydantic_ai.messages import AgentStreamEvent, ModelMessage, ModelMessagesTypeAdapter, ModelRequest, UserPromptPart
+from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.ui.ag_ui import AGUIEventStream
 from pydantic_ai_harness.filesystem import FileSystem
 from pydantic_ai_harness.shell import Shell
@@ -37,7 +38,16 @@ from mazzamurello_server.durable import (
     RUN_QUEUE,
     RUN_WORKFLOW,
 )
-from mazzamurello_server.gateway import Gateway, ModelUnavailableError, RunDeps, model_reference, store_messages
+from mazzamurello_server.gateway import (
+    Gateway,
+    ModelUnavailableError,
+    RunDeps,
+    connection_model,
+    model_reference,
+    readable_text,
+    record_usage,
+    store_messages,
+)
 from mazzamurello_server.sandbox import SandboxWorkspace
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
@@ -138,8 +148,21 @@ async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.
         return []
     async with transaction(_engine(), identity) as connection:
         path = await path_runs(connection, conversation_id, parent)
+        # The latest compaction on the path replaces the history before its run (ADR-0041).
+        checkpoint = (
+            await connection.execute(
+                text("SELECT run_id, messages FROM compaction_checkpoints WHERE run_id = ANY(:ids)"),
+                {"ids": [run.id for run in path]},
+            )
+        ).all()
+        checkpoints = {row.run_id: row.messages for row in checkpoint}
+        start = max((index for index, run in enumerate(path) if run.id in checkpoints), default=None)
         stored = await stored_messages(connection, [run.id for run in path])
-    return [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
+    history: list[ModelMessage] = []
+    if start is not None:
+        history = list(ModelMessagesTypeAdapter.validate_python(checkpoints[path[start].id]))
+        path = path[start:]
+    return history + [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
 
 
 def _error_code(error: BaseException) -> str:
@@ -182,6 +205,7 @@ async def run_workflow(serialized_input: str) -> None:
         model=attribution.model_name or "",
         sandboxd_url=_WORKER.sandboxd_url,
         sandboxd_token=_WORKER.sandboxd_token,
+        emit=lambda event: _write(run.run_id, event),
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
     _ENCODERS[run.run_id] = encoder
@@ -234,6 +258,53 @@ async def _execute(
     async for event in encoder.after_stream():
         await _write(run.run_id, _encoded(event))
     await _set_status(identity, deps.run_id, "completed")
+    if run.parent_run_id is None:
+        await _title(run, deps, str(result.output))
+
+
+TITLE_PROMPT = (
+    "Write a title of at most six words for this conversation, in its language. Answer with the title only,"
+    " without quotes.\n\n"
+)
+TITLE_CHARS = 80
+
+
+@DBOS.step()
+async def _title(run: RunWorkflowInput, deps: RunDeps, answer: str) -> None:
+    """Name an untitled conversation after its first exchange, by its own model (CNV-006, ADR-0073)."""
+    async with transaction(_engine(), deps.identity) as connection:
+        title = (
+            await connection.execute(
+                text("SELECT title FROM conversations WHERE id = :id"), {"id": deps.conversation_id}
+            )
+        ).scalar_one_or_none()
+    if title != "":
+        return
+    try:
+        model = await connection_model(deps, uuid.UUID(run.connection_id), run.model)
+        response = await model.request(
+            [
+                ModelRequest(
+                    parts=[UserPromptPart(f"{TITLE_PROMPT}User: {run.user_text}\n\nAssistant: {answer[:2000]}")]
+                )
+            ],
+            None,
+            ModelRequestParameters(),
+        )
+    except Exception as error:
+        # A title is a courtesy: whatever goes wrong, the run it follows stays complete.
+        logger.warning("run %s got no title: %s", run.run_id, _error_code(error))
+        return
+    await record_usage(deps, uuid.uuid5(deps.run_id, "title"), response, "title")
+    lines = [line.strip(" \t\"'*#") for line in readable_text(response).splitlines() if line.strip()]
+    if not lines:
+        return
+    async with transaction(_engine(), deps.identity) as connection:
+        # Unless the user named it meanwhile.
+        await connection.execute(
+            text("UPDATE conversations SET title = :title WHERE id = :id AND title = ''"),
+            {"title": lines[0][:TITLE_CHARS], "id": deps.conversation_id},
+        )
 
 
 def _reason(error: BaseException) -> str | None:

@@ -17,6 +17,14 @@ export interface LiveRun {
   errorCode?: string;
   // What the provider said, when it refused the request (MOD-014).
   reason?: string;
+  // The context in use and the run's cost so far, after each model response (MOD-007).
+  usage?: RunUsage;
+}
+
+export interface RunUsage {
+  context_window: number;
+  context_tokens: number;
+  cost: { amount: string; currency: string } | null;
 }
 
 /** Fold one event into the run's parts. */
@@ -47,6 +55,11 @@ export function apply(run: LiveRun, event: RunEvent): LiveRun {
       }
       break;
     }
+    case "CUSTOM":
+      if (event.name === "mzm.usage" && typeof event.value === "object" && event.value !== null) {
+        return { ...run, parts, usage: event.value as RunUsage };
+      }
+      break;
     case "RUN_FINISHED":
       return { ...run, parts, status: "finished" };
     case "RUN_ERROR": {
