@@ -97,7 +97,7 @@ Rationale: persona P4.
 
 ## UX-008: Live context and cost
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
