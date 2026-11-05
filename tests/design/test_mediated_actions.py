@@ -1,4 +1,4 @@
-"""The agent acts only through mediated tools, and nothing runs on the host for users (AGT-001, OPS-004)."""
+"""The agent acts only through mediated tools, and nothing runs on the host for users (AGT-001, AGT-013, OPS-004)."""
 
 from __future__ import annotations
 
@@ -27,6 +27,9 @@ ALLOWED_CAPABILITIES = {
 }
 # Tools the provider runs: only the search over the agent's own tools.
 ALLOWED_NATIVE_TOOLS = {"tool_search"}
+# The agent's own tools: web search through the instance's search service,
+# and page reading in the user's sandbox (AGT-020, AGT-021, ADR-0075).
+ALLOWED_OWN_TOOLS = {"web_search", "read_page"}
 # The only places a component runs a command on the host, by file and
 # enclosing function. Neither runs anything a user or the agent chose.
 ALLOWED_HOST_COMMANDS = {
@@ -55,13 +58,13 @@ def test_the_agent_has_only_mediated_capabilities() -> None:
     assert capabilities == ALLOWED_CAPABILITIES
 
 
-@pytest.mark.spec("AGT-001")
-def test_the_agent_has_no_tools_of_its_own_and_no_provider_tools_that_act() -> None:
+@pytest.mark.spec("AGT-001", "AGT-013")
+def test_the_agent_has_only_its_web_tools_and_no_provider_tools_that_act() -> None:
     tools = [tool for capability in worker.agent.root_capability.capabilities for tool in capability.get_native_tools()]
     # A native tool chosen at run time could be any tool: none is allowed.
     assert all(isinstance(tool, AbstractNativeTool) for tool in tools)
     assert {tool.kind for tool in tools if isinstance(tool, AbstractNativeTool)} <= ALLOWED_NATIVE_TOOLS
-    assert list(worker.agent._function_toolset.tools) == []  # pyright: ignore[reportPrivateUsage]
+    assert set(worker.agent._function_toolset.tools) == ALLOWED_OWN_TOOLS  # pyright: ignore[reportPrivateUsage]
     assert worker.agent._user_toolsets == []  # pyright: ignore[reportPrivateUsage]
 
 

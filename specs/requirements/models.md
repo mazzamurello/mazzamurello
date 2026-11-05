@@ -184,3 +184,20 @@ from the conversation alone, and clients MUST say so when the model is
 chosen and while the conversation uses it. When a model's server refuses
 tools that it was given, the run MUST fail with that reason instead of
 continuing without them (ADR-0069).
+
+## MOD-015: Requests a model refuses
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, e2e
+
+When a model or its provider refuses to answer a request, for example
+because a content filter flagged it, the run MUST fail with the code
+`model.refused` and the reason the provider gave, if any, and clients MUST
+show both to the user in the conversation, also after it is reloaded
+(UX-014). The conversation MUST stay usable: the user can rephrase the
+message or choose another model.
+
+Rationale: a refusal is the model's decision, not a fault of the system,
+and the user can only act on it if they see it.

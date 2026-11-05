@@ -92,6 +92,7 @@ new entry here first (ADR-0005).
 | Isolation runtime | The container runtime that enforces sandbox isolation: gVisor (ADR-0023). |
 | Egress policy | The network rules that decide which destinations a sandbox may reach. |
 | Declared destination | An external service the control plane may connect to, for one purpose, as listed in ADR-0072; the control plane connects to no other (OBS-006). |
+| Search service | The instance's own metasearch engine, SearXNG, which the worker asks for web search results and which alone queries public search engines (ADR-0075). |
 
 ## Models
 

@@ -180,9 +180,14 @@ MUST NOT move when the device asks for reduced motion (ADR-0070).
 - **Phase:** 1
 - **Verification:** e2e
 
-Clients MUST show errors in a notice that says what went wrong and how to fix
-it, announced to assistive technologies, and SHOULD show the sprite holding a
-sign beside it (ADR-0070).
+Clients MUST show errors so that they say what went wrong and how to fix it,
+announced to assistive technologies, and SHOULD show the sprite holding a sign
+beside them (ADR-0070). An error that ended a run MUST be shown in the
+conversation, in place of the run's answer, with the reason the model or its
+provider gave (MOD-015), and MUST stay there when the conversation is reloaded
+or opened on another device: it is part of the conversation, not a notice to
+dismiss. The reason stays too when the run's stored answer keeps it, as a
+refusal's does. Other errors are shown in a notice.
 
 Rationale: personas P2 and P4.
 

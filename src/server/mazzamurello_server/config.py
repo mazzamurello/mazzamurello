@@ -29,7 +29,14 @@ API_VARIABLES = frozenset(
     }
 )
 WORKER_VARIABLES = frozenset(
-    {"MZM_DATABASE_URL", "MZM_SECRET_KEY", "MZM_RUN_RETENTION_DAYS", "MZM_SANDBOXD_URL", "MZM_SANDBOXD_TOKEN"}
+    {
+        "MZM_DATABASE_URL",
+        "MZM_SECRET_KEY",
+        "MZM_RUN_RETENTION_DAYS",
+        "MZM_SANDBOXD_URL",
+        "MZM_SANDBOXD_TOKEN",
+        "MZM_SEARCH_URL",
+    }
 )
 MINIMUM_DRIVER_TOKEN_LENGTH = 32
 SECRET_KEY_BYTES = 32
@@ -61,6 +68,8 @@ class WorkerConfiguration:
     run_retention_days: int
     sandboxd_url: str
     sandboxd_token: str
+    # Empty when the instance has no search service (AGT-020).
+    search_url: str = ""
 
 
 def _database_url(environment: Mapping[str, str]) -> str:
@@ -131,12 +140,16 @@ def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfigura
     if not days.isdigit() or not 1 <= int(days) <= 3650:
         raise ConfigurationError("MZM_RUN_RETENTION_DAYS must be a number of days from 1 to 3650")
     url, token = _sandbox_driver(environment)
+    search_url = environment.get("MZM_SEARCH_URL", "")
+    if search_url and not search_url.startswith(("http://", "https://")):
+        raise ConfigurationError("MZM_SEARCH_URL must be an http:// or https:// URL")
     return WorkerConfiguration(
         database_url=_database_url(environment),
         secret_key=_secret_key(environment),
         run_retention_days=int(days),
         sandboxd_url=url,
         sandboxd_token=token,
+        search_url=search_url.rstrip("/"),
     )
 
 
