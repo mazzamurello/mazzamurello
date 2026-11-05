@@ -108,6 +108,7 @@ beyond keeping them configurable and updatable.
 | T-30 | A stolen device credential lets an attacker pose as the device, receive its tool calls and return forged results | X4 | DEV-001, DEV-002 |
 | T-31 | A tenant admin uses connection tests to probe the household's network, or to read what internal services answer, through the details of failed steps | X2 | MOD-009, MOD-013 |
 | T-32 | A dependency or an asset of the web app contacts a third party at run time, telling it who uses the instance and when, or making the instance depend on it | X5 | OBS-001, OBS-006 |
+| T-33 | Injected instructions plant files or programs in a user's sandbox that steer or attack later runs, and are carried into backups | X1 | SBX-018, SBX-019, OPS-006, AGT-003, AGT-022 |
 
 ## The lethal trifecta in Mazzamurello
 

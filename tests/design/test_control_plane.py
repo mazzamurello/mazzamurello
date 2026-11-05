@@ -22,6 +22,12 @@ FORBIDDEN_IMPORTS = (
 )
 
 
+# The operator's backups run pg_dump, pg_restore and age in a container of their
+# own, on files of their own; the one function that does is pinned by
+# tests/design/test_mediated_actions.py (ADR-0077).
+OPERATOR_COMMANDS = {SERVER / "mazzamurello_server" / "backup.py": {"subprocess"}}
+
+
 def _python_files() -> list[Path]:
     return sorted((SERVER / "mazzamurello_server").rglob("*.py"))
 
@@ -52,7 +58,7 @@ def test_the_server_does_not_import_container_runtimes_or_run_host_commands() ->
     offenders = sorted(
         f"{path.relative_to(ROOT)}: {name}"
         for path in files
-        for name in _imports(path)
+        for name in _imports(path) - OPERATOR_COMMANDS.get(path, set())
         if any(name == forbidden or name.startswith(f"{forbidden}.") for forbidden in FORBIDDEN_IMPORTS)
     )
     assert not offenders, offenders

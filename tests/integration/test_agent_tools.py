@@ -89,10 +89,11 @@ def test_large_tool_output_reaches_the_model_bounded_and_stays_in_the_workspace(
     assert wait_for_run(server, token, run_id)["status"] == "completed"
     (result,) = _tool_results(default_model, command)
     assert result.count("a") < size
-    kept = sandboxes.sh(
-        str(account.tenant_id), str(account.id), "find /workspace -type f -size +50k -exec wc -c {} + | tail -1"
-    )
-    assert kept.stdout.strip(), "the full output is not in the workspace"
+    # The rest is in the scratch folder, which the sandbox discards, not in the workspace (ADR-0076).
+    tenant, user = str(account.tenant_id), str(account.id)
+    kept = sandboxes.sh(tenant, user, "find /scratch -type f -size +50k -exec wc -c {} + | tail -1")
+    assert kept.stdout.strip(), "the full output is not in the scratch folder"
+    assert not sandboxes.sh(tenant, user, "find /workspace -type f -size +50k").stdout.strip()
 
 
 @pytest.mark.spec("AGT-010", "MOD-001")

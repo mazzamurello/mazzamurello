@@ -82,7 +82,8 @@ new entry here first (ADR-0005).
 | Control plane | The server components that hold state and secrets: API, agent, memory, model gateway. Never executes user code. |
 | Execution plane | Where user code runs: the sandboxes. |
 | Sandbox | A per-user isolated execution environment with internet access and no access to local networks. |
-| Workspace | The persistent storage of a user's sandbox. |
+| Workspace | The persistent folder of a user's sandbox, `/workspace`, which keeps what the user wants to keep; everything else in the sandbox is discarded when it stops (ADR-0076). |
+| Scratch folder | The folder where a sandbox's commands start, `/scratch`, discarded with the sandbox (ADR-0076). |
 | Sandbox driver | The only component allowed to manage containers; exposes a minimal API to the control plane. |
 | Workspace backend | The control-plane component that presents a user's sandbox to Pydantic AI as a workspace, through the sandbox driver (ADR-0035). |
 | Sandbox bridge | The host network bridge, with a fixed interface name, to which all sandboxes attach; the egress table matches it (ADR-0021). |
@@ -93,6 +94,7 @@ new entry here first (ADR-0005).
 | Egress policy | The network rules that decide which destinations a sandbox may reach. |
 | Declared destination | An external service the control plane may connect to, for one purpose, as listed in ADR-0072; the control plane connects to no other (OBS-006). |
 | Search service | The instance's own metasearch engine, SearXNG, which the worker asks for web search results and which alone queries public search engines (ADR-0075). |
+| Backup archive | One encrypted file holding an instance's database, secret key and workspaces, restorable with its backup key (ADR-0077). |
 
 ## Models
 

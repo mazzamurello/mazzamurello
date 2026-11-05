@@ -149,7 +149,9 @@ use this procedure once per test session, before starting the worker
 where it is missing, these tests fail; they never skip.
 
 1. Build the images `deploy/images/sandbox` and `deploy/images/netguard`,
-   with tags chosen by the test suite.
+   with tags chosen by the test suite, unless `TEST_SANDBOX_IMAGE` and
+   `TEST_NETGUARD_IMAGE` name images already built from them, as CI does
+   with its build cache (ADR-0059); those are used and never removed.
 2. Start the network guard: the `netguard` image as a container named by the
    test suite, with `--network host` and `--cap-add NET_ADMIN`, and nothing
    else. Wait until Docker reports it healthy.
@@ -185,12 +187,21 @@ host (ADR-0054).
    that an operator's own `deploy/.env` is never used: `init` with
    `MZM_CONFIG_DIR` set to that directory, then `docker compose up` with
    `--env-file` and `MZM_PUBLISH` set to a free port of `127.0.0.1`, then
-   `setup`, with the answers on standard input.
+   `setup`, with the answers on standard input. When `TEST_DEPLOYMENT_IMAGES`
+   is `built`, CI has built the deployment's images with its build cache, and
+   `up` runs without `--build`.
 2. Sign in as the first administrator, configure the model the tests serve
    as the instance's default model, at an address of the host that the
    deployment's containers reach, and hold a conversation that runs a command
    in the sandbox.
-3. At the end, stop the sandbox driver, remove the sandboxes it created with
+3. In a module of its own, so that CI runs it beside the others, a second
+   deployment installed as in step 1 holds a conversation that leaves a file
+   in the workspace, through a connection with an API key; it is backed up
+   with the README's command, removed as step 4 does except for the archive
+   and the env file's backup key, installed again from scratch, and the
+   archive restored with the README's command: the conversation, the
+   connection's API key and the file are back (OPS-006).
+4. At the end, stop the sandbox driver, remove the sandboxes it created with
    their volumes and the sandbox bridge, then `docker compose down` with its
    volumes and images, and remove the temporary directory.
 

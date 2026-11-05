@@ -1,14 +1,17 @@
 """The instance's health (OPS-002, ADR-0054).
 
 `unavailable` when the database is unreachable or the sandbox driver
-refuses sandboxes, `degraded` when no household has a default model (ADR-0069),
-`ok` otherwise. Anonymous callers and members see only the status; instance
+refuses sandboxes, `degraded` when no household has a default model (ADR-0069)
+or when backups fail (OPS-011), `ok` otherwise. Anonymous callers and members see only the status; instance
 admins see every check.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, Literal, cast
 
 import httpx
 from fastapi import APIRouter, Request
@@ -24,6 +27,8 @@ router = APIRouter()
 
 type Status = Literal["ok", "degraded", "unavailable"]
 DRIVER_TIMEOUT_SECONDS = 5
+# How old the last successful backup, or the schedule's start, may be (OPS-011).
+BACKUP_MAX_AGE = timedelta(days=2)
 
 
 async def _database_and_model(engine: Engine) -> tuple[Status, Status]:
@@ -62,6 +67,27 @@ async def _driver(request: Request) -> dict[str, Status]:
     }
 
 
+def _backups(status_file: Path) -> Status:
+    """`degraded` when the backup service's status is missing, its newest attempt failed, or it is stale (OPS-011)."""
+    try:
+        loaded: object = json.loads(status_file.read_text())
+    except (OSError, ValueError):
+        return "degraded"
+    if not isinstance(loaded, dict):
+        return "degraded"
+    status = cast(dict[str, Any], loaded)
+    if status.get("outcome") == "failed":
+        return "degraded"
+    recent = datetime.now(UTC) - BACKUP_MAX_AGE
+    for key in ("last_success", "started"):
+        try:
+            if status.get(key) and datetime.fromisoformat(str(status[key])) >= recent:
+                return "ok"
+        except ValueError:
+            return "degraded"
+    return "degraded"
+
+
 async def _identity(request: Request, engine: Engine) -> Identity | None:
     """The caller, when signed in; health is also answered without a session."""
     if not request.headers.get("authorization") and not request.cookies.get(SESSION_COOKIE):
@@ -76,9 +102,12 @@ async def _identity(request: Request, engine: Engine) -> Identity | None:
 async def get_health(request: Request, engine: Engine) -> JSONResponse:
     database, model = await _database_and_model(engine)
     checks: dict[str, Status] = {"database": database, **await _driver(request), "model_gateway": model}
+    status_file: Path | None = request.app.state.configuration.backup_status
+    if status_file is not None:
+        checks["backups"] = _backups(status_file)
     if database == "unavailable" or checks["sandbox_driver"] != "ok":
         status: Status = "unavailable"
-    elif model != "ok":
+    elif model != "ok" or checks.get("backups", "ok") != "ok":
         status = "degraded"
     else:
         status = "ok"

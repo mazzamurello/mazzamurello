@@ -36,7 +36,10 @@ TEST_LIMITS = {
     "MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS": "8",
     "MZM_SANDBOX_MAX_OUTPUT_BYTES": "65536",
     "MZM_SANDBOX_IDLE_MINUTES": "30",
+    "MZM_SANDBOX_WORKSPACE_QUOTA_MB": "8",
 }
+# The workspace quota above, in bytes (SBX-019).
+WORKSPACE_QUOTA_BYTES = 8 * 1024 * 1024
 
 
 def docker(*args: str, timeout: float = 120, check: bool = True) -> str:
@@ -59,6 +62,9 @@ class ExecResult:
     stderr: str
     timed_out: bool
     truncated: bool
+    # The workspace's size and quota after the command (SBX-019).
+    workspace_bytes: int | None = None
+    workspace_quota_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -100,17 +106,24 @@ class Driver:
             "".join(stderr),
             exit_object["timed_out"],
             exit_object["truncated"],
+            exit_object.get("workspace_bytes"),
+            exit_object.get("workspace_quota_bytes"),
         )
 
     def sh(self, tenant_id: str, user_id: str, command: str, **options: Any) -> ExecResult:
         return self.exec(tenant_id, user_id, {"shell_command": command} | options)
+
+    def stop(self, tenant_id: str, user_id: str) -> None:
+        with self.client() as client:
+            assert client.post(f"/sandboxes/{tenant_id}/{user_id}/stop").status_code == 204
 
     def sandbox_containers(self) -> list[dict[str, Any]]:
         """`docker inspect` of every container of the session's sandbox image."""
         ids = docker("ps", "-aq", "--filter", f"ancestor={self.image}").split()
         if not ids:
             return []
-        return cast(list[dict[str, Any]], json.loads(docker("inspect", *ids)))
+        # The driver removes sandboxes as they stop (SBX-018): one listed may be gone by now.
+        return cast(list[dict[str, Any]], json.loads(docker("inspect", *ids, check=False) or "[]"))
 
     def wait_until_ready(self, timeout: float = READY_TIMEOUT_SECONDS) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
@@ -171,7 +184,8 @@ def driver_environment(token: str, image: str, netguard: str, port: int, **overr
     }
 
 
-def _cleanup(image: str, guard_image: str, netguard: str, driver: Process | None) -> None:
+def _cleanup(image: str, removed: tuple[str, ...], netguard: str, driver: Process | None) -> None:
+    """Remove what the session created: its sandboxes, their volumes and bridge, and the images it built."""
     if driver is not None:
         driver.close()
     # Stopped, not killed: the guard removes its table from the host as it stops.
@@ -189,7 +203,8 @@ def _cleanup(image: str, guard_image: str, netguard: str, driver: Process | None
         if volumes:
             docker("volume", "rm", "-f", *volumes, check=False)
     docker("network", "rm", SANDBOX_NETWORK, check=False)
-    docker("rmi", "-f", image, guard_image, check=False)
+    if removed:
+        docker("rmi", "-f", *removed, check=False)
 
 
 _DRIVER = pytest.StashKey[Driver | BaseException]()
@@ -204,13 +219,19 @@ def start_sandboxes(config: pytest.Config) -> Driver:
         return cached
 
     suffix = secrets.token_hex(4)
-    image, guard_image = f"mazzamurello-test/sandbox:{suffix}", f"mazzamurello-test/netguard:{suffix}"
+    # Images CI built with its build cache are used as they are, and kept (ADR-0059).
+    prebuilt = os.environ.get("TEST_SANDBOX_IMAGE"), os.environ.get("TEST_NETGUARD_IMAGE")
+    image = prebuilt[0] or f"mazzamurello-test/sandbox:{suffix}"
+    guard_image = prebuilt[1] or f"mazzamurello-test/netguard:{suffix}"
     netguard = f"mazzamurello-test-netguard-{suffix}"
     holder: dict[str, Process] = {}
-    config.add_cleanup(lambda: _cleanup(image, guard_image, netguard, holder.get("driver")))
+    removed = tuple(name for name, given in zip((image, guard_image), prebuilt, strict=True) if not given)
+    config.add_cleanup(lambda: _cleanup(image, removed, netguard, holder.get("driver")))
     try:
-        _build("sandbox", image)
-        _build("netguard", guard_image)
+        if not prebuilt[0]:
+            _build("sandbox", image)
+        if not prebuilt[1]:
+            _build("netguard", guard_image)
         docker("run", "--detach", "--name", netguard, "--network", "host", "--cap-add", "NET_ADMIN", guard_image)
         _wait_healthy(netguard)
         token, port = secrets.token_urlsafe(32), _free_port()

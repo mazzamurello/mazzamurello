@@ -164,7 +164,8 @@ worker sends queries to the instance's search service, and nothing else
 
 A tool result larger than a configured limit MUST NOT be sent to the model in
 full. The model MUST receive a bounded excerpt and a way to read the rest,
-which is kept in the user's workspace (ADR-0043).
+which is kept in the sandbox's scratch folder until the sandbox stops
+(ADR-0043, ADR-0076).
 
 Rationale: command output and web pages can fill the context window in one
 call.
@@ -276,3 +277,17 @@ egress rules, and returns the page's title, final address and main text as
 Markdown, as untrusted content (AGT-003) bounded like other tool output
 (AGT-014). Other addresses MUST be refused. When the page cannot be read,
 the tool MUST tell the model why, and the run MUST go on (ADR-0075).
+
+## AGT-022: What the workspace keeps
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, eval
+
+The agent's instructions MUST explain that work happens in the scratch
+folder, which is discarded, and that `/workspace` keeps only what the user
+will want again: scripts, results and notes, each piece of work in its own
+folder with a `README.md` saying what it is and how to make it again, and
+not bulk data that can be fetched again. Evals MUST check that the agent
+keeps the right files (ADR-0076).

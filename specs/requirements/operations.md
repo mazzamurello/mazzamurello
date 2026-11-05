@@ -59,13 +59,17 @@ earlier version.
 
 ## OPS-006: Backup and restore
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
 
-Backup and restore of an instance MUST be documented, and CI MUST verify that
-a backup can be restored into a working instance.
+An operator command MUST back up an instance into one encrypted archive
+holding its database, its secret key and its users' workspaces, and another
+MUST restore it into a fresh installation with only the archive and its
+backup key; a single user's workspace MUST be restorable from an archive into
+a running instance. Backup and restore MUST be documented, and CI MUST verify
+that a backup can be restored into a working instance (ADR-0077).
 
 ## OPS-007: Verifiable release images
 
@@ -98,3 +102,25 @@ The system MUST run, with all its isolation guarantees, on a host without
 hardware virtualization support (no `/dev/kvm`), such as a cloud VM without
 nested virtualization. It MAY use hardware virtualization when available, for
 performance only.
+
+## OPS-010: Nightly backups
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+The deployment MUST back the instance up every day, at a time the instance
+admin can change, and keep a number of the newest archives the instance
+admin can change, 14 by default (ADR-0077).
+
+## OPS-011: Backups that fail are reported
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+The instance's health MUST be `degraded` when the newest backup attempt
+failed, or when the last successful backup is older than two days
+(ADR-0077).

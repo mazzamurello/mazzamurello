@@ -20,6 +20,7 @@ variable.
 | `MZM_SANDBOXD_URL` | yes | — | Base URL of the sandbox driver's API, for `/health` (ADR-0054). |
 | `MZM_SANDBOXD_TOKEN` | yes | — | The secret shared with the sandbox driver. |
 | `MZM_SECRET_KEY` | yes | — | 32 random bytes, base64url-encoded (for example `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Encrypts the API keys of connections (ADR-0051, ADR-0069). The API and the worker must share it; changing it makes stored API keys unusable. |
+| `MZM_BACKUP_STATUS` | no | empty | Path of the backup service's `status.json` (ADR-0077). When set, `/health` is `degraded` when the file is missing, when the newest attempt failed, or when neither the last success nor the schedule's start is within the last two days (OPS-011). |
 
 ## Worker
 
@@ -44,6 +45,33 @@ The `search` service runs SearXNG (ADR-0075) with the settings in
 instance admin changes the engines there, and restarts the service. The
 service reads no `MZM_*` variable and generates its own secret at start.
 
+## Backup service
+
+`python -m mazzamurello_server backup` makes one archive and exits;
+`backup --schedule` makes one every day at `MZM_BACKUP_TIME` and runs until
+stopped (ADR-0077, OPS-006, OPS-010). When the schedule starts, and after
+each attempt, it writes `status.json` into `MZM_BACKUP_DIR`: `{"started",
+"last_attempt", "last_success", "outcome", "archive", "error"}`, with times
+in UTC, `null` for what has not happened yet, and `outcome` `succeeded` or
+`failed`.
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `MZM_DATABASE_URL` | yes | — | The database URL, for PostgreSQL's superuser, so that row-level security hides nothing from `pg_dump`. |
+| `MZM_SECRET_KEY` | yes | — | The instance's secret key, which the archive holds. |
+| `MZM_BACKUP_KEY` | yes | — | The backup key: an age identity, `AGE-SECRET-KEY-1…`, whose recipient encrypts archives and which decrypts them. |
+| `MZM_SANDBOXD_URL`, `MZM_SANDBOXD_TOKEN` | yes | — | The sandbox driver, which exports workspaces (SBX-020). |
+| `MZM_BACKUP_DIR` | no | `/backups` | Where archives and `status.json` are written. |
+| `MZM_BACKUP_TIME` | no | `03:00` | When the daily backup starts, `HH:MM` in UTC. |
+| `MZM_BACKUP_KEEP` | no | `14` | How many of the newest archives are kept, from 1 to 365; older ones are deleted after a successful backup. |
+
+`python -m mazzamurello_server restore FILE` restores an archive into a
+fresh installation, decrypting it with `MZM_BACKUP_KEY`, which must be the
+key of the instance that made it; with `--config PATH` it writes the
+archive's secret key into that `.env` file. `restore --workspace
+USERNAME FILE` restores one user's workspace into a running instance. Both
+read the variables above.
+
 ## Sandbox driver
 
 `python -m mazzamurello_sandboxd` (ADR-0022, ADR-0053). It reaches Docker
@@ -66,7 +94,8 @@ it listens.
 | `MZM_SANDBOX_PROCESSES` | no | `512` | Processes per sandbox, from 16 to 65536, enforced as `RLIMIT_NPROC`. |
 | `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS` | no | `300` | The longest a command may run, from 1 to 86400. |
 | `MZM_SANDBOX_MAX_OUTPUT_BYTES` | no | `1048576` | The most output a command returns, from 1024 to 67108864. |
-| `MZM_SANDBOX_IDLE_MINUTES` | no | `30` | Minutes without commands before a sandbox is stopped, from 1 to 10080. |
+| `MZM_SANDBOX_WORKSPACE_QUOTA_MB` | no | `2048` | The workspace quota in MiB, from 1 to 1048576 (SBX-019). |
+| `MZM_SANDBOX_IDLE_MINUTES` | no | `30` | Minutes without commands before a sandbox is stopped and its container removed (SBX-018), from 1 to 10080. |
 
 The minimum gVisor release is `release-20261026.0` (SBX-017, ADR-0053).
 
@@ -80,8 +109,9 @@ interface `mzmsbx0` are fixed.
 ## Operator commands
 
 `python -m mazzamurello_server init --output PATH` writes a deployment's
-`.env` file with fresh random secrets, and refuses when `PATH` exists
-(ADR-0054). It reads no configuration.
+`.env` file with fresh random secrets (ADR-0054). When `PATH` exists, it adds
+only the secrets missing from it, such as a backup key, and
+changes nothing else. It reads no configuration.
 
 `python -m mazzamurello_server setup` creates the first tenant and its first
 user, instance admin and tenant admin, through `bootstrap_instance`
@@ -103,13 +133,15 @@ by `MZM_CONFIG_DIR` in the environment of the `docker compose` command,
 
 | Variable | Written by `init` | Meaning |
 |---|---|---|
-| `MZM_POSTGRES_PASSWORD` | yes | Password of PostgreSQL's superuser, used only by the database initialization. |
+| `MZM_POSTGRES_PASSWORD` | yes | Password of PostgreSQL's superuser, used by the database initialization, backups and restores. |
 | `MZM_OWNER_PASSWORD` | yes | Password of `mzm_owner`, used by migrations and `setup`. |
 | `MZM_APP_PASSWORD` | yes | Password of `mzm_app`, used by the API and the worker. |
 | `MZM_SECRET_KEY` | yes | As above. |
 | `MZM_SANDBOXD_TOKEN` | yes | As above. |
+| `MZM_BACKUP_KEY` | yes | As above. Keep a copy away from the server: without it, no archive can be restored. |
+| `MZM_BACKUP_DIR` | no | The host folder for archives, relative to `deploy/` or absolute; default `./backups`. |
 | `MZM_PUBLISH` | no | Where the API is published, `HOST:PORT`; default `127.0.0.1:8080`. |
-| `MZM_TRUSTED_PROXIES`, `MZM_RUN_RETENTION_DAYS`, `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE`, `MZM_SANDBOX_RESOLVER`, `MZM_SANDBOX_CPUS`, `MZM_SANDBOX_MEMORY_MB`, `MZM_SANDBOX_PROCESSES`, `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS`, `MZM_SANDBOX_MAX_OUTPUT_BYTES`, `MZM_SANDBOX_IDLE_MINUTES` | no | Passed to the services that read them, with the defaults above. |
+| `MZM_TRUSTED_PROXIES`, `MZM_RUN_RETENTION_DAYS`, `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE`, `MZM_SANDBOX_RESOLVER`, `MZM_SANDBOX_CPUS`, `MZM_SANDBOX_MEMORY_MB`, `MZM_SANDBOX_PROCESSES`, `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS`, `MZM_SANDBOX_MAX_OUTPUT_BYTES`, `MZM_SANDBOX_IDLE_MINUTES`, `MZM_SANDBOX_WORKSPACE_QUOTA_MB`, `MZM_BACKUP_TIME`, `MZM_BACKUP_KEEP` | no | Passed to the services that read them, with the defaults above. |
 
 ## Migrations
 

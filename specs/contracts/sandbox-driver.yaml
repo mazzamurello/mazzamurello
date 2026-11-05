@@ -61,8 +61,11 @@ paths:
       - $ref: "#/components/parameters/UserId"
     post:
       operationId: ensureSandbox
-      summary: Create or wake the user's sandbox (idempotent).
-      x-requirements: [SBX-001, SBX-002, SBX-012, SBX-015]
+      summary: Create the user's sandbox, or return it if it is running (idempotent).
+      description: |
+        A sandbox that is not running is always created anew from the
+        sandbox image, with the user's workspace (SBX-018, ADR-0076).
+      x-requirements: [SBX-001, SBX-002, SBX-012, SBX-015, SBX-018]
       responses:
         "200":
           description: The sandbox is running.
@@ -83,8 +86,10 @@ paths:
         Ensures the sandbox is running, then executes `argv` inside it. The
         response is a stream of newline-delimited JSON objects: zero or more
         `output` chunks followed by exactly one `exit` object. Output beyond
-        `max_output_bytes` is truncated and reported in the `exit` object.
-      x-requirements: [AGT-011, SBX-001, SBX-011]
+        `max_output_bytes` is truncated and reported in the `exit` object,
+        with the workspace's size and quota, measured after the command
+        (SBX-019).
+      x-requirements: [AGT-011, SBX-001, SBX-011, SBX-019]
       requestBody:
         required: true
         content:
@@ -150,11 +155,52 @@ paths:
       - $ref: "#/components/parameters/UserId"
     post:
       operationId: stopSandbox
-      summary: Stop the user's sandbox, keeping its workspace.
-      x-requirements: [SBX-001]
+      summary: Stop the user's sandbox and remove its container, keeping its workspace.
+      x-requirements: [SBX-001, SBX-018]
       responses:
         "204": { description: "Stopped, or was not running." }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /sandboxes/{tenant_id}/{user_id}/workspace:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+    get:
+      operationId: exportWorkspace
+      summary: Stream the user's workspace as a tar archive, for backups.
+      description: |
+        Regular files, directories and symbolic links, with their modes,
+        relative to the workspace root. A user without a workspace yields an
+        empty archive (SBX-020, ADR-0077).
+      x-requirements: [SBX-020]
+      responses:
+        "200":
+          description: The workspace.
+          content:
+            application/x-tar:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    put:
+      operationId: importWorkspace
+      summary: Replace the user's workspace with a tar archive, for restores.
+      description: |
+        Stops the user's sandbox, empties the workspace, and unpacks the
+        archive into it, running nothing from it. An entry with an absolute
+        path, a `..` segment, a link that leaves the workspace, or a type
+        other than a regular file, a directory or a symbolic link refuses the
+        whole archive with `422`, leaving the workspace empty (SBX-020).
+      x-requirements: [SBX-020]
+      requestBody:
+        required: true
+        content:
+          application/x-tar:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: The workspace was replaced. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
 components:
   securitySchemes:
@@ -258,7 +304,7 @@ components:
         started_at: { type: string, format: date-time }
         working_dir:
           type: string
-          description: Absolute, stable working directory of the workspace.
+          description: The directory commands start in, the scratch folder `/scratch`, outside the workspace (SBX-018).
 
     ExecRequest:
       type: object
@@ -304,10 +350,17 @@ components:
 
     ExecExit:
       type: object
-      required: [kind, exit_code, timed_out, truncated, duration_ms]
+      required: [kind, exit_code, timed_out, truncated, duration_ms, workspace_bytes, workspace_quota_bytes]
       additionalProperties: false
       properties:
         kind: { type: string, const: exit }
+        workspace_bytes:
+          type: integer
+          minimum: 0
+          description: The workspace's size after the command (SBX-019).
+        workspace_quota_bytes:
+          type: integer
+          minimum: 1
         exit_code:
           type: [integer, "null"]
           description: Null when the command was killed.
