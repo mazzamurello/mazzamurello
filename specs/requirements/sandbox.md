@@ -113,8 +113,9 @@ with sandboxes only through the sandbox driver's authenticated API.
 - **Phase:** 1
 - **Verification:** integration
 
-Each sandbox MUST have a persistent workspace that survives sandbox restarts
-and re-creation, so that installed software and files persist for the user.
+Each sandbox MUST have a persistent workspace, mounted at `/workspace`, that
+survives sandbox restarts and re-creation, so that the files the user wants
+to keep persist. Nothing else in the sandbox persists (SBX-018, ADR-0076).
 
 ## SBX-011: Resource limits
 
@@ -193,3 +194,44 @@ The sandbox driver MUST refuse to start sandboxes when the installed gVisor
 release is older than the minimum release documented by the project, and MUST
 tell the instance admin how to install a supported release from gVisor's
 official repository.
+
+## SBX-018: Ephemeral sandboxes
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+When a sandbox stops, for inactivity or on request, its container MUST be
+removed, so that the next command runs in a new one from the sandbox image:
+processes, installed software and every file outside `/workspace` are gone.
+Commands MUST start in a scratch folder, `/scratch`, outside the workspace
+(ADR-0076).
+
+Rationale: anything planted outside the workspace must not outlive the
+sandbox (T-33), and only what was deliberately kept is persistent.
+
+## SBX-019: Workspace quota
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+Each workspace MUST have a quota, configurable by the instance admin. After
+every command, the driver MUST report the workspace's size and quota, and
+the command's result MUST tell the agent when the workspace uses more than
+80% of its quota, or exceeds it (ADR-0076). Hard disk limits are SBX-016.
+
+## SBX-020: Workspace export and import
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+The sandbox driver MUST be able to stream a user's workspace as a tar
+archive, and to replace the workspace of a stopped sandbox with one, for
+backups (ADR-0077). The import MUST NOT run anything from the archive, and
+MUST refuse entries that would be written outside the workspace, such as
+absolute paths, `..` segments, links and device files.
