@@ -19,8 +19,15 @@ from typing import Any, cast
 from dbos import DBOS, DBOSConfig
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.durable_exec.dbos import DBOSDurability
-from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
-from pydantic_ai.messages import AgentStreamEvent, ModelMessage, ModelMessagesTypeAdapter, ModelRequest, UserPromptPart
+from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, ModelHTTPError
+from pydantic_ai.messages import (
+    AgentStreamEvent,
+    ModelMessage,
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    UserPromptPart,
+)
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.ui.ag_ui import AGUIEventStream
 from pydantic_ai_harness.filesystem import FileSystem
@@ -181,6 +188,8 @@ async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.
 def _error_code(error: BaseException) -> str:
     if isinstance(error, ModelUnavailableError):
         return "model.unavailable"
+    if isinstance(error, ContentFilterError):
+        return "model.refused"
     if isinstance(error, ModelHTTPError):
         return "model.request_failed"
     if isinstance(error, ModelAPIError):
@@ -265,7 +274,7 @@ async def _execute(
             run_id=run.run_id,
             conversation_id=run.conversation_id,
         )
-    except (ModelUnavailableError, ModelAPIError) as error:
+    except (ModelUnavailableError, ModelAPIError, ContentFilterError) as error:
         code = _error_code(error)
         logger.warning("run %s failed: %s", run.run_id, code)
         if run.run_id in _TITLES:
@@ -335,6 +344,8 @@ async def _name_conversation(run: RunWorkflowInput, deps: RunDeps) -> str | None
 
 def _reason(error: BaseException) -> str | None:
     """What the provider said, for a refused request: such as a model that cannot call tools (MOD-014)."""
+    if isinstance(error, ContentFilterError):
+        return _refusal(error)
     if not isinstance(error, ModelHTTPError):
         return None
     raw: object = error.body
@@ -345,6 +356,20 @@ def _reason(error: BaseException) -> str | None:
         if isinstance(message, str):
             return message[:REASON_CHARS]
     return str(error)[:REASON_CHARS]
+
+
+def _refusal(error: ContentFilterError) -> str | None:
+    """The reason a model or its provider gave for refusing to answer (MOD-015)."""
+    try:
+        responses = ModelMessagesTypeAdapter.validate_json(error.body or "[]")
+    except ValueError:
+        return None
+    for response in responses:
+        details = (response.provider_details if isinstance(response, ModelResponse) else None) or {}
+        reason = details.get("refusal") or details.get("block_reason")
+        if isinstance(reason, str) and reason:
+            return reason[:REASON_CHARS]
+    return None
 
 
 async def _write_error(run_id: str, code: str, reason: str | None = None) -> None:

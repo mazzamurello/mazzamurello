@@ -298,7 +298,7 @@ export function ConversationView() {
 
 function codeKey(error: unknown): string {
   const code = error instanceof ApiError ? error.code : "internal.error";
-  return ["model.unavailable", "model.request_failed", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
+  return ["model.unavailable", "model.request_failed", "model.refused", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
 }
 
 function explain(t: (key: string) => string, run: LiveRun): string {
