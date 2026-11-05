@@ -175,6 +175,23 @@ def test_only_the_api_is_published(deployment: Deployment) -> None:
     assert hosts <= {"127.0.0.1"}
 
 
+SEARCH_PROBE = (
+    "import urllib.request\n"
+    "try:\n"
+    "    urllib.request.urlopen('http://search:8080/healthz', timeout=5)\n"
+    "    print('search: reached')\n"
+    "except OSError:\n"
+    "    print('search: not reached')\n"
+)
+
+
+@pytest.mark.spec("AGT-020")
+def test_only_the_worker_reaches_the_search_service(deployment: Deployment) -> None:
+    for service, reachable in (("worker", True), ("api", False)):
+        result = deployment.compose("exec", "-T", service, "python", "-c", SEARCH_PROBE)
+        assert ("search: reached" in result) is reachable, f"{service}: {result}"
+
+
 @pytest.mark.spec("AUTH-007")
 def test_the_first_administrator_is_created_once_and_no_default_works(deployment: Deployment) -> None:
     token = _token(deployment)
