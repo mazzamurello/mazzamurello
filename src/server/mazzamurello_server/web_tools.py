@@ -2,7 +2,7 @@
 
 `web_search` sends the model's query to the search service, SearXNG, and
 nothing else: it never fetches an address. `read_page` runs the sandbox
-image's reader in the user's sandbox, which fetches the page under the
+image's reader in the conversation's sandbox, which fetches the page under the
 sandbox's egress rules. Both return untrusted content (AGT-003), which the
 tool output limits bound like any other result (AGT-014), and tell the model
 what went wrong instead of failing the run.
@@ -20,7 +20,7 @@ from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.workspaces import WorkspaceError
 
 from mazzamurello_server.gateway import RunDeps
-from mazzamurello_server.sandbox import SandboxBackend, SandboxDriver
+from mazzamurello_server.sandbox import backend_for
 
 MAX_RESULTS = 10
 SEARCH_TIMEOUT_SECONDS = 20
@@ -75,10 +75,7 @@ async def read_page(ctx: RunContext[RunDeps], url: str) -> str:
     """
     if urlsplit(url.strip()).scheme not in ("http", "https"):
         return "The page was not read: only http and https addresses can be read."
-    deps = ctx.deps
-    sandbox = SandboxBackend(
-        SandboxDriver(deps.sandboxd_url, deps.sandboxd_token), str(deps.identity.tenant_id), str(deps.identity.user_id)
-    )
+    sandbox = backend_for(ctx.deps)
     try:
         result = await sandbox.run([READER, url.strip()], timeout=READ_TIMEOUT_SECONDS)
     except WorkspaceError as error:

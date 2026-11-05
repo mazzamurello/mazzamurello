@@ -29,10 +29,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from mazzamurello_sandboxd.config import DriverConfiguration
 from mazzamurello_sandboxd.isolation import Isolation
+from mazzamurello_sandboxd.policy import SandboxId
 from mazzamurello_sandboxd.sandboxes import Exit, Output, Sandboxes
 from mazzamurello_sandboxd.workspaces import UnsafeArchiveError
 
 API_PREFIX = "/v1"
+# A conversation's sandbox (SBX-001, ADR-0078).
+SANDBOX = f"{API_PREFIX}/sandboxes/{{tenant_id}}/{{user_id}}/{{conversation_id}}"
 
 
 class DriverError(Exception):
@@ -66,6 +69,13 @@ class ExecRequest(BaseModel):
         return self
 
 
+class CopyRequest(BaseModel):
+    """The conversation, of the same tenant and user, whose workspace a fork copies (SBX-010)."""
+
+    model_config = ConfigDict(extra="forbid")
+    from_conversation_id: uuid.UUID
+
+
 def authenticate(request: Request) -> None:
     configuration: DriverConfiguration = request.app.state.configuration
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
@@ -75,6 +85,14 @@ def authenticate(request: Request) -> None:
 
 def isolation_of(request: Request) -> Isolation:
     return request.app.state.isolation
+
+
+def sandbox_of(tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID) -> SandboxId:
+    """The sandbox a request names, by its tenant, user and conversation."""
+    return SandboxId(tenant_id, user_id, conversation_id)
+
+
+type Addressed = Annotated[SandboxId, Depends(sandbox_of)]
 
 
 def ready(request: Request) -> Sandboxes:
@@ -141,20 +159,22 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
     async def health(isolation: Annotated[Isolation, Depends(isolation_of)]) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         return JSONResponse(isolation.state.health(), status_code=200 if isolation.state.ready else 503)
 
-    @app.post(f"{API_PREFIX}/sandboxes/{{tenant_id}}/{{user_id}}/ensure", dependencies=authenticated)
+    @app.post(f"{SANDBOX}/ensure", dependencies=authenticated)
     async def ensure(  # pyright: ignore[reportUnusedFunction]
-        tenant_id: uuid.UUID, user_id: uuid.UUID, sandboxes: Annotated[Sandboxes, Depends(ready)]
+        sandbox: Addressed,
+        sandboxes: Annotated[Sandboxes, Depends(ready)],
     ) -> dict[str, Any]:
-        return await sandboxes.ensure(tenant_id, user_id)
+        return await sandboxes.ensure(sandbox)
 
-    @app.post(f"{API_PREFIX}/sandboxes/{{tenant_id}}/{{user_id}}/exec", dependencies=authenticated)
+    @app.post(f"{SANDBOX}/exec", dependencies=authenticated)
     async def execute(  # pyright: ignore[reportUnusedFunction]
-        tenant_id: uuid.UUID, user_id: uuid.UUID, body: ExecRequest, sandboxes: Annotated[Sandboxes, Depends(ready)]
+        sandbox: Addressed,
+        body: ExecRequest,
+        sandboxes: Annotated[Sandboxes, Depends(ready)],
     ) -> StreamingResponse:
         argv = body.argv if body.argv is not None else ["sh", "-c", body.shell_command or ""]
         events = sandboxes.execute(
-            tenant_id,
-            user_id,
+            sandbox,
             argv,
             env=body.env,
             workdir=body.workdir,
@@ -172,19 +192,20 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
 
         return StreamingResponse(lines(), media_type="application/x-ndjson")
 
-    @app.post(f"{API_PREFIX}/sandboxes/{{tenant_id}}/{{user_id}}/stop", dependencies=authenticated)
-    async def stop(tenant_id: uuid.UUID, user_id: uuid.UUID, request: Request) -> Response:  # pyright: ignore[reportUnusedFunction]
-        await request.app.state.sandboxes.stop(tenant_id, user_id)
+    @app.post(f"{SANDBOX}/stop", dependencies=authenticated)
+    async def stop(sandbox: Addressed, request: Request) -> Response:  # pyright: ignore[reportUnusedFunction]
+        await request.app.state.sandboxes.stop(sandbox)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @app.get(f"{API_PREFIX}/sandboxes/{{tenant_id}}/{{user_id}}/workspace", dependencies=authenticated)
+    @app.get(f"{SANDBOX}/workspace", dependencies=authenticated)
     async def export_workspace(  # pyright: ignore[reportUnusedFunction]
-        tenant_id: uuid.UUID, user_id: uuid.UUID, sandboxes: Annotated[Sandboxes, Depends(ready)]
+        sandbox: Addressed,
+        sandboxes: Annotated[Sandboxes, Depends(ready)],
     ) -> FileResponse:
         folder = await asyncio.to_thread(_temporary_folder, "mzm-export-", None)
         archive = folder / "workspace.tar"
         try:
-            await sandboxes.export_workspace(tenant_id, user_id, archive)
+            await sandboxes.export_workspace(sandbox, archive)
         except BaseException:
             await asyncio.to_thread(shutil.rmtree, folder, True)
             raise
@@ -194,9 +215,11 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
             background=BackgroundTask(asyncio.to_thread, shutil.rmtree, folder, True),
         )
 
-    @app.put(f"{API_PREFIX}/sandboxes/{{tenant_id}}/{{user_id}}/workspace", dependencies=authenticated)
+    @app.put(f"{SANDBOX}/workspace", dependencies=authenticated)
     async def import_workspace(  # pyright: ignore[reportUnusedFunction]
-        tenant_id: uuid.UUID, user_id: uuid.UUID, request: Request, sandboxes: Annotated[Sandboxes, Depends(ready)]
+        sandbox: Addressed,
+        request: Request,
+        sandboxes: Annotated[Sandboxes, Depends(ready)],
     ) -> Response:
         folder = await asyncio.to_thread(_temporary_folder, "mzm-import-", None)
         archive = folder / "workspace.tar"
@@ -204,11 +227,39 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
             with archive.open("wb") as file:
                 async for chunk in request.stream():
                     await asyncio.to_thread(file.write, chunk)
-            await sandboxes.import_workspace(tenant_id, user_id, archive)
+            await sandboxes.import_workspace(sandbox, archive)
         except UnsafeArchiveError as error:
             raise DriverError(422, "driver.validation_failed", f"The archive is refused: {error}") from error
         except tarfile.TarError as error:
             raise DriverError(422, "driver.validation_failed", "The archive is not a tar archive") from error
+        finally:
+            await asyncio.to_thread(shutil.rmtree, folder, True)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.delete(f"{SANDBOX}/workspace", dependencies=authenticated)
+    async def delete_workspace(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed,
+        sandboxes: Annotated[Sandboxes, Depends(ready)],
+    ) -> Response:
+        await sandboxes.delete_workspace(sandbox)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.post(
+        f"{SANDBOX}/workspace/copy",
+        dependencies=authenticated,
+    )
+    async def copy_workspace(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed,
+        body: CopyRequest,
+        sandboxes: Annotated[Sandboxes, Depends(ready)],
+    ) -> Response:
+        folder = await asyncio.to_thread(_temporary_folder, "mzm-copy-", None)
+        try:
+            await sandboxes.copy_workspace(
+                sandbox,
+                SandboxId(sandbox.tenant_id, sandbox.user_id, body.from_conversation_id),
+                folder,
+            )
         finally:
             await asyncio.to_thread(shutil.rmtree, folder, True)
         return Response(status_code=status.HTTP_204_NO_CONTENT)

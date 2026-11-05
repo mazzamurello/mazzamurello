@@ -243,6 +243,10 @@ class Isolation:
         return b"".join(chunks).decode(errors="replace")
 
     async def startup(self) -> None:
+        # Sandboxes from before this start are not tracked: none is kept (SBX-018, ADR-0078).
+        removed = await self.sandboxes.stop_all()
+        if removed:
+            logger.info("removed %d sandboxes left from before the driver started", removed)
         await self.check_platform()
         await self.check_runtime()
         await self.check_egress()
