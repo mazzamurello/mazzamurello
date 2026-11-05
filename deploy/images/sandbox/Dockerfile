@@ -17,5 +17,7 @@ RUN python3 -m venv /opt/reader \
     && rm /opt/reader-requirements.txt
 COPY --chmod=0755 deploy/images/sandbox/mzm-read-page /usr/local/bin/mzm-read-page
 
-WORKDIR /workspace
+# Commands start in the scratch folder; only /workspace persists (ADR-0076).
+RUN mkdir -p /scratch /workspace
+WORKDIR /scratch
 CMD ["sleep", "infinity"]
