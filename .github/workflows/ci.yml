@@ -110,10 +110,11 @@ jobs:
           - part: end-to-end
             paths: tests/e2e
             budget: 150
-          # The web client in Chromium, and its unit tests (ADR-0067).
+          # The web client in Chromium, and its unit tests (ADR-0067). Its
+          # browser tests grew with the daily-use conversations (ADR-0073).
           - part: web
             paths: tests/web
-            budget: 120
+            budget: 150
     env:
       MAX_TEST_SECONDS: "30"
     steps:
