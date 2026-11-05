@@ -29,8 +29,11 @@ from pydantic_ai.workspaces import (
 from mazzamurello_server.gateway import RunDeps
 
 PROVIDER = "mazzamurello-sandbox"
-WORKING_DIR = "/workspace"
+# Commands start in the scratch folder; only /workspace persists (SBX-018, ADR-0076).
+WORKING_DIR = "/scratch"
 REQUEST_GRACE_SECONDS = 30
+# The share of its quota above which the agent is told how full the workspace is (SBX-019).
+QUOTA_WARNING_SHARE = 0.8
 
 
 @dataclass(frozen=True)
@@ -108,9 +111,27 @@ class SandboxBackend:
             raise WorkspaceTimeoutError("the command timed out", stdout="".join(stdout), stderr="".join(stderr))
         # A command killed by a signal reports the shell's convention for it.
         exit_code = exit_object["exit_code"]
+        if note := _quota_note(exit_object.get("workspace_bytes"), exit_object.get("workspace_quota_bytes")):
+            stderr.append(note)
         return CommandResult(
             exit_code=137 if exit_code is None else int(exit_code), stdout="".join(stdout), stderr="".join(stderr)
         )
+
+
+def _quota_note(used: object, quota: object) -> str | None:
+    """What the agent is told about a workspace near or over its quota (SBX-019), or nothing."""
+    if not isinstance(used, int) or not isinstance(quota, int) or quota <= 0 or used <= quota * QUOTA_WARNING_SHARE:
+        return None
+    sizes = f"{used / 1_048_576:.1f} MiB of its {quota / 1_048_576:.1f} MiB quota"
+    if used > quota:
+        return (
+            f"\n[The workspace, /workspace, exceeds its quota: {sizes}. Remove what the user does not need there,"
+            " or ask the user what to remove.]\n"
+        )
+    return (
+        f"\n[The workspace, /workspace, uses {sizes}. Keep there only what the user needs; remove what can be"
+        " made or fetched again.]\n"
+    )
 
 
 def _argv(command: Sequence[str]) -> Sequence[str]:

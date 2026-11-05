@@ -10,6 +10,8 @@ from mazzamurello_sandboxd.config import DriverConfiguration
 NETWORK = "mazzamurello-sandboxes"
 BRIDGE_INTERFACE = "mzmsbx0"
 WORKSPACE = "/workspace"
+# Where commands start: discarded with the sandbox, unlike the workspace (SBX-018, ADR-0076).
+SCRATCH = "/scratch"
 LABEL = "dev.mazzamurello.sandbox"
 MIB = 1024 * 1024
 
@@ -48,7 +50,7 @@ def container_config(configuration: DriverConfiguration, volume: str | None, lab
     return {
         "Image": configuration.image,
         "Cmd": ["sleep", "infinity"],
-        "WorkingDir": WORKSPACE,
+        "WorkingDir": SCRATCH,
         "Hostname": "sandbox",
         # No credentials, and nothing from the driver's environment (SBX-008).
         "Env": [],

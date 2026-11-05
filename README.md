@@ -91,7 +91,8 @@ docker compose run --rm setup
 1. `init` writes `deploy/.env` with fresh random secrets. Keep it private; it
    is never overwritten. There are no default passwords anywhere (AUTH-007).
 2. `up` builds the images and starts the database, the API, the worker, the
-   search service, the sandbox driver and the network guard. The guard installs the `nftables`
+   search service, the backup service, the sandbox driver and the network
+   guard. The guard installs the `nftables`
    table `inet mazzamurello` on the host, which keeps sandboxes away from your
    home network and from the host itself; it removes the table when it stops.
 3. `setup` asks for the household's name and creates its first administrator,
@@ -189,6 +190,60 @@ reads are fetched from the user's sandbox.
 
 Every setting is listed in the
 [configuration contract](specs/contracts/configuration.md).
+
+**Sandboxes and workspaces**
+
+Each user's sandbox keeps one folder, `/workspace`, for what they want to
+keep: scripts, results and notes the assistant made for them. Everything
+else in the sandbox, including software installed into it, is discarded
+when it stops after 30 idle minutes, and the next command gets a new one
+(ADR-0076). Each workspace has a quota, 2 GiB by default
+(`MZM_SANDBOX_WORKSPACE_QUOTA_MB`); the assistant is told when it nears it.
+
+**Backups**
+
+The `backup` service backs everything up every night at 03:00 UTC
+(`MZM_BACKUP_TIME`) into `deploy/backups/` (`MZM_BACKUP_DIR`), and keeps the
+newest 14 archives (`MZM_BACKUP_KEEP`). Each archive is one encrypted file
+with the database, the secret key and every workspace (ADR-0077). To make
+one now:
+
+```bash
+docker compose exec backup python -m mazzamurello_server backup
+```
+
+Archives are encrypted with `MZM_BACKUP_KEY` from `deploy/.env`. **Keep a
+copy of that key away from the server**, for example in your password
+manager: without it, no archive can be restored. An installation from
+before backups gets its key with `docker compose run --rm --no-deps init`,
+which adds only missing secrets. `/health` reports `degraded` when the last
+backup failed or is more than two days old.
+
+Copy the archives elsewhere too, for example with restic:
+`restic -r sftp:nas:/backups/mazzamurello backup deploy/backups`. They are
+already encrypted.
+
+**Restore**
+
+Into a fresh installation, on this server or another one, with the same
+version of Mazzamurello:
+
+1. Install as above with `init` and `up`, but without `setup`.
+2. In the new `deploy/.env`, replace `MZM_BACKUP_KEY` with your saved key,
+   then put the archive into `deploy/backups/`.
+3. Restore, then restart with the restored secret key:
+
+```bash
+docker compose run --rm restore /backups/mazzamurello-20261106T030000Z.tar.age
+docker compose up --detach --wait
+```
+
+To bring back only one user's workspace from an earlier archive, for example
+after something went wrong in it, in a running instance:
+
+```bash
+docker compose run --rm restore --workspace alice /backups/mazzamurello-20261101T030000Z.tar.age
+```
 
 **Uninstall**
 

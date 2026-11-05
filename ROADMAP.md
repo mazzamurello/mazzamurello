@@ -48,7 +48,9 @@ and cost (UX-008, MOD-007), the conversation list with folders, forks, search,
 the file library, conversation settings, custom instructions, temporary
 conversations and sharing within the household (CNV), artifacts (ART),
 automatic compaction, skills and questions to the user (AGT), web search and
-page reading, persistent workspaces, transparent memory (MEM), tool
+page reading, persistent workspaces in ephemeral sandboxes (ADR-0076), a
+sandbox image with a selection of common tools for documents, media and
+data, so that they need no installing (ADR-0022), transparent memory (MEM), tool
 permissions, provenance and approvals with the lethal trifecta mitigation
 (AGT), the data egress policy (MOD-003), backup and restore (OPS-006), and the
 first eval suite (EVL). It also lays the foundations of connected devices:

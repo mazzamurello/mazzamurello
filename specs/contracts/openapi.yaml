@@ -816,8 +816,9 @@ paths:
         the individual checks (OPS-002). The status is `unavailable` when the
         database is unreachable or the sandbox driver refuses sandboxes, then
         the answer is `503`; `degraded` when no tenant has a default model
-        (ADR-0069); `ok` otherwise (ADR-0054).
-      x-requirements: [OPS-002, SBX-003, SBX-015, SBX-017]
+        (ADR-0069), or when backups fail (OPS-011, ADR-0077); `ok` otherwise
+        (ADR-0054).
+      x-requirements: [OPS-002, OPS-011, SBX-003, SBX-015, SBX-017]
       security: [{}, { deviceSession: [] }]
       responses:
         "200":
@@ -1624,3 +1625,4 @@ components:
             isolation_runtime: { $ref: "#/components/schemas/HealthStatus" }
             egress_table: { $ref: "#/components/schemas/HealthStatus" }
             model_gateway: { $ref: "#/components/schemas/HealthStatus" }
+            backups: { $ref: "#/components/schemas/HealthStatus" }
