@@ -103,6 +103,8 @@ def test_history_is_served_as_ag_ui_messages(server: Server, token: str) -> None
             "parent_run_id": None,
             "kind": "message",
             "message_ids": [m["id"] for m in page["items"]],
+            # A local model costs nothing (MOD-007).
+            "cost": [{"amount": "0", "currency": "USD"}],
         }
     ]
 
@@ -295,7 +297,7 @@ def test_every_model_request_is_in_the_cost_ledger(
     with database.superuser() as conn:
         rows = conn.execute(
             "SELECT tenant_id, owner_id, conversation_id, run_id, purpose, provider, model, input_tokens,"
-            " output_tokens, cost, price_source FROM usage_ledger WHERE run_id = %s",
+            " output_tokens, cost, price_source FROM usage_ledger WHERE run_id = %s AND purpose = 'run'",
             (run_id,),
         ).fetchall()
     assert [tuple(map(str, row[:7])) + tuple(row[7:]) for row in rows] == [
@@ -333,7 +335,7 @@ def test_remote_servers_are_priced_from_the_catalog(
     run_id, _ = start_run(server, token, conversation["id"], "priced")
     with database.superuser() as conn:
         row = conn.execute(
-            "SELECT cost, currency, price_source FROM usage_ledger WHERE run_id = %s", (run_id,)
+            "SELECT cost, currency, price_source FROM usage_ledger WHERE run_id = %s AND purpose = 'run'", (run_id,)
         ).fetchone()
     assert row is not None
     cost, currency, source = row
@@ -354,7 +356,7 @@ def test_deleting_a_conversation_removes_its_runs_and_workflows(
     with database.superuser() as conn:
         workflows = conn.execute("SELECT 1 FROM dbos.workflow_status WHERE workflow_uuid = %s", (run_id,)).fetchall()
         ledger = conn.execute(
-            "SELECT conversation_id, run_id FROM usage_ledger WHERE owner_id = %s", (account.id,)
+            "SELECT conversation_id, run_id FROM usage_ledger WHERE owner_id = %s AND purpose = 'run'", (account.id,)
         ).fetchall()
     assert workflows == []
     # Spending stays in the ledger, detached from what was deleted (ADR-0042).

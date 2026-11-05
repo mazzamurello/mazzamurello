@@ -27,12 +27,14 @@ new entry here first (ADR-0005).
 | Conversation | An independent chat between a user and the assistant, with its own history. A user has many. |
 | Message | One entry in a conversation, from the user or the assistant. |
 | Folder | A user's named group of conversations in the conversation list; carries no instructions or settings (CNV-007). |
-| Fork | A new conversation started from a turn of another conversation, which records where it came from (CNV-005). |
+| Fork | A new conversation started from a copy of another conversation up to a turn, which records where it came from (CNV-005, ADR-0073). |
+| Pin | A mark that keeps a conversation or a folder at the top of the conversation list (CNV-008). |
 | Rewind | Making an earlier turn the end of a conversation, so it continues from there; what followed is deleted (CNV-004, ADR-0068). |
 | File library | The private collection of files a user has uploaded, usable from any of their conversations; shown as "Files" (CNV-012). |
 | Base instructions | The assistant's main instructions, which a user may replace and restore (CNV-014). |
 | Additional instructions | Instructions a user adds after the base instructions (CNV-014). |
 | Skill | A reusable package of instructions and files in the open Agent Skills format, loaded by the model when relevant (AGT-017). |
+| Context window | The most tokens a model reads at once: listed by the provider, or set on a connection to the household's own server (ADR-0073). |
 | Compaction | Reducing the history sent to the model when it approaches the context window, without changing the stored conversation (ADR-0041). |
 | Compaction checkpoint | The stored result of a compaction for one path, attached to the run at which it happened (ADR-0041). |
 | Temporary conversation | A conversation that is not listed, does not use memory and is deleted when the user leaves it (CNV-011). |

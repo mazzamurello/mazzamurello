@@ -22,10 +22,15 @@
     "signOut": "Sign out",
     "untitled": "New conversation",
     "empty": "No conversations yet.",
-    "today": "Today",
-    "yesterday": "Yesterday",
-    "week": "Previous 7 days",
-    "older": "Older"
+    "search": "Search conversations",
+    "searchPlaceholder": "Search",
+    "results": "Search results",
+    "noResults": "Nothing found.",
+    "newFolder": "New folder",
+    "folderName": "Folder name",
+    "createFolder": "Create",
+    "pinned": "Pinned",
+    "recent": "Recent"
   },
   "conversationMenu": {
     "label": "Options for {{title}}",
@@ -37,7 +42,12 @@
     "deleteBody": "Its messages are deleted for good. Files in your workspace stay.",
     "cancel": "Cancel",
     "save": "Save",
-    "confirmDelete": "Delete"
+    "confirmDelete": "Delete",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "move": "Move to folder",
+    "noFolder": "Out of the folder",
+    "noFolders": "No folders yet."
   },
   "welcome": {
     "morning": "Good morning, {{name}}.",
@@ -135,7 +145,9 @@
     "stopped": "Stopped.",
     "toolArguments": "Arguments",
     "toolResult": "Result",
-    "image": "image"
+    "image": "image",
+    "fork": "Fork from here",
+    "forkedFrom": "Forked from another conversation"
   },
   "activity": {
     "thinking": "Thinking…",
@@ -251,5 +263,12 @@
     "run_timeout": "The answer took too long and was stopped. Try a shorter request.",
     "internal_error": "The server could not finish the answer. Try again; if it keeps failing, tell the server's administrator.",
     "network": "The server can't be reached. Check your connection and try again."
+  },
+  "usage": {
+    "conversation": "This conversation",
+    "day": "Last 24 hours",
+    "month": "Last 30 days",
+    "context": "Context used",
+    "contextValue": "Context {{used}} of {{size}} tokens · {{percent}}%"
   }
 }

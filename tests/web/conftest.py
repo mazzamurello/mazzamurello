@@ -99,11 +99,25 @@ def admin(database: Database, default_model: HarnessModel) -> Account:
     return account
 
 
-def sign_in(page: Page, account: Account) -> None:
-    page.goto("/")
-    page.get_by_label("Username").fill(account.username)
-    page.get_by_label("Password").fill(account.password)
-    page.get_by_role("button", name="Sign in").click()
+def sign_in(page: Page, account: Account, *, form: bool = False) -> None:
+    """Sign in with the form, or, quicker, with the same request the form makes (ADR-0067)."""
+    if form:
+        page.goto("/")
+        page.get_by_label("Username").fill(account.username)
+        page.get_by_label("Password").fill(account.password)
+        page.get_by_role("button", name="Sign in").click()
+    else:
+        response = page.request.post(
+            "/v1/auth/login",
+            data={
+                "username": account.username,
+                "password": account.password,
+                "device_name": "browser test",
+                "session_delivery": "cookie",
+            },
+        )
+        assert response.status == 201, response.text()
+        page.goto("/")
     # The message box: on phones the conversation list is hidden behind a button.
     page.get_by_label("Message").wait_for()
 

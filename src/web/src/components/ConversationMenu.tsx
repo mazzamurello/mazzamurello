@@ -5,13 +5,13 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { Ellipsis } from "lucide-react";
 
-import type { Conversation } from "../api/client";
+import type { Conversation, Folder } from "../api/client";
 import { deleteConversation, updateConversation, useRefreshConversations } from "../conversations";
 
 const ITEM = "cursor-pointer rounded px-3 py-2 text-sm outline-none data-[highlighted]:bg-hover";
 
 /** Rename, archive or delete a conversation (API-003). */
-export function ConversationMenu({ conversation }: { conversation: Conversation }) {
+export function ConversationMenu({ conversation, folders }: { conversation: Conversation; folders: Folder[] }) {
   const { t } = useTranslation();
   const refresh = useRefreshConversations();
   const navigate = useNavigate();
@@ -38,10 +38,52 @@ export function ConversationMenu({ conversation }: { conversation: Conversation 
           <Ellipsis className="size-4" aria-hidden="true" />
         </Menu.Trigger>
         <Menu.Portal>
-          <Menu.Content className="z-30 min-w-36 rounded-xl border border-line bg-raised p-1 text-fg shadow-soft">
+          <Menu.Content className="z-50 min-w-36 rounded-xl border border-line bg-raised p-1 text-fg shadow-soft">
             <Menu.Item className={ITEM} onSelect={() => setDialog("rename")}>
               {t("conversationMenu.rename")}
             </Menu.Item>
+            <Menu.Item
+              className={ITEM}
+              onSelect={async () => {
+                await updateConversation(conversation.id, { pinned: !conversation.pinned });
+                await refresh();
+              }}
+            >
+              {conversation.pinned ? t("conversationMenu.unpin") : t("conversationMenu.pin")}
+            </Menu.Item>
+            {/* A conversation is in at most one folder (CNV-007). */}
+            <Menu.Sub>
+              <Menu.SubTrigger className={ITEM}>{t("conversationMenu.move")}</Menu.SubTrigger>
+              <Menu.Portal>
+                <Menu.SubContent className="z-50 min-w-40 rounded-xl border border-line bg-raised p-1 text-fg shadow-soft">
+                  {folders.map((folder) => (
+                    <Menu.Item
+                      key={folder.id}
+                      className={ITEM}
+                      disabled={conversation.folder_id === folder.id}
+                      onSelect={async () => {
+                        await updateConversation(conversation.id, { folder_id: folder.id });
+                        await refresh();
+                      }}
+                    >
+                      {folder.name}
+                    </Menu.Item>
+                  ))}
+                  {conversation.folder_id !== null && (
+                    <Menu.Item
+                      className={ITEM}
+                      onSelect={async () => {
+                        await updateConversation(conversation.id, { folder_id: null });
+                        await refresh();
+                      }}
+                    >
+                      {t("conversationMenu.noFolder")}
+                    </Menu.Item>
+                  )}
+                  {folders.length === 0 && <p className="px-3 py-2 text-sm text-muted">{t("conversationMenu.noFolders")}</p>}
+                </Menu.SubContent>
+              </Menu.Portal>
+            </Menu.Sub>
             <Menu.Item
               className={ITEM}
               onSelect={async () => {

@@ -97,16 +97,16 @@ Rationale: persona P4.
 
 ## UX-008: Live context and cost
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
 
 While a run streams, clients MUST show how much of the model's context window
 the conversation uses, and the cost of the run so far on pay-per-token
-providers. Clients MUST show the cost of each assistant message and of each
-conversation, and the user's total spend over the current day and month
-(MOD-006, MOD-007).
+providers. Clients MUST show the cost of each assistant message beside it,
+and keep in view the cost of the open conversation and the user's spend over
+the last 24 hours and the last 30 days (MOD-006, MOD-007, ADR-0073).
 
 Rationale: journey J12.
 
@@ -193,8 +193,9 @@ Rationale: personas P2 and P4.
 - **Phase:** 1
 - **Verification:** e2e
 
-Clients MUST let the user choose the model of a conversation (MOD-012) among
-every model of their household's connections, and search them. For each
+Clients MUST let the user choose the model of a conversation (MOD-012), and
+tenant admins the default model, among every model of their household's
+connections, and search them, with the same picker. For each
 model they MUST show its connection, its name, whether it runs locally or
 remotely (MOD-010), its price when it is paid per token, and whether it can
 only chat, without tools (MOD-014).
