@@ -249,7 +249,7 @@ descriptions from these servers MUST be treated as untrusted content
 
 ## AGT-020: Web search
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, security
@@ -265,7 +265,7 @@ logged (OBS-001) (ADR-0075).
 
 ## AGT-021: Reading web pages
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
