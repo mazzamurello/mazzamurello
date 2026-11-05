@@ -13,6 +13,11 @@ RUN pnpm build
 
 FROM python:3.13.9-slim-trixie
 
+# Backups dump and restore the database and encrypt their archives (ADR-0077).
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends postgresql-client-17 age \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/opt/venv PYTHONDONTWRITEBYTECODE=1
 

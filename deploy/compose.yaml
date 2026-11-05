@@ -23,6 +23,16 @@ x-app-database: &app-database
 x-owner-database: &owner-database
   MZM_DATABASE_URL: postgresql://mzm_owner:${MZM_OWNER_PASSWORD:-}@postgres:5432/mazzamurello
 
+# Backups and restores read the database as PostgreSQL's superuser (ADR-0077).
+x-backup-environment: &backup-environment
+  MZM_DATABASE_URL: postgresql://postgres:${MZM_POSTGRES_PASSWORD:-}@postgres:5432/mazzamurello
+  MZM_SECRET_KEY: ${MZM_SECRET_KEY:-}
+  MZM_BACKUP_KEY: ${MZM_BACKUP_KEY:-}
+  MZM_SANDBOXD_URL: http://sandboxd:8100/v1
+  MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
+  MZM_BACKUP_TIME: ${MZM_BACKUP_TIME:-03:00}
+  MZM_BACKUP_KEEP: ${MZM_BACKUP_KEEP:-14}
+
 networks:
   internal: {}
   # The worker and the search service, and nothing else (ADR-0075).
@@ -68,6 +78,10 @@ services:
       MZM_TRUSTED_PROXIES: ${MZM_TRUSTED_PROXIES:-}
       MZM_SANDBOXD_URL: http://sandboxd:8100/v1
       MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
+      # A failing backup makes the health degraded (OPS-011).
+      MZM_BACKUP_STATUS: /backups/status.json
+    volumes:
+      - ${MZM_BACKUP_DIR:-./backups}:/backups:ro
     # The single entry point (OPS-003); HTTPS comes from a reverse proxy.
     ports:
       - "${MZM_PUBLISH:-127.0.0.1:8080}:8000"
@@ -130,6 +144,42 @@ services:
       retries: 60
     networks: [internal]
     restart: unless-stopped
+
+  # Backs the instance up every night, keeping the newest archives (OPS-010, ADR-0077).
+  backup:
+    <<: *server
+    command: ["mazzamurello_server", "backup", "--schedule"]
+    # Writes archives into the host's backup folder.
+    user: "0:0"
+    environment:
+      <<: *backup-environment
+    volumes:
+      - ${MZM_BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      sandboxd: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "test", "-f", "/backups/status.json"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Restores an archive: `docker compose run --rm restore /backups/FILE` (OPS-006).
+  restore:
+    <<: *server
+    entrypoint: ["python", "-m", "mazzamurello_server", "restore", "--config", "/config/.env"]
+    command: []
+    user: "0:0"
+    environment:
+      <<: *backup-environment
+    volumes:
+      - ${MZM_CONFIG_DIR:-.}:/config
+      - ${MZM_BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+      sandboxd: { condition: service_healthy }
+    restart: "no"
+    profiles: [operator]
 
   # The search service (ADR-0075): SearXNG, which only the worker reaches.
   search:

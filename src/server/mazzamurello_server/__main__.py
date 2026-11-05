@@ -1,4 +1,5 @@
-"""Command line entry points of the server: `api` (ADR-0050), `worker` (ADR-0052), `init` and `setup` (ADR-0054)."""
+"""Command line entry points of the server: `api` (ADR-0050), `worker` (ADR-0052), `init` and `setup` (ADR-0054),
+`backup` and `restore` (ADR-0077)."""
 
 from __future__ import annotations
 
@@ -51,8 +52,14 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("api", help="run the public API")
     commands.add_parser("worker", help="execute runs")
     init = commands.add_parser("init", help="write a deployment's .env with fresh secrets")
-    init.add_argument("--output", required=True, type=Path, help="the file to write; never overwritten")
+    init.add_argument("--output", required=True, type=Path, help="the file to write, or to add missing secrets to")
     commands.add_parser("setup", help="create the first tenant and its administrator, once")
+    backup = commands.add_parser("backup", help="write an encrypted archive of the instance")
+    backup.add_argument("--schedule", action="store_true", help="back up every day at MZM_BACKUP_TIME, until stopped")
+    restore = commands.add_parser("restore", help="restore an archive into a fresh installation")
+    restore.add_argument("archive", type=Path)
+    restore.add_argument("--config", type=Path, help="the deployment's .env, which receives the archive's secret key")
+    restore.add_argument("--workspace", metavar="USERNAME", help="restore only this user's workspace")
     arguments = parser.parse_args(argv)
     if arguments.command == "api":
         return _api()
@@ -62,6 +69,10 @@ def main(argv: list[str] | None = None) -> int:
         return operator_commands.init(arguments.output)
     if arguments.command == "setup":
         return operator_commands.setup(os.environ)
+    if arguments.command == "backup":
+        return operator_commands.run_backup(os.environ, scheduled=arguments.schedule)
+    if arguments.command == "restore":
+        return operator_commands.run_restore(os.environ, arguments.archive, arguments.config, arguments.workspace)
     parser.error(f"unknown command {arguments.command}")
 
 

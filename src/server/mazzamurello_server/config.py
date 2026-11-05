@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import binascii
 import ipaddress
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,8 +27,22 @@ API_VARIABLES = frozenset(
         "MZM_SANDBOXD_URL",
         "MZM_SANDBOXD_TOKEN",
         "MZM_WEB_ROOT",
+        "MZM_BACKUP_STATUS",
     }
 )
+BACKUP_VARIABLES = frozenset(
+    {
+        "MZM_DATABASE_URL",
+        "MZM_SECRET_KEY",
+        "MZM_BACKUP_KEY",
+        "MZM_SANDBOXD_URL",
+        "MZM_SANDBOXD_TOKEN",
+        "MZM_BACKUP_DIR",
+        "MZM_BACKUP_TIME",
+        "MZM_BACKUP_KEEP",
+    }
+)
+BACKUP_TIME = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
 WORKER_VARIABLES = frozenset(
     {
         "MZM_DATABASE_URL",
@@ -59,6 +74,8 @@ class ApiConfiguration:
     sandboxd_token: str
     # The built web app, served at `/` when the directory exists (ADR-0067).
     web_root: Path = DEFAULT_WEB_ROOT
+    # The backup service's status file, when backups are checked (OPS-011).
+    backup_status: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -168,4 +185,46 @@ def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
         sandboxd_url=driver_url,
         sandboxd_token=driver_token,
         web_root=Path(environment.get("MZM_WEB_ROOT") or DEFAULT_WEB_ROOT),
+        backup_status=Path(status) if (status := environment.get("MZM_BACKUP_STATUS")) else None,
+    )
+
+
+@dataclass(frozen=True)
+class BackupConfiguration:
+    """What backups and restores need (ADR-0077)."""
+
+    # PostgreSQL's superuser, so that row-level security hides nothing.
+    database_url: str
+    # The instance's secret key, as written in `.env`.
+    secret_key: str
+    backup_key: str
+    sandboxd_url: str
+    sandboxd_token: str
+    backup_dir: Path
+    backup_time: str
+    keep: int
+
+
+def load_backup_configuration(environment: Mapping[str, str]) -> BackupConfiguration:
+    _refuse_unknown(environment, BACKUP_VARIABLES)
+    _secret_key(environment)
+    key = environment.get("MZM_BACKUP_KEY", "").strip()
+    if not key.upper().startswith("AGE-SECRET-KEY-1"):
+        raise ConfigurationError("MZM_BACKUP_KEY must be an age identity, AGE-SECRET-KEY-1…")
+    at = environment.get("MZM_BACKUP_TIME", "03:00")
+    if not BACKUP_TIME.match(at):
+        raise ConfigurationError("MZM_BACKUP_TIME must be HH:MM, in UTC")
+    keep = environment.get("MZM_BACKUP_KEEP", "14")
+    if not keep.isdigit() or not 1 <= int(keep) <= 365:
+        raise ConfigurationError("MZM_BACKUP_KEEP must be a number from 1 to 365")
+    url, token = _sandbox_driver(environment)
+    return BackupConfiguration(
+        database_url=_database_url(environment),
+        secret_key=environment["MZM_SECRET_KEY"],
+        backup_key=key,
+        sandboxd_url=url,
+        sandboxd_token=token,
+        backup_dir=Path(environment.get("MZM_BACKUP_DIR") or "/backups"),
+        backup_time=at,
+        keep=int(keep),
     )
