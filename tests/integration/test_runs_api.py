@@ -105,6 +105,8 @@ def test_history_is_served_as_ag_ui_messages(server: Server, token: str) -> None
             "message_ids": [m["id"] for m in page["items"]],
             # A local model costs nothing (MOD-007).
             "cost": [{"amount": "0", "currency": "USD"}],
+            # A run that did not fail has no error (UX-014).
+            "error": None,
         }
     ]
 
