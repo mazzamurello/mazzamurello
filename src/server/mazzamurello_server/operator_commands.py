@@ -1,4 +1,4 @@
-"""The operator's one-time commands: `init` and `setup` (AUTH-007, ADR-0054).
+"""The operator's commands: `init`, `setup`, `backup` and `restore` (AUTH-007, OPS-006, ADR-0054, ADR-0077).
 
 Nothing is shipped with a default: `init` generates every secret of a
 deployment, and `setup` creates the first administrator with the password
@@ -19,7 +19,8 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from mazzamurello_server.config import PREFIX, ConfigurationError
+from mazzamurello_server import backup
+from mazzamurello_server.config import PREFIX, BackupConfiguration, ConfigurationError, load_backup_configuration
 from mazzamurello_server.credentials import hash_password
 from mazzamurello_server.database import create_engine, sqlstate
 
@@ -31,19 +32,35 @@ MINIMUM_PASSWORD_LENGTH = 12
 ALREADY_SET_UP = "55000"
 
 
+def _fresh_secrets() -> dict[str, str]:
+    values = {name: secrets.token_urlsafe(SECRET_BYTES) for name in SECRETS}
+    # The backup key is an age identity; keep a copy away from the server (ADR-0077).
+    values["MZM_BACKUP_KEY"] = backup.new_backup_key()
+    return values
+
+
 def init(output: Path) -> int:
-    """Write a deployment's `.env` with fresh secrets; never overwrite one."""
+    """Write a deployment's `.env` with fresh secrets, or add the secrets an existing one lacks."""
+    values = _fresh_secrets()
+    if output.exists():
+        existing = output.read_text()
+        named = {line.split("=", 1)[0] for line in existing.splitlines() if "=" in line and not line.startswith("#")}
+        missing = [f"{name}={value}" for name, value in values.items() if name not in named]
+        if missing:
+            with output.open("a") as file:
+                file.write(("" if existing.endswith("\n") or not existing else "\n") + "\n".join(missing) + "\n")
+            print(f"mazzamurello: added {', '.join(line.split('=')[0] for line in missing)} to {output}")
+        else:
+            print(f"mazzamurello: {output} has every secret; it was not changed")
+        return 0
     lines = [
         "# Mazzamurello deployment settings, written by `init` (ADR-0054).",
         "# Keep this file private: it holds the instance's secrets.",
-        *(f"{name}={secrets.token_urlsafe(SECRET_BYTES)}" for name in SECRETS),
+        "# Keep a copy of MZM_BACKUP_KEY away from the server: without it, no backup can be restored.",
+        *(f"{name}={value}" for name, value in values.items()),
         "",
     ]
-    try:
-        descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        print(f"mazzamurello: {output} exists; it was not changed", file=sys.stderr)
-        return 1
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w") as file:
         file.write("\n".join(lines))
     if os.geteuid() == 0:
@@ -123,4 +140,47 @@ def setup(environment: Mapping[str, str]) -> int:
             return 1
         raise
     print(f"mazzamurello: created the tenant {tenant!r} and its administrator {username!r}")
+    return 0
+
+
+def _backup_configuration(environment: Mapping[str, str]) -> BackupConfiguration | None:
+    try:
+        return load_backup_configuration(environment)
+    except ConfigurationError as error:
+        print(f"mazzamurello: configuration error: {error}", file=sys.stderr)
+        return None
+
+
+def run_backup(environment: Mapping[str, str], *, scheduled: bool) -> int:
+    """Back the instance up once, or every day (OPS-006, OPS-010)."""
+    configuration = _backup_configuration(environment)
+    if configuration is None:
+        return 2
+    if scheduled:
+        asyncio.run(backup.schedule(configuration))
+        return 0
+    try:
+        archive = asyncio.run(backup.backup_once(configuration))
+    except (backup.BackupError, OSError) as error:
+        print(f"mazzamurello: the backup failed: {error}", file=sys.stderr)
+        return 1
+    print(f"mazzamurello: wrote {archive}")
+    return 0
+
+
+def run_restore(environment: Mapping[str, str], archive: Path, env_file: Path | None, username: str | None) -> int:
+    """Restore an instance into a fresh installation, or one user's workspace (OPS-006)."""
+    configuration = _backup_configuration(environment)
+    if configuration is None:
+        return 2
+    try:
+        if username is not None:
+            asyncio.run(backup.restore_workspace(configuration, archive, username))
+            print(f"mazzamurello: restored the workspace of {username}")
+            return 0
+        asyncio.run(backup.restore(configuration, archive, env_file))
+    except (backup.BackupError, OSError) as error:
+        print(f"mazzamurello: the restore failed: {error}", file=sys.stderr)
+        return 1
+    print("mazzamurello: restored; run `docker compose up --detach --wait` to restart with the restored secret key")
     return 0

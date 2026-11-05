@@ -1,0 +1,3 @@
+# Backup archives and their status (ADR-0077): never in the repository.
+*
+!.gitignore

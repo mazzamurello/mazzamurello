@@ -85,6 +85,10 @@ def ready(request: Request) -> Sandboxes:
     return request.app.state.sandboxes
 
 
+def _temporary_folder(prefix: str, parent: Path | None) -> Path:
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
+
+
 def _exit_object(event: Exit) -> dict[str, Any]:
     return {
         "kind": "exit",
@@ -177,7 +181,7 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
     async def export_workspace(  # pyright: ignore[reportUnusedFunction]
         tenant_id: uuid.UUID, user_id: uuid.UUID, sandboxes: Annotated[Sandboxes, Depends(ready)]
     ) -> FileResponse:
-        folder = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="mzm-export-"))
+        folder = await asyncio.to_thread(_temporary_folder, "mzm-export-", None)
         archive = folder / "workspace.tar"
         try:
             await sandboxes.export_workspace(tenant_id, user_id, archive)
@@ -194,7 +198,7 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
     async def import_workspace(  # pyright: ignore[reportUnusedFunction]
         tenant_id: uuid.UUID, user_id: uuid.UUID, request: Request, sandboxes: Annotated[Sandboxes, Depends(ready)]
     ) -> Response:
-        folder = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="mzm-import-"))
+        folder = await asyncio.to_thread(_temporary_folder, "mzm-import-", None)
         archive = folder / "workspace.tar"
         try:
             with archive.open("wb") as file:
