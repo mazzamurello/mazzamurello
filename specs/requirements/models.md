@@ -187,7 +187,7 @@ continuing without them (ADR-0069).
 
 ## MOD-015: Requests a model refuses
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, e2e
