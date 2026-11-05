@@ -141,8 +141,17 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           pnpm test
+      # The browser is kept between runs for the Playwright version in the
+      # lock file; its system libraries still come from apt on every runner.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.part == 'web' && hashFiles('src/web/package.json') != ''
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
       - name: Install Chromium for the browser tests
         if: matrix.part == 'web' && hashFiles('src/web/package.json') != ''
+        # It takes under a minute; a stalled download fails the job instead of holding it.
+        timeout-minutes: 5
         run: uv run --locked playwright install --with-deps chromium
       # Sandbox tests run under gVisor (ADR-0023, ADR-0053): install the
       # release the project is tested with from gVisor's official repository
