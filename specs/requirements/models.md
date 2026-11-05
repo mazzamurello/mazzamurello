@@ -195,8 +195,9 @@ continuing without them (ADR-0069).
 When a model or its provider refuses to answer a request, for example
 because a content filter flagged it, the run MUST fail with the code
 `model.refused` and the reason the provider gave, if any, and clients MUST
-show both to the user in the conversation. The conversation MUST stay
-usable: the user can rephrase the message or choose another model.
+show both to the user in the conversation, also after it is reloaded
+(UX-014). The conversation MUST stay usable: the user can rephrase the
+message or choose another model.
 
 Rationale: a refusal is the model's decision, not a fault of the system,
 and the user can only act on it if they see it.
