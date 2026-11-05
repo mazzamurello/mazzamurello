@@ -96,7 +96,7 @@ beyond keeping them configurable and updatable.
 | T-18 | The host egress rules disappear (firewall reload, reboot, manual change) while sandboxes run, leaving them unfiltered | — | SBX-015, OPS-002 |
 | T-19 | Run data stored by the durable execution engine, outside row-level security, is read across users or tenants, or survives deletion | X2 | TEN-009 |
 | T-20 | A client forges or replays approval decisions to run tools the user did not approve | X2, X4 | AGT-012, AUTH-004 |
-| T-21 | A framework capability fetches URLs, runs commands or reaches MCP servers from the control plane, bypassing the sandbox (SSRF to the LAN or host) | X1 | AGT-013, SBX-009 |
+| T-21 | A framework capability fetches URLs, runs commands or reaches MCP servers from the control plane, bypassing the sandbox (SSRF to the LAN or host) | X1 | AGT-013, AGT-020, AGT-021, SBX-009 |
 | T-22 | Active content in an artifact (scripts in a web page or SVG), possibly derived from untrusted content, runs with the user's session and calls the API or reads other data | X1 | ART-003, UX-002 |
 | T-23 | Notifications leak conversation content to the push services of browser vendors | — | UX-004 |
 | T-24 | Content the user rewound past, or of a temporary conversation, reaches the model, memory or another conversation | X1 | CNV-002, CNV-004, CNV-011 |

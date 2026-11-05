@@ -12,6 +12,7 @@ from tests.support.accounts import body, create_account, login
 from tests.support.database import Database, start_database
 from tests.support.model import ModelServer, start_model_server
 from tests.support.sandbox import Driver, start_sandboxes
+from tests.support.search import SearchServer, start_search_server
 from tests.support.server import Server, start_server
 from tests.support.world import World, create_world
 
@@ -32,8 +33,17 @@ def sandboxes(request: pytest.FixtureRequest) -> Driver:
 
 
 @pytest.fixture(scope="session")
-def server(request: pytest.FixtureRequest, database: Database, sandboxes: Driver) -> Server:
-    return start_server(request.config, database, (sandboxes.url, sandboxes.token))
+def search_service() -> Iterator[SearchServer]:
+    search, http = start_search_server()
+    yield search
+    http.shutdown()
+
+
+@pytest.fixture(scope="session")
+def server(
+    request: pytest.FixtureRequest, database: Database, sandboxes: Driver, search_service: SearchServer
+) -> Server:
+    return start_server(request.config, database, (sandboxes.url, sandboxes.token), search_service.url)
 
 
 @dataclass(frozen=True)

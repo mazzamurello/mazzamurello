@@ -165,10 +165,11 @@ def _wait_until_ready(api: Process, worker: Process, base_url: str) -> None:
 _SERVER = pytest.StashKey[Server | BaseException]()
 
 
-def start_server(config: pytest.Config, database: Database, sandbox_driver: tuple[str, str]) -> Server:
+def start_server(config: pytest.Config, database: Database, sandbox_driver: tuple[str, str], search_url: str) -> Server:
     """Start the API and the worker once per test session; later calls return the same server.
 
-    `sandbox_driver` is the URL and the secret of the session's sandbox driver.
+    `sandbox_driver` is the URL and the secret of the session's sandbox driver,
+    `search_url` the address of the search service the tests serve.
     """
     cached = config.stash.get(_SERVER, None)
     if isinstance(cached, BaseException):
@@ -202,7 +203,7 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
         )
         api = Process("api", api_environment, command="api")
         config.add_cleanup(api.close)
-        worker = Process("worker", base | shared, command="worker")
+        worker = Process("worker", base | shared | {"MZM_SEARCH_URL": search_url}, command="worker")
         config.add_cleanup(worker.close)
         server = Server(
             base_url=f"http://127.0.0.1:{port}/v1",

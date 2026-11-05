@@ -25,6 +25,8 @@ x-owner-database: &owner-database
 
 networks:
   internal: {}
+  # The worker and the search service, and nothing else (ADR-0075).
+  search: {}
 
 volumes:
   postgres: {}
@@ -87,9 +89,12 @@ services:
       MZM_RUN_RETENTION_DAYS: ${MZM_RUN_RETENTION_DAYS:-30}
       MZM_SANDBOXD_URL: http://sandboxd:8100/v1
       MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
+      MZM_SEARCH_URL: http://search:8080
+    networks: [internal, search]
     depends_on:
       migrate: { condition: service_completed_successfully }
       sandboxd: { condition: service_healthy }
+      search: { condition: service_healthy }
 
   sandboxd:
     image: mazzamurello/sandboxd:local
@@ -124,6 +129,30 @@ services:
       timeout: 10s
       retries: 60
     networks: [internal]
+    restart: unless-stopped
+
+  # The search service (ADR-0075): SearXNG, which only the worker reaches.
+  search:
+    image: searxng/searxng:2026.10.19-81371861f@sha256:5ed0323b5f5f8701264ef65e239a2bd83cb57098f2b971fa30bf79c06eeae271
+    # Its secret, for its own pages, is new at every start.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - export SEARXNG_SECRET="$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"; exec /usr/local/searxng/entrypoint.sh
+    environment:
+      # The settings are mounted read-only.
+      FORCE_OWNERSHIP: "false"
+    volumes:
+      - ./search/settings.yml:/etc/searxng/settings.yml:ro
+    # SearXNG logs failed engine requests with their queries: no logs (OBS-001).
+    logging:
+      driver: none
+    healthcheck:
+      test: ["CMD", "/usr/local/searxng/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+    networks: [search]
     restart: unless-stopped
 
   netguard:

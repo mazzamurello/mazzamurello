@@ -258,6 +258,7 @@
     "openSettings": "Open settings",
     "model_unavailable": "The conversation's model can't be used. Choose another model in the message box, or ask a household admin to check its connection in Settings.",
     "model_request_failed": "The model refused the request or failed to answer. Try again, or choose another model in the message box.",
+    "model_refused": "The model declined to answer this request. Rephrase your message, or choose another model in the message box. It said:",
     "sandbox_unavailable": "Your workspace could not be started. Try again in a minute; if it keeps failing, tell the server's administrator.",
     "run_worker_lost": "The answer was interrupted when the server restarted. Send your message again.",
     "run_timeout": "The answer took too long and was stopped. Try a shorter request.",

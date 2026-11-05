@@ -24,7 +24,8 @@ knows inside your home.
   behalf of users.
 - **Capable.** The assistant can search the web, read pages, run code, install
   software and launch programs — inside a per-user sandbox with internet
-  access but no view of your home network.
+  access but no view of your home network. Searches go through a search
+  engine running on your server, never through the model's provider.
 - **Model-agnostic.** Local models (Ollama, llama.cpp, any OpenAI-compatible
   server) or remote providers (e.g. OpenRouter), with per-user and per-space
   rules on what may leave the house.
@@ -44,11 +45,11 @@ is deliberately **not**.
 ```
  phone / browser
         │  one public HTTP API (OpenAPI, SSE streaming)
- ┌──────▼─────────────────────────────┐
- │ control plane                      │  auth, conversations, memory, agent loop,
- │ (FastAPI, Pydantic AI, Postgres)   │  mediated tools, model gateway, secrets
- └──────┬─────────────────────────────┘
-        │ minimal, authenticated API
+ ┌──────▼─────────────────────────────┐   ┌──────────────┐
+ │ control plane                      ├──►│ search       │  SearXNG: asks public
+ │ (FastAPI, Pydantic AI, Postgres)   │   │ (queries     │  search engines, keeps
+ └──────┬─────────────────────────────┘   │  only)       │  no logs
+        │ minimal, authenticated API      └──────────────┘
  ┌──────▼──────┐
  │ sandbox     │  the only component allowed to manage containers
  │ driver      │
@@ -90,7 +91,7 @@ docker compose run --rm setup
 1. `init` writes `deploy/.env` with fresh random secrets. Keep it private; it
    is never overwritten. There are no default passwords anywhere (AUTH-007).
 2. `up` builds the images and starts the database, the API, the worker, the
-   sandbox driver and the network guard. The guard installs the `nftables`
+   search service, the sandbox driver and the network guard. The guard installs the `nftables`
    table `inet mazzamurello` on the host, which keeps sandboxes away from your
    home network and from the host itself; it removes the table when it stops.
 3. `setup` asks for the household's name and creates its first administrator,
@@ -175,6 +176,16 @@ app's address on your phone and use the browser's **Add to Home Screen** to
 install it. Publishing plain HTTP on your network
 (`MZM_PUBLISH=0.0.0.0:8080`) leaves only the API usable, and sends passwords
 and tokens unencrypted: do it only on a network you fully trust.
+
+**Web search**
+
+The assistant searches the web through SearXNG, a search engine that runs
+on your server as the `search` service and asks public search engines on
+the assistant's behalf: they see your server's address and the query, never
+who asked (ADR-0075). It keeps no logs. The engines it uses are set in
+`deploy/search/settings.yml`: SearXNG's defaults, plus Google. Edit the file
+and run `docker compose restart search` to change them. Pages the assistant
+reads are fetched from the user's sandbox.
 
 Every setting is listed in the
 [configuration contract](specs/contracts/configuration.md).

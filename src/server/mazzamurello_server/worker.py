@@ -19,8 +19,15 @@ from typing import Any, cast
 from dbos import DBOS, DBOSConfig
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.durable_exec.dbos import DBOSDurability
-from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
-from pydantic_ai.messages import AgentStreamEvent, ModelMessage, ModelMessagesTypeAdapter, ModelRequest, UserPromptPart
+from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, ModelHTTPError
+from pydantic_ai.messages import (
+    AgentStreamEvent,
+    ModelMessage,
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    UserPromptPart,
+)
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.ui.ag_ui import AGUIEventStream
 from pydantic_ai_harness.filesystem import FileSystem
@@ -50,6 +57,7 @@ from mazzamurello_server.gateway import (
     store_messages,
 )
 from mazzamurello_server.sandbox import SandboxWorkspace
+from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
 logger = logging.getLogger(__name__)
@@ -75,6 +83,7 @@ class _Worker:
     secret_key: bytes = b""
     sandboxd_url: str = ""
     sandboxd_token: str = ""
+    search_url: str = ""
 
 
 _WORKER = _Worker()
@@ -121,6 +130,8 @@ agent = Agent(
     name="mazzamurello",
     deps_type=RunDeps,
     instructions=INSTRUCTIONS,
+    # Web search through the instance's search service, page reading in the sandbox (ADR-0075).
+    tools=WEB_TOOLS,
     capabilities=[
         Gateway(),
         # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
@@ -181,6 +192,8 @@ async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.
 def _error_code(error: BaseException) -> str:
     if isinstance(error, ModelUnavailableError):
         return "model.unavailable"
+    if isinstance(error, ContentFilterError):
+        return "model.refused"
     if isinstance(error, ModelHTTPError):
         return "model.request_failed"
     if isinstance(error, ModelAPIError):
@@ -218,6 +231,7 @@ async def run_workflow(serialized_input: str) -> None:
         model=attribution.model_name or "",
         sandboxd_url=_WORKER.sandboxd_url,
         sandboxd_token=_WORKER.sandboxd_token,
+        search_url=_WORKER.search_url,
         emit=lambda event: _write(run.run_id, event),
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
@@ -265,7 +279,7 @@ async def _execute(
             run_id=run.run_id,
             conversation_id=run.conversation_id,
         )
-    except (ModelUnavailableError, ModelAPIError) as error:
+    except (ModelUnavailableError, ModelAPIError, ContentFilterError) as error:
         code = _error_code(error)
         logger.warning("run %s failed: %s", run.run_id, code)
         if run.run_id in _TITLES:
@@ -335,6 +349,8 @@ async def _name_conversation(run: RunWorkflowInput, deps: RunDeps) -> str | None
 
 def _reason(error: BaseException) -> str | None:
     """What the provider said, for a refused request: such as a model that cannot call tools (MOD-014)."""
+    if isinstance(error, ContentFilterError):
+        return _refusal(error)
     if not isinstance(error, ModelHTTPError):
         return None
     raw: object = error.body
@@ -345,6 +361,20 @@ def _reason(error: BaseException) -> str | None:
         if isinstance(message, str):
             return message[:REASON_CHARS]
     return str(error)[:REASON_CHARS]
+
+
+def _refusal(error: ContentFilterError) -> str | None:
+    """The reason a model or its provider gave for refusing to answer (MOD-015)."""
+    try:
+        responses = ModelMessagesTypeAdapter.validate_json(error.body or "[]")
+    except ValueError:
+        return None
+    for response in responses:
+        details = (response.provider_details if isinstance(response, ModelResponse) else None) or {}
+        reason = details.get("refusal") or details.get("block_reason")
+        if isinstance(reason, str) and reason:
+            return reason[:REASON_CHARS]
+    return None
 
 
 async def _write_error(run_id: str, code: str, reason: str | None = None) -> None:
@@ -390,10 +420,13 @@ async def _serve(configuration: WorkerConfiguration) -> None:
 
 def run_worker(configuration: WorkerConfiguration) -> None:
     logging.basicConfig(level=logging.INFO)
+    # Its requests name search queries and sandbox paths: never logged (OBS-001).
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     _WORKER.engine = create_engine(configuration.database_url)
     _WORKER.secret_key = configuration.secret_key
     _WORKER.sandboxd_url = configuration.sandboxd_url
     _WORKER.sandboxd_token = configuration.sandboxd_token
+    _WORKER.search_url = configuration.search_url
     DBOS(
         config=DBOSConfig(
             name=APPLICATION_NAME,
