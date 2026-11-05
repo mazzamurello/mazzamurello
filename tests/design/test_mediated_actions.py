@@ -31,10 +31,12 @@ ALLOWED_NATIVE_TOOLS = {"tool_search"}
 # and page reading in the user's sandbox (AGT-020, AGT-021, ADR-0075).
 ALLOWED_OWN_TOOLS = {"web_search", "read_page"}
 # The only places a component runs a command on the host, by file and
-# enclosing function. Neither runs anything a user or the agent chose.
+# enclosing function. None runs anything a user or the agent chose.
 ALLOWED_HOST_COMMANDS = {
     ("src/netguard/mazzamurello_netguard/guard.py", "_nft"),
     ("src/sandboxd/mazzamurello_sandboxd/isolation.py", "_runtime_release"),
+    # The operator's backups: pg_dump, pg_restore and age, on files of their own (ADR-0077).
+    ("src/server/mazzamurello_server/backup.py", "_tool"),
 }
 HOST_COMMANDS = {
     ("subprocess", "run"),
