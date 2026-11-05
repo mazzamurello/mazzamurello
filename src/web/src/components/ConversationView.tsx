@@ -146,14 +146,6 @@ export function ConversationView() {
     });
   }, [activeRunId, running, follow]);
 
-  // An error says what went wrong and what to do (UX-014).
-  const reported = useRef<string | null>(null);
-  useEffect(() => {
-    if (live?.status !== "failed" || live.errorCode === "run.cancelled" || reported.current === live.runId) return;
-    reported.current = live.runId;
-    notify({ kind: "error", title: t("errors.title"), text: explain(t, live) });
-  }, [live, notify, t]);
-
   // The thread follows the answer as it streams.
   useEffect(() => {
     const element = thread.current;
@@ -198,6 +190,10 @@ export function ConversationView() {
 
   const turns = history.data ? turnsOf(history.data) : [];
   const shown = live !== null && hideFrom !== null ? turns.slice(0, hideFrom) : turns;
+  // A failed run, once in the history, is shown there with its error (UX-014); a reason only the
+  // stream gave stays with it until the next run.
+  const settled = live?.status === "failed" && shown.some((turn) => turn.run.run_id === live.runId);
+  const liveReason = live?.status === "failed" ? { runId: live.runId, reason: live.reason } : null;
 
   function askToEdit(index: number, turn: Turn, text: string) {
     const deleted = shownAnswer(turn) + turns.slice(index + 1).reduce((sum, later) => sum + (later.userText === null ? 0 : 1) + shownAnswer(later), 0);
@@ -227,7 +223,8 @@ export function ConversationView() {
               key={turn.run.run_id}
               turn={turn}
               busy={running}
-              last={live === null && index === shown.length - 1}
+              last={(live === null || settled) && index === shown.length - 1}
+              reason={liveReason?.runId === turn.run.run_id ? liveReason.reason : undefined}
               editing={editing === index}
               onEdit={() => setEditing(index)}
               onCancelEdit={() => setEditing(null)}
@@ -235,11 +232,15 @@ export function ConversationView() {
               onFork={() => void fork(turn)}
             />
           ))}
-          {live && (
+          {live && !settled && (
             <li className="my-5 flex flex-col gap-1">
               {live.userText !== null && <UserBubble text={live.userText} />}
               <Answer parts={live.parts} />
-              <Activity run={live} />
+              {live.status === "failed" && live.errorCode !== "run.cancelled" ? (
+                <RunErrorView code={live.errorCode ?? "internal.error"} reason={live.reason ?? null} />
+              ) : (
+                <Activity run={live} />
+              )}
             </li>
           )}
         </ol>
@@ -301,9 +302,19 @@ function codeKey(error: unknown): string {
   return ["model.unavailable", "model.request_failed", "model.refused", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
 }
 
-function explain(t: (key: string) => string, run: LiveRun): string {
-  const text = t(`errors.${codeKey(new ApiError(0, run.errorCode ?? "internal.error"))}`);
-  return run.reason ? `${text} ${run.reason}` : text;
+/** Why a run failed, where its answer would be, with what the model said (UX-014, MOD-015). */
+function RunErrorView({ code, reason }: { code: string; reason: string | null }) {
+  const { t } = useTranslation();
+  return (
+    <div role="alert" className="mt-1 flex items-start gap-2.5 rounded-2xl border border-danger/45 bg-raised py-2.5 pr-3.5 pl-2">
+      <Sprite pose="error" className="h-[53px] w-[46px] flex-none" />
+      <div className="min-w-0 flex-1 pt-1 text-sm">
+        <strong className="block">{t("errors.title")}</strong>
+        <p className="mt-0.5 text-muted">{t(`errors.${codeKey(new ApiError(0, code))}`)}</p>
+        {reason && <blockquote className="mt-1.5 border-l-2 border-line-strong pl-2.5 break-words whitespace-pre-wrap">{reason}</blockquote>}
+      </div>
+    </div>
+  );
 }
 
 /** The sprite acting out what the assistant does, and the same in words (UX-013). */
@@ -363,6 +374,8 @@ function TurnView(props: {
   turn: Turn;
   busy: boolean;
   last: boolean;
+  // What the run's stream said about its failure, when the history keeps no reason.
+  reason?: string | undefined;
   editing: boolean;
   onEdit: () => void;
   onCancelEdit: () => void;
@@ -410,7 +423,10 @@ function TurnView(props: {
           </div>
         ))}
       <Answer parts={turn.parts} />
-      {props.last && (
+      {turn.run.error && turn.run.error.code !== "run.cancelled" && (
+        <RunErrorView code={turn.run.error.code} reason={turn.run.error.reason ?? props.reason ?? null} />
+      )}
+      {props.last && !turn.run.error && (
         <div className="mt-0.5 flex min-h-[58px] items-center gap-2.5">
           <Sprite pose="waiting" className="h-[53px] w-[46px] flex-none" />
         </div>

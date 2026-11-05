@@ -326,12 +326,19 @@ class ConversationListPage(Response):
 type RunKind = Literal["message", "resume"]
 
 
+class RunError(Response):
+    code: str
+    reason: str | None
+
+
 class PathRun(Response):
     run_id: uuid.UUID
     parent_run_id: uuid.UUID | None
     kind: RunKind
     message_ids: list[str]
     cost: list[Money]
+    # Why the run failed, shown in place of its answer (UX-014).
+    error: RunError | None
 
 
 class MessagePage(Response):
