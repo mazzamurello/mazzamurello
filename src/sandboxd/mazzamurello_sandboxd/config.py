@@ -27,6 +27,7 @@ VARIABLES = frozenset(
         "MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS",
         "MZM_SANDBOX_MAX_OUTPUT_BYTES",
         "MZM_SANDBOX_IDLE_MINUTES",
+        "MZM_SANDBOX_WORKSPACE_QUOTA_MB",
         "MZM_SANDBOX_MINIMUM_GVISOR_RELEASE",
     }
 )
@@ -56,6 +57,8 @@ class DriverConfiguration:
     command_timeout_seconds: int
     max_output_bytes: int
     idle_minutes: int
+    # The workspace quota (SBX-019).
+    workspace_quota_mb: int = 2048
     minimum_release: str = BUILT_IN_MINIMUM_RELEASE
 
 
@@ -127,5 +130,6 @@ def load_configuration(environment: Mapping[str, str]) -> DriverConfiguration:
         command_timeout_seconds=_integer(environment, "MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS", 300, 1, 86400),
         max_output_bytes=_integer(environment, "MZM_SANDBOX_MAX_OUTPUT_BYTES", 1048576, 1024, 67108864),
         idle_minutes=_integer(environment, "MZM_SANDBOX_IDLE_MINUTES", 30, 1, 10080),
+        workspace_quota_mb=_integer(environment, "MZM_SANDBOX_WORKSPACE_QUOTA_MB", 2048, 1, 1048576),
         minimum_release=_minimum_release(environment),
     )
