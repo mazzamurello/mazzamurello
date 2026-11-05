@@ -82,10 +82,10 @@ new entry here first (ADR-0005).
 | Control plane | The server components that hold state and secrets: API, agent, memory, model gateway. Never executes user code. |
 | Execution plane | Where user code runs: the sandboxes. |
 | Sandbox | A per-user isolated execution environment with internet access and no access to local networks. |
-| Workspace | The persistent folder of a user's sandbox, `/workspace`, which keeps what the user wants to keep; everything else in the sandbox is discarded when it stops (ADR-0076). |
+| Workspace | The persistent folder of a conversation's sandbox, `/workspace`, which keeps what the user wants to keep; everything else in the sandbox is discarded when it stops (ADR-0076, ADR-0078). |
 | Scratch folder | The folder where a sandbox's commands start, `/scratch`, discarded with the sandbox (ADR-0076). |
 | Sandbox driver | The only component allowed to manage containers; exposes a minimal API to the control plane. |
-| Workspace backend | The control-plane component that presents a user's sandbox to Pydantic AI as a workspace, through the sandbox driver (ADR-0035). |
+| Workspace backend | The control-plane component that presents a conversation's sandbox to Pydantic AI as a workspace, through the sandbox driver (ADR-0035, ADR-0078). |
 | Sandbox bridge | The host network bridge, with a fixed interface name, to which all sandboxes attach; the egress table matches it (ADR-0021). |
 | Network guard | A small infrastructure container, with host networking and `NET_ADMIN`, that installs and maintains the egress table on the host (ADR-0021). Never runs user code. |
 | Egress table | The dedicated `nftables` table on the host that enforces the egress policy for traffic from the sandbox bridge (ADR-0021). |
