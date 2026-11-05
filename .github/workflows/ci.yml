@@ -108,8 +108,14 @@ jobs:
             budget: 150
           # The server image now builds the web app as well (ADR-0067).
           - part: end-to-end
-            paths: tests/e2e
+            paths: tests/e2e/test_deployment.py
             budget: 150
+          # Backing a deployment up, installing it again and restoring it
+          # (OPS-006, ADR-0077): two installations and a backup, in a part of
+          # their own, so that the other parts do not wait for them.
+          - part: restore
+            paths: tests/e2e/test_restore.py
+            budget: 240
           # The web client in Chromium, and its unit tests (ADR-0067). Its
           # browser tests grew with the daily-use conversations (ADR-0073).
           - part: web
@@ -169,11 +175,57 @@ jobs:
           sudo systemctl reload docker
           docker run --rm --runtime=runsc hello-world >/dev/null
           runsc --version
+      # The images are built with Docker's build cache, kept between runs, and
+      # handed to the tests, which then do not build them again (ADR-0059).
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the sandbox image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/images/sandbox/Dockerfile
+          load: true
+          tags: mazzamurello-test/sandbox:ci,mazzamurello/sandbox:local
+          cache-from: type=gha,scope=sandbox
+          cache-to: type=gha,mode=max,scope=sandbox
+      - name: Build the network guard image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/images/netguard/Dockerfile
+          load: true
+          tags: mazzamurello-test/netguard:ci,mazzamurello/netguard:local
+          cache-from: type=gha,scope=netguard
+          cache-to: type=gha,mode=max,scope=netguard
+      - name: Build the server image
+        if: matrix.part == 'end-to-end' || matrix.part == 'restore'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/images/server/Dockerfile
+          load: true
+          tags: mazzamurello/server:local
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+      - name: Build the sandbox driver image
+        if: matrix.part == 'end-to-end' || matrix.part == 'restore'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/images/sandboxd/Dockerfile
+          load: true
+          tags: mazzamurello/sandboxd:local
+          cache-from: type=gha,scope=sandboxd
+          cache-to: type=gha,mode=max,scope=sandboxd
       - name: Tests
         # A part whose tests do not exist yet, on a branch from before them, has nothing to run.
         if: matrix.part != 'web' || hashFiles('tests/web/conftest.py') != ''
         env:
           TEST_PATHS: ${{ matrix.paths }}
+          # Built above: the tests use them instead of building their own
+          # (specs/contracts/test-harness.md).
+          TEST_SANDBOX_IMAGE: mazzamurello-test/sandbox:ci
+          TEST_NETGUARD_IMAGE: mazzamurello-test/netguard:ci
+          TEST_DEPLOYMENT_IMAGES: built
         # TEST_PATHS is word-split on purpose: it lists paths and options. Listed
         # test files a branch does not have yet are left out, so that a rules
         # change can name the files of a milestone before the milestone merges.
