@@ -251,13 +251,12 @@ async def run_workflow(serialized_input: str) -> None:
         await _write_error(run.run_id, code)
         await _set_status(identity, run_id, "failed", code)
     except BaseException:
-        # Cancelled: the API has recorded it, and the stream ends with the workflow (CNV-003).
+        # Cancelled: the API has recorded it and stops the sandbox, and the stream ends with the workflow (CNV-003).
         _ENCODERS.pop(run.run_id, None)
         _WRITTEN.pop(run.run_id, None)
         raise
-    finally:
-        # The sandbox ends with the answer, and whatever it started with it (SBX-018, ADR-0078).
-        await _end_sandbox(deps)
+    # The sandbox ends with the answer, and whatever it started with it (SBX-018, ADR-0078).
+    await _end_sandbox(deps)
     _ENCODERS.pop(run.run_id, None)
     async with transaction(_engine(), identity) as connection:
         await connection.execute(
@@ -269,7 +268,7 @@ async def run_workflow(serialized_input: str) -> None:
 
 async def _end_sandbox(deps: RunDeps) -> None:
     try:
-        await asyncio.shield(stop_sandbox(deps))
+        await stop_sandbox(deps)
     except Exception:
         # The driver's idle limit removes it later (SBX-018).
         logger.warning("run %s: its sandbox could not be stopped", deps.run_id)

@@ -14,7 +14,7 @@ from typing import Annotated, Any, cast
 from urllib.parse import urlsplit
 
 from dbos import DBOSClient
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -26,6 +26,7 @@ from mazzamurello_server.connections import default_model
 from mazzamurello_server.conversations import Durable, find_conversation
 from mazzamurello_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
 from mazzamurello_server.durable import APPLICATION_VERSION, EVENTS_STREAM, RUN_QUEUE, RUN_WORKFLOW
+from mazzamurello_server.sandbox import SandboxDriver, stop_conversation_sandbox
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
 router = APIRouter()
@@ -271,7 +272,9 @@ async def get_run(run_id: uuid.UUID, identity: Authenticated, engine: Engine) ->
 
 
 @router.post("/runs/{run_id}/cancel", response_model=schemas.Run)
-async def cancel_run(run_id: uuid.UUID, identity: Authenticated, engine: Engine, durable: Durable) -> schemas.Run:
+async def cancel_run(
+    run_id: uuid.UUID, identity: Authenticated, engine: Engine, durable: Durable, request: Request
+) -> schemas.Run:
     async with transaction(engine, identity) as connection:
         run = await find_run(connection, run_id)
     if run.status in FINAL_STATUSES:
@@ -286,7 +289,12 @@ async def cancel_run(run_id: uuid.UUID, identity: Authenticated, engine: Engine,
             ),
             {"id": run_id},
         )
-        return run_response(await find_run(connection, run_id))
+        cancelled = await find_run(connection, run_id)
+    # What the run started in its sandbox stops with it (SBX-018, ADR-0078).
+    configuration = request.app.state.configuration
+    driver = SandboxDriver(configuration.sandboxd_url, configuration.sandboxd_token)
+    await stop_conversation_sandbox(driver, identity, cancelled.conversation_id)
+    return run_response(cancelled)
 
 
 @router.get("/runs/{run_id}/events")

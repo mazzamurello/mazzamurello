@@ -9,6 +9,7 @@ conversation; a workspace reference that names any other sandbox is declined.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import uuid
 from collections.abc import Mapping, Sequence
@@ -30,6 +31,8 @@ from pydantic_ai.workspaces import (
 from mazzamurello_server import errors
 from mazzamurello_server.database import Identity
 from mazzamurello_server.gateway import RunDeps
+
+logger = logging.getLogger(__name__)
 
 PROVIDER = "mazzamurello-sandbox"
 # Commands start in the scratch folder; only /workspace persists (SBX-018, ADR-0076).
@@ -177,6 +180,18 @@ async def workspace_request(
         raise errors.ApiError(503, "sandbox.unavailable", "The sandbox is unavailable") from error
     if response.status_code != 204:
         raise errors.ApiError(503, "sandbox.unavailable", "The sandbox is unavailable")
+
+
+async def stop_conversation_sandbox(driver: SandboxDriver, identity: Identity, conversation_id: uuid.UUID) -> None:
+    """Remove a conversation's sandbox, as its run is stopped (SBX-018); the driver's idle limit is the safety net."""
+    path = f"/sandboxes/{identity.tenant_id}/{identity.user_id}/{conversation_id}/stop"
+    try:
+        async with httpx.AsyncClient(
+            base_url=driver.url, headers={"Authorization": f"Bearer {driver.token}"}, timeout=30
+        ) as client:
+            await client.post(path)
+    except httpx.HTTPError:
+        logger.warning("the sandbox of conversation %s could not be stopped", conversation_id)
 
 
 async def stop_sandbox(deps: RunDeps) -> None:
