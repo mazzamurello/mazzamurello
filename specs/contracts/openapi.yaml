@@ -1451,11 +1451,24 @@ components:
         One run of the conversation (ADR-0037). A client rewinds to before a
         user message by naming the parent of the run that holds it
         (ADR-0068).
-      required: [run_id, parent_run_id, kind, message_ids, cost]
+      required: [run_id, parent_run_id, kind, message_ids, cost, error]
       properties:
         run_id: { $ref: "#/components/schemas/Id" }
         parent_run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
         kind: { $ref: "#/components/schemas/RunKind" }
+        error:
+          description: |
+            Why the run failed, which clients show in place of its answer
+            (UX-014); `null` unless the run failed. `reason` is what the
+            model or its provider said, when its stored answer keeps it, such
+            as the reason for a refusal (MOD-015).
+          oneOf:
+            - type: object
+              required: [code, reason]
+              properties:
+                code: { $ref: "#/components/schemas/ErrorCode" }
+                reason: { type: [string, "null"] }
+            - type: "null"
         message_ids:
           type: array
           description: IDs of the AG-UI messages, in `items`, that this run produced.
