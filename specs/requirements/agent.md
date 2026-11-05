@@ -183,17 +183,18 @@ Rationale: journey J7.
 
 ## AGT-016: Automatic compaction
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, eval
 
-When a conversation approaches the context window of the model in use, the
-system MUST compact the history sent to the model, using the strategy
-configured for that model: compaction by the provider when the model supports
-it, otherwise local strategies that drop or summarize the oldest content
-first. Compaction MUST NOT change the stored conversation, which the user can
-still read, rewind and fork in full (ADR-0041).
+When the history of a run would exceed 80% of the context window of the
+conversation's model, the system MUST compact the history sent to the model:
+the conversation's model summarizes the oldest turns, and the most recent
+ones stay as they are. The context window comes from the provider or, for a
+connection to the household's own server, from the connection, which a
+tenant admin can set. Compaction MUST NOT change the stored conversation,
+which the user can still read, rewind and fork in full (ADR-0041, ADR-0073).
 
 Rationale: journeys J7 and J12.
 

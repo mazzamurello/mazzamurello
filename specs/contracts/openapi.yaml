@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mazzamurello public API
-  version: 0.7.0-draft
+  version: 0.8.0-draft
   summary: The single public HTTP API used by every Mazzamurello client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
@@ -38,6 +38,7 @@ tags:
   - name: administration
   - name: models
   - name: conversations
+  - name: folders
   - name: runs
   - name: health
 
@@ -505,6 +506,158 @@ paths:
         "409": { $ref: "#/components/responses/RunInProgress" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /conversations/{conversation_id}/fork:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: [conversations]
+      operationId: forkConversation
+      summary: Start a new conversation from a copy of this one up to a run.
+      description: |
+        The fork holds copies of the runs and messages from the first run to
+        `run_id`, under new identifiers, in the same folder, with the same
+        title and model; it records where it came from. Ledger entries are
+        not copied (CNV-005, ADR-0073). Refused with `run.in_progress` while
+        a run of the conversation is queued or running.
+      x-requirements: [CNV-005, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ForkRequest" }
+      responses:
+        "201":
+          description: The fork.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunInProgress" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /conversation-list:
+    get:
+      tags: [conversations]
+      operationId: getConversationList
+      summary: The user's conversations and folders, as one list.
+      description: |
+        Pinned entries first, then the others; within each group, newest
+        first by the most recent message, a folder by that of its
+        conversations, or by its creation while it holds none. A folder entry
+        carries its conversations, in the same order. Archived conversations
+        are left out (CNV-007, CNV-008).
+      x-requirements: [CNV-007, CNV-008, TEN-006]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of the list.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversationListPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /folders:
+    post:
+      tags: [folders]
+      operationId: createFolder
+      summary: Create a folder.
+      x-requirements: [CNV-007]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFolderRequest" }
+      responses:
+        "201":
+          description: Folder created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Folder" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /folders/{folder_id}:
+    parameters:
+      - $ref: "#/components/parameters/FolderId"
+    patch:
+      tags: [folders]
+      operationId: updateFolder
+      summary: Rename, pin, unpin, collapse or expand a folder.
+      x-requirements: [CNV-007, CNV-008, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFolderRequest" }
+      responses:
+        "200":
+          description: The updated folder.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Folder" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [folders]
+      operationId: deleteFolder
+      summary: Delete a folder; its conversations move out of it.
+      x-requirements: [CNV-007, TEN-006]
+      responses:
+        "204": { description: Folder deleted. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /search:
+    get:
+      tags: [conversations]
+      operationId: search
+      summary: Search the titles and message text of the user's conversations.
+      description: |
+        Full-text search without regard to language (ADR-0073), ranked by
+        relevance, then by recency. Tool calls and their results are not
+        searched (CNV-009).
+      x-requirements: [CNV-009, TEN-003, TEN-006]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: The matching conversations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/SearchResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /me/usage:
+    get:
+      tags: [conversations]
+      operationId: getUsage
+      summary: The user's spend over the last 24 hours and the last 30 days.
+      x-requirements: [MOD-007, UX-008]
+      responses:
+        "200":
+          description: Totals from the cost ledger (ADR-0042, ADR-0073).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Usage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
   /conversations/{conversation_id}/messages:
     parameters:
       - $ref: "#/components/parameters/ConversationId"
@@ -698,6 +851,11 @@ components:
   parameters:
     SessionId:
       name: session_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    FolderId:
+      name: folder_id
       in: path
       required: true
       schema: { $ref: "#/components/schemas/Id" }
@@ -983,7 +1141,7 @@ components:
         returned; `has_api_key` says whether one is set. `private_network` is
         true when the address was set by a user who is the instance admin,
         which allows a private address (MOD-009).
-      required: [id, name, kind, base_url, location, has_api_key, private_network, model_count, models_refreshed_at, created_at, updated_at]
+      required: [id, name, kind, base_url, location, has_api_key, private_network, context_window, model_count, models_refreshed_at, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         name: { type: string }
@@ -992,6 +1150,9 @@ components:
         location: { $ref: "#/components/schemas/Location" }
         has_api_key: { type: boolean }
         private_network: { type: boolean }
+        context_window:
+          type: [integer, "null"]
+          description: For a connection to your own server, the context window of its models, in tokens; `null` for OpenRouter, which lists each model's (ADR-0073).
         model_count: { type: integer, minimum: 0 }
         models_refreshed_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
         created_at: { $ref: "#/components/schemas/Timestamp" }
@@ -1009,6 +1170,7 @@ components:
         kind: { $ref: "#/components/schemas/ConnectionKind" }
         base_url: { type: string, format: uri, maxLength: 2000, description: "Address of the API, such as `http://192.168.1.10:11434/v1`." }
         location: { $ref: "#/components/schemas/Location" }
+        context_window: { type: integer, minimum: 512, maximum: 10000000, description: "For `openai` only; 8192 when not given." }
         api_key: { type: string, minLength: 1, maxLength: 1000, writeOnly: true }
     UpdateConnectionRequest:
       type: object
@@ -1019,6 +1181,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 100 }
         base_url: { type: string, format: uri, maxLength: 2000 }
         location: { $ref: "#/components/schemas/Location" }
+        context_window: { type: integer, minimum: 512, maximum: 10000000, description: "For `openai` only; 8192 when not given." }
         api_key: { oneOf: [{ type: string, minLength: 1, maxLength: 1000 }, { type: "null" }], writeOnly: true }
     ConnectionTestStep:
       type: object
@@ -1076,14 +1239,14 @@ components:
         prices:
           description: Prices per million tokens when the model is paid per token and they are known, else `null`.
           oneOf: [{ $ref: "#/components/schemas/ModelPrices" }, { type: "null" }]
-        context_window: { type: [integer, "null"], minimum: 1 }
+        context_window: { type: [integer, "null"], minimum: 1, description: "From the provider, or the connection's for your own server." }
         tools:
           type: [boolean, "null"]
           description: Whether the model can call tools; `null` when the provider does not say. A model that cannot runs without tools (MOD-014).
 
     Conversation:
       type: object
-      required: [id, title, archived, active_run_id, model, created_at, updated_at]
+      required: [id, title, archived, active_run_id, model, folder_id, pinned, forked_from, cost, last_message_at, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         title:
@@ -1101,6 +1264,22 @@ components:
             when the conversation was created, or the one its user chose;
             `null` when the tenant had no default model then.
           oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+        folder_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
+        pinned: { type: boolean }
+        forked_from:
+          description: The conversation and run this one was forked from; the conversation is `null` once deleted, and the run is the original run's identifier even then (CNV-005).
+          oneOf:
+            - type: object
+              required: [conversation_id, run_id]
+              properties:
+                conversation_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
+                run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
+            - type: "null"
+        cost:
+          description: What the conversation's model requests cost, per currency (MOD-007).
+          type: array
+          items: { $ref: "#/components/schemas/Money" }
+        last_message_at: { $ref: "#/components/schemas/Timestamp" }
         created_at: { $ref: "#/components/schemas/Timestamp" }
         updated_at: { $ref: "#/components/schemas/Timestamp" }
 
@@ -1131,6 +1310,97 @@ components:
         model:
           allOf: [{ $ref: "#/components/schemas/ModelChoice" }]
           description: A model offered by a connection of the tenant; used from the next run (MOD-012).
+        folder_id:
+          description: A folder of the user, or `null` to move the conversation out of its folder (CNV-007).
+          oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }]
+        pinned: { type: boolean }
+
+    ForkRequest:
+      type: object
+      required: [run_id]
+      additionalProperties: false
+      properties:
+        run_id:
+          $ref: "#/components/schemas/Id"
+          description: The last run the fork copies.
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { $ref: "#/components/schemas/Decimal" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+
+    Usage:
+      type: object
+      description: Spend per currency; requests whose price is unknown are counted, not priced (ADR-0042).
+      required: [last_24_hours, last_30_days, unpriced_requests]
+      properties:
+        last_24_hours: { type: array, items: { $ref: "#/components/schemas/Money" } }
+        last_30_days: { type: array, items: { $ref: "#/components/schemas/Money" } }
+        unpriced_requests: { type: integer, minimum: 0, description: "Requests in the last 30 days whose price is unknown." }
+
+    Folder:
+      type: object
+      required: [id, name, pinned, collapsed, last_message_at, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        name: { type: string }
+        pinned: { type: boolean }
+        collapsed: { type: boolean, description: "Kept for the user on every device (CNV-008)." }
+        last_message_at:
+          description: That of its most recent conversation; `null` when it holds none.
+          oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }]
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+
+    CreateFolderRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+
+    UpdateFolderRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        pinned: { type: boolean }
+        collapsed: { type: boolean }
+
+    ConversationListEntry:
+      oneOf:
+        - type: object
+          required: [kind, folder, conversations]
+          properties:
+            kind: { const: folder }
+            folder: { $ref: "#/components/schemas/Folder" }
+            conversations: { type: array, items: { $ref: "#/components/schemas/Conversation" } }
+        - type: object
+          required: [kind, conversation]
+          properties:
+            kind: { const: conversation }
+            conversation: { $ref: "#/components/schemas/Conversation" }
+
+    ConversationListPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ConversationListEntry" } }
+        next_cursor: { type: [string, "null"] }
+
+    SearchResult:
+      type: object
+      required: [conversation_id, title, snippet, last_message_at]
+      properties:
+        conversation_id: { $ref: "#/components/schemas/Id" }
+        title: { type: string }
+        snippet:
+          type: string
+          maxLength: 300
+          description: Plain text around the first match, from a message or else the title.
+        last_message_at: { $ref: "#/components/schemas/Timestamp" }
 
     RewindRequest:
       type: object
@@ -1180,7 +1450,7 @@ components:
         One run of the conversation (ADR-0037). A client rewinds to before a
         user message by naming the parent of the run that holds it
         (ADR-0068).
-      required: [run_id, parent_run_id, kind, message_ids]
+      required: [run_id, parent_run_id, kind, message_ids, cost]
       properties:
         run_id: { $ref: "#/components/schemas/Id" }
         parent_run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
@@ -1189,6 +1459,10 @@ components:
           type: array
           description: IDs of the AG-UI messages, in `items`, that this run produced.
           items: { type: string }
+        cost:
+          description: What the run's model requests cost, per currency, which clients show beside its answer (UX-008).
+          type: array
+          items: { $ref: "#/components/schemas/Money" }
 
     RunAgentInput:
       type: object
@@ -1281,7 +1555,14 @@ components:
       type: object
       description: |
         An AG-UI 1.0 event (https://docs.ag-ui.com/). The types below are the
-        ones Mazzamurello emits; clients must ignore unknown types.
+        ones Mazzamurello emits; clients must ignore unknown types. After each
+        model response, a `CUSTOM` event named `mzm.usage` carries as `value`
+        `{context_window, context_tokens, input_tokens, output_tokens, cost}`:
+        the model's window and the tokens its context used, the run's tokens
+        so far, and its cost so far as a `Money`, or `null` when unknown
+        (MOD-007, ADR-0073). When a conversation's automatic title is stored
+        during its first run, a `CUSTOM` event named `mzm.title` carries as
+        `value` `{title}`, before the run finishes (CNV-006, ADR-0073).
       required: [type]
       additionalProperties: true
       properties:

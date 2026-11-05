@@ -60,33 +60,33 @@ Rationale: journey J2.
 
 ## CNV-005: Forking
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
 
-A user MUST be able to fork a conversation at any turn of a path into a new
-conversation, which starts with the history of that path up to that turn and
-then evolves independently. The fork MUST record the conversation it came
-from, and MUST be placed in the same folder.
+A user MUST be able to fork a conversation at any turn into a new
+conversation, which starts with a copy of the history up to that turn and
+then evolves independently. The fork MUST record the conversation and turn it
+came from, and MUST be placed in the same folder (ADR-0073).
 
 Rationale: journeys J2 and J3.
 
 ## CNV-006: Automatic titles
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** integration
 
 A new conversation SHOULD receive a short title generated from its first
-exchange, unless the user has already named it. Title generation is a model
-call and is subject to the data egress policy (MOD-003) and to the cost
-ledger (MOD-006).
+message by the conversation's own model, while the first answer is being
+written, unless the user has already named it. Title generation is a model call and is subject to the data egress
+policy (MOD-003) and to the cost ledger (MOD-006, ADR-0073).
 
 ## CNV-007: Folders
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -101,7 +101,7 @@ Rationale: journey J3.
 
 ## CNV-008: Conversation list
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -113,14 +113,14 @@ The API and clients MUST present a single list of conversations and folders:
   first, where a folder's time is that of the most recent message of any of
   its conversations;
 - conversations and folders can be pinned and unpinned;
-- folders can be collapsed and expanded, and clients remember the choice per
-  user.
+- folders can be collapsed and expanded, and the choice is kept for the user
+  on every device (ADR-0073).
 
 Rationale: journey J3.
 
 ## CNV-009: Search
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration

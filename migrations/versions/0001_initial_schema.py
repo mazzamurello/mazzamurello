@@ -27,14 +27,16 @@ CONTRACT_TABLES = (
     "login_attempts",
     "connections",
     "connection_models",
+    "folders",
     "conversations",
     "runs",
     "conversation_messages",
+    "compaction_checkpoints",
     "usage_ledger",
 )
 # Tables of a tenant that every user of it reads and its tenant admins change (ADR-0069).
 TENANT_TABLES = ("connections", "connection_models")
-PRIVATE_TABLES = ("conversations", "runs", "conversation_messages", "usage_ledger")
+PRIVATE_TABLES = ("folders", "conversations", "runs", "conversation_messages", "compaction_checkpoints", "usage_ledger")
 
 HELPER_FUNCTIONS = [
     # Request context (TEN-005). A setting that was never set, or was reset at
@@ -137,6 +139,8 @@ TABLES = [
       api_key_ciphertext bytea,
       private_network boolean NOT NULL DEFAULT false,
       default_model text CHECK (default_model <> ''),
+      -- The context window of a server's models; OpenRouter lists each model's (ADR-0073).
+      context_window integer CHECK (context_window >= 512),
       models_refreshed_at timestamptz,
       created_at timestamptz NOT NULL,
       updated_at timestamptz NOT NULL,
@@ -167,6 +171,21 @@ TABLES = [
       CHECK ((currency IS NULL) = (input_price IS NULL AND cached_input_price IS NULL AND output_price IS NULL))
     )
     """,
+    # A user's groups of conversations (CNV-007, ADR-0073).
+    """
+    CREATE TABLE folders (
+      id uuid PRIMARY KEY,
+      tenant_id uuid NOT NULL,
+      owner_id uuid NOT NULL,
+      name text NOT NULL CHECK (name <> ''),
+      pinned_at timestamptz,
+      collapsed boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL,
+      UNIQUE (tenant_id, owner_id, id),
+      FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id)
+    )
+    """,
     """
     CREATE TABLE conversations (
       id uuid PRIMARY KEY,
@@ -181,10 +200,21 @@ TABLES = [
       -- The model of the conversation (MOD-012); a removed connection leaves the model without one.
       connection_id uuid,
       model text CHECK (model <> ''),
+      -- Folders, pins and forks (CNV-005, CNV-007, CNV-008, ADR-0073).
+      folder_id uuid,
+      pinned_at timestamptz,
+      forked_from_conversation_id uuid,
+      -- Kept without a reference, so that a fork stays one when its original is gone.
+      forked_from_run_id uuid,
+      last_message_at timestamptz NOT NULL,
       created_at timestamptz NOT NULL,
       updated_at timestamptz NOT NULL,
       UNIQUE (tenant_id, owner_id, id),
       FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id),
+      FOREIGN KEY (tenant_id, owner_id, folder_id)
+        REFERENCES folders (tenant_id, owner_id, id) ON DELETE SET NULL (folder_id),
+      FOREIGN KEY (tenant_id, owner_id, forked_from_conversation_id)
+        REFERENCES conversations (tenant_id, owner_id, id) ON DELETE SET NULL (forked_from_conversation_id),
       FOREIGN KEY (tenant_id, connection_id) REFERENCES connections (tenant_id, id) ON DELETE SET NULL (connection_id)
     )
     """,
@@ -232,6 +262,9 @@ TABLES = [
       REFERENCES runs (tenant_id, owner_id, id) ON DELETE SET NULL (active_run_id)
     """,
     "CREATE INDEX conversations_active_run_idx ON conversations (active_run_id)",
+    "CREATE INDEX conversations_list_idx ON conversations (owner_id, last_message_at DESC)",
+    "CREATE INDEX conversations_folder_idx ON conversations (folder_id)",
+    "CREATE INDEX conversations_title_search_idx ON conversations USING gin (to_tsvector('simple', title))",
     """
     CREATE TABLE conversation_messages (
       run_id uuid NOT NULL,
@@ -240,6 +273,9 @@ TABLES = [
       owner_id uuid NOT NULL,
       conversation_id uuid NOT NULL,
       message jsonb NOT NULL,
+      -- What a person reads in it, searched without regard to language (CNV-009, ADR-0073).
+      text text NOT NULL DEFAULT '',
+      search tsvector GENERATED ALWAYS AS (to_tsvector('simple', text)) STORED,
       created_at timestamptz NOT NULL,
       PRIMARY KEY (run_id, seq),
       FOREIGN KEY (tenant_id, owner_id, run_id) REFERENCES runs (tenant_id, owner_id, id) ON DELETE CASCADE,
@@ -248,6 +284,22 @@ TABLES = [
     )
     """,
     "CREATE INDEX conversation_messages_conversation_idx ON conversation_messages (conversation_id)",
+    "CREATE INDEX conversation_messages_search_idx ON conversation_messages USING gin (search)",
+    # The history a model receives in place of the conversation up to a run (AGT-016, ADR-0041).
+    """
+    CREATE TABLE compaction_checkpoints (
+      run_id uuid PRIMARY KEY,
+      tenant_id uuid NOT NULL,
+      owner_id uuid NOT NULL,
+      conversation_id uuid NOT NULL,
+      messages jsonb NOT NULL,
+      created_at timestamptz NOT NULL,
+      FOREIGN KEY (tenant_id, owner_id, run_id) REFERENCES runs (tenant_id, owner_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (tenant_id, owner_id, conversation_id)
+        REFERENCES conversations (tenant_id, owner_id, id) ON DELETE CASCADE
+    )
+    """,
+    "CREATE INDEX compaction_checkpoints_conversation_idx ON compaction_checkpoints (conversation_id)",
     """
     CREATE TABLE usage_ledger (
       id uuid PRIMARY KEY,
@@ -599,7 +651,9 @@ PRIVILEGES = [
     "GRANT UPDATE (display_name, password_hash, role, disabled_at) ON users TO mzm_app",
     "GRANT SELECT, INSERT, DELETE ON device_sessions TO mzm_app",
     "GRANT UPDATE (revoked_at) ON device_sessions TO mzm_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON folders TO mzm_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON conversations TO mzm_app",
+    "GRANT SELECT, INSERT ON compaction_checkpoints TO mzm_app",
     "GRANT SELECT, INSERT ON conversation_messages TO mzm_app",
     # Rewinding deletes runs (ADR-0068).
     "GRANT SELECT, INSERT, UPDATE, DELETE ON runs TO mzm_app",

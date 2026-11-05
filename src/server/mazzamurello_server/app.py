@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from mazzamurello_server import admin, auth, connections, conversations, health, runs, web
+from mazzamurello_server import admin, auth, connections, conversations, costs, folders, health, runs, web
 from mazzamurello_server.config import ApiConfiguration
 from mazzamurello_server.database import create_engine
 from mazzamurello_server.durable import create_client
@@ -41,6 +41,8 @@ def create_app(configuration: ApiConfiguration) -> FastAPI:
     app.include_router(admin.router, prefix=API_PREFIX)
     app.include_router(connections.router, prefix=API_PREFIX)
     app.include_router(conversations.router, prefix=API_PREFIX)
+    app.include_router(folders.router, prefix=API_PREFIX)
+    app.include_router(costs.router, prefix=API_PREFIX)
     app.include_router(runs.router, prefix=API_PREFIX)
     app.include_router(health.router, prefix=API_PREFIX)
     if configuration.web_root.is_dir():

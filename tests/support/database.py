@@ -28,7 +28,15 @@ DATABASE_NAME = "mazzamurello"
 MIGRATION_TIMEOUT_SECONDS = 300
 
 # Tables of the database contract, by kind.
-PRIVATE_TABLES = ("device_sessions", "conversations", "conversation_messages", "runs", "usage_ledger")
+PRIVATE_TABLES = (
+    "device_sessions",
+    "folders",
+    "conversations",
+    "conversation_messages",
+    "compaction_checkpoints",
+    "runs",
+    "usage_ledger",
+)
 # Configuration of the instance, without a tenant.
 INSTANCE_TABLES = ("tenants",)
 # Tables of a tenant that are not private to one user (ADR-0069).

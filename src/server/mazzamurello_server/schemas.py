@@ -123,11 +123,15 @@ type Address = Annotated[HttpUrl, UrlConstraints(max_length=2000)]
 type ApiKey = Annotated[str, Field(min_length=1, max_length=1000)]
 
 
+type ContextWindow = Annotated[int, Field(ge=512, le=10_000_000)]
+
+
 class CreateConnectionRequest(Request):
     name: Annotated[str, Field(min_length=1, max_length=100)]
     kind: ConnectionKind
     base_url: Address | None = None
     location: Location | None = None
+    context_window: ContextWindow | None = None
     api_key: ApiKey | None = None
 
 
@@ -137,6 +141,7 @@ class UpdateConnectionRequest(Request):
     name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     base_url: Address | None = None
     location: Location | None = None
+    context_window: ContextWindow | None = None
     api_key: ApiKey | None = None
 
 
@@ -148,6 +153,7 @@ class Connection(Response):
     location: Location
     has_api_key: bool
     private_network: bool
+    context_window: int | None
     model_count: int
     models_refreshed_at: Timestamp | None
     created_at: Timestamp
@@ -222,6 +228,59 @@ class UpdateConversationRequest(Request):
     title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     archived: bool | None = None
     model: ModelChoice | None = None
+    # Present and null moves the conversation out of its folder (CNV-007).
+    folder_id: uuid.UUID | None = None
+    pinned: bool | None = None
+
+
+class ForkRequest(Request):
+    run_id: uuid.UUID
+
+
+class Money(Response):
+    amount: str
+    currency: str
+
+
+class ForkedFrom(Response):
+    conversation_id: uuid.UUID | None
+    run_id: uuid.UUID | None
+
+
+class Usage(Response):
+    last_24_hours: list[Money]
+    last_30_days: list[Money]
+    unpriced_requests: int
+
+
+class CreateFolderRequest(Request):
+    name: Annotated[str, Field(min_length=1, max_length=100)]
+
+
+class UpdateFolderRequest(Request):
+    name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    pinned: bool | None = None
+    collapsed: bool | None = None
+
+
+class Folder(Response):
+    id: uuid.UUID
+    name: str
+    pinned: bool
+    collapsed: bool
+    last_message_at: Timestamp | None
+    created_at: Timestamp
+
+
+class SearchResult(Response):
+    conversation_id: uuid.UUID
+    title: str
+    snippet: str
+    last_message_at: Timestamp
+
+
+class SearchResults(Response):
+    items: list[SearchResult]
 
 
 class RewindRequest(Request):
@@ -234,12 +293,33 @@ class Conversation(Response):
     archived: bool
     active_run_id: uuid.UUID | None
     model: ModelChoiceOut | None
+    folder_id: uuid.UUID | None
+    pinned: bool
+    forked_from: ForkedFrom | None
+    cost: list[Money]
+    last_message_at: Timestamp
     created_at: Timestamp
     updated_at: Timestamp
 
 
 class ConversationPage(Response):
     items: list[Conversation]
+    next_cursor: str | None
+
+
+class FolderEntry(Response):
+    kind: Literal["folder"] = "folder"
+    folder: Folder
+    conversations: list[Conversation]
+
+
+class ConversationEntry(Response):
+    kind: Literal["conversation"] = "conversation"
+    conversation: Conversation
+
+
+class ConversationListPage(Response):
+    items: list[FolderEntry | ConversationEntry]
     next_cursor: str | None
 
 
@@ -251,6 +331,7 @@ class PathRun(Response):
     parent_run_id: uuid.UUID | None
     kind: RunKind
     message_ids: list[str]
+    cost: list[Money]
 
 
 class MessagePage(Response):

@@ -13,13 +13,15 @@ import logging
 import signal
 import uuid
 from collections.abc import AsyncIterable
+from dataclasses import replace
 from typing import Any, cast
 
 from dbos import DBOS, DBOSConfig
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
-from pydantic_ai.messages import AgentStreamEvent, ModelMessage, ModelMessagesTypeAdapter
+from pydantic_ai.messages import AgentStreamEvent, ModelMessage, ModelMessagesTypeAdapter, ModelRequest, UserPromptPart
+from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.ui.ag_ui import AGUIEventStream
 from pydantic_ai_harness.filesystem import FileSystem
 from pydantic_ai_harness.shell import Shell
@@ -37,7 +39,16 @@ from mazzamurello_server.durable import (
     RUN_QUEUE,
     RUN_WORKFLOW,
 )
-from mazzamurello_server.gateway import Gateway, ModelUnavailableError, RunDeps, model_reference, store_messages
+from mazzamurello_server.gateway import (
+    Gateway,
+    ModelUnavailableError,
+    RunDeps,
+    connection_model,
+    model_reference,
+    readable_text,
+    record_usage,
+    store_messages,
+)
 from mazzamurello_server.sandbox import SandboxWorkspace
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
@@ -72,6 +83,8 @@ _WORKER = _Worker()
 _ENCODERS: dict[str, AGUIEventStream[Any, Any]] = {}
 # Events written to each run's stream by this process.
 _WRITTEN: dict[str, int] = {}
+# The title request of each first run executing in this process, until announced (CNV-006).
+_TITLES: dict[str, asyncio.Task[str | None]] = {}
 
 
 async def _write(run_id: str, event: dict[str, Any]) -> None:
@@ -91,6 +104,16 @@ async def _handle_events(ctx: RunContext[RunDeps], events: AsyncIterable[AgentSt
     async for event in events:
         async for encoded in encoder.handle_event(event):
             await _write(run_id, _encoded(encoded))
+        title = _TITLES.get(run_id)
+        if title is not None and title.done():
+            await _announce_title(run_id)
+
+
+async def _announce_title(run_id: str) -> None:
+    """Wait for the run's title request, and name the conversation on the run's stream (CNV-006, ADR-0073)."""
+    title = await _TITLES.pop(run_id)
+    if title is not None:
+        await _write(run_id, {"type": "CUSTOM", "name": "mzm.title", "value": {"title": title}})
 
 
 agent = Agent(
@@ -138,8 +161,21 @@ async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.
         return []
     async with transaction(_engine(), identity) as connection:
         path = await path_runs(connection, conversation_id, parent)
+        # The latest compaction on the path replaces the history before its run (ADR-0041).
+        checkpoint = (
+            await connection.execute(
+                text("SELECT run_id, messages FROM compaction_checkpoints WHERE run_id = ANY(:ids)"),
+                {"ids": [run.id for run in path]},
+            )
+        ).all()
+        checkpoints = {row.run_id: row.messages for row in checkpoint}
+        start = max((index for index, run in enumerate(path) if run.id in checkpoints), default=None)
         stored = await stored_messages(connection, [run.id for run in path])
-    return [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
+    history: list[ModelMessage] = []
+    if start is not None:
+        history = list(ModelMessagesTypeAdapter.validate_python(checkpoints[path[start].id]))
+        path = path[start:]
+    return history + [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
 
 
 def _error_code(error: BaseException) -> str:
@@ -182,6 +218,7 @@ async def run_workflow(serialized_input: str) -> None:
         model=attribution.model_name or "",
         sandboxd_url=_WORKER.sandboxd_url,
         sandboxd_token=_WORKER.sandboxd_token,
+        emit=lambda event: _write(run.run_id, event),
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
     _ENCODERS[run.run_id] = encoder
@@ -215,6 +252,10 @@ async def _execute(
 ) -> None:
     async for event in encoder.before_stream():
         await _write(run.run_id, _encoded(event))
+    if run.parent_run_id is None:
+        # The title is asked for alongside the answer, from the first message (CNV-006, ADR-0073);
+        # the step's place in the workflow is taken here, before the agent's.
+        _TITLES[run.run_id] = asyncio.create_task(_title(run, replace(deps, emit=None)))
     try:
         result = await agent.run(
             run.user_text,
@@ -227,13 +268,69 @@ async def _execute(
     except (ModelUnavailableError, ModelAPIError) as error:
         code = _error_code(error)
         logger.warning("run %s failed: %s", run.run_id, code)
+        if run.run_id in _TITLES:
+            await _announce_title(run.run_id)
         await _write_error(run.run_id, code, _reason(error))
         await _set_status(identity, deps.run_id, "failed", code)
         return
+    except BaseException:
+        if (title := _TITLES.pop(run.run_id, None)) is not None:
+            title.cancel()
+        raise
     await store_messages(deps, result.new_messages())
+    if run.run_id in _TITLES:
+        await _announce_title(run.run_id)
     async for event in encoder.after_stream():
         await _write(run.run_id, _encoded(event))
     await _set_status(identity, deps.run_id, "completed")
+
+
+TITLE_PROMPT = (
+    "Write a title of at most six words for a conversation that starts with this message, in its language."
+    " Answer with the title only, without quotes.\n\n"
+)
+TITLE_CHARS = 80
+TITLE_INPUT_CHARS = 2000
+
+
+@DBOS.step()
+async def _title(run: RunWorkflowInput, deps: RunDeps) -> str | None:
+    """Name an untitled conversation after its first message, by its own model; the title, if stored."""
+    try:
+        return await _name_conversation(run, deps)
+    except Exception as error:
+        # A title is a courtesy: whatever goes wrong, the run it goes with is unaffected.
+        logger.warning("run %s got no title: %s", run.run_id, _error_code(error))
+        return None
+
+
+async def _name_conversation(run: RunWorkflowInput, deps: RunDeps) -> str | None:
+    async with transaction(_engine(), deps.identity) as connection:
+        title = (
+            await connection.execute(
+                text("SELECT title FROM conversations WHERE id = :id"), {"id": deps.conversation_id}
+            )
+        ).scalar_one_or_none()
+    if title != "":
+        return None
+    model = await connection_model(deps, uuid.UUID(run.connection_id), run.model)
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart(TITLE_PROMPT + run.user_text[:TITLE_INPUT_CHARS])])],
+        None,
+        ModelRequestParameters(),
+    )
+    await record_usage(deps, uuid.uuid5(deps.run_id, "title"), response, "title")
+    lines = [line.strip(" \t\"'*#") for line in readable_text(response).splitlines() if line.strip()]
+    if not lines:
+        return None
+    title = lines[0][:TITLE_CHARS]
+    async with transaction(_engine(), deps.identity) as connection:
+        # Unless the user named it meanwhile.
+        result = await connection.execute(
+            text("UPDATE conversations SET title = :title WHERE id = :id AND title = ''"),
+            {"title": title, "id": deps.conversation_id},
+        )
+    return title if result.rowcount == 1 else None
 
 
 def _reason(error: BaseException) -> str | None:

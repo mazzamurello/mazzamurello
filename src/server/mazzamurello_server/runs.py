@@ -215,7 +215,10 @@ async def start_run(
                 },
             )
             await connection.execute(
-                text("UPDATE conversations SET active_run_id = :run, updated_at = now() WHERE id = :id"),
+                text(
+                    "UPDATE conversations SET active_run_id = :run, last_message_at = now(), updated_at = now()"
+                    " WHERE id = :id"
+                ),
                 {"run": body.run_id, "id": conversation_id},
             )
     except DBAPIError as error:

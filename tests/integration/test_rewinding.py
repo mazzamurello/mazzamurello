@@ -62,7 +62,8 @@ def test_rewinding_deletes_what_followed(database: Database, server: Server, tok
         assert (rows.fetchone(), workflows.fetchone()) == ((0,), (0,))
         # Spending stays in the ledger, detached from the deleted runs (ADR-0042).
         ledger = conn.execute(
-            "SELECT run_id FROM usage_ledger WHERE conversation_id = %s ORDER BY created_at", (conversation["id"],)
+            "SELECT run_id FROM usage_ledger WHERE conversation_id = %s AND purpose = 'run' ORDER BY created_at",
+            (conversation["id"],),
         ).fetchall()
     assert [str(run) if run else None for (run,) in ledger] == [first, None, None]
     again, _ = start_run(server, token, conversation["id"], "rewind two, again")
@@ -137,7 +138,7 @@ def test_history_no_longer_describes_versions(server: Server, token: str) -> Non
     conversation = create_conversation(server, token)
     start_run(server, token, conversation["id"], "plain")
     (run,) = messages(server, token, conversation["id"])["runs"]
-    assert set(run) == {"run_id", "parent_run_id", "kind", "message_ids"}
+    assert set(run) == {"run_id", "parent_run_id", "kind", "message_ids", "cost"}
     # The active run is no longer set by updating the conversation.
     with server.client(token) as client:
         response = client.patch(f"/conversations/{conversation['id']}", json={"active_run_id": None})

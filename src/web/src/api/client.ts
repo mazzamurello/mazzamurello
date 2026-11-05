@@ -13,6 +13,10 @@ export type Connection = Schemas["Connection"];
 export type ConnectionTest = Schemas["ConnectionTest"];
 export type ModelOption = Schemas["ModelOption"];
 export type ModelChoice = Schemas["ModelChoice"];
+export type Folder = Schemas["Folder"];
+export type ListEntry = Schemas["ConversationListEntry"];
+export type Money = Schemas["Money"];
+export type SearchResult = Schemas["SearchResult"];
 export type Problem = Schemas["Problem"];
 
 export const API_BASE = "/v1";

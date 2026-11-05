@@ -45,7 +45,7 @@ export function Welcome({ me }: { me: User }) {
   }
 
   return (
-    <div className="flex flex-1 overflow-y-auto">
+    <div className="relative flex flex-1 overflow-y-auto">
       <div className="m-auto flex w-full max-w-[760px] flex-col gap-7 px-4 pt-4 pb-12">
         <div className="flex flex-col items-center justify-center gap-3.5 sm:flex-row sm:gap-2">
           <Sprite pose="greeting" className="h-[124px] w-[108px] flex-none sm:h-[152px] sm:w-[132px]" />

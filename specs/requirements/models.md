@@ -114,15 +114,16 @@ egress policy (MOD-003) relies on the same statement (ADR-0066, ADR-0069).
 
 ## MOD-007: Live usage reporting
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
 During a run, the server MUST send clients, after each model response, the
 context window size of the model, the tokens the context uses, and the
-tokens and cost of the run so far. The API MUST provide the total cost per
-message, per conversation, per day and per month for the requesting user.
+tokens and cost of the run so far. The API MUST provide the cost of each
+message and conversation, and the requesting user's spend over the last 24
+hours and the last 30 days (ADR-0073).
 
 Rationale: journey J12.
 
