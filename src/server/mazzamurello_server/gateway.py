@@ -77,6 +77,8 @@ class RunDeps:
     # The sandbox driver, for the run's workspace (ADR-0035).
     sandboxd_url: str = ""
     sandboxd_token: str = ""
+    # The instance's search service, when there is one (AGT-020, ADR-0075).
+    search_url: str = ""
     provider: str = ""
     model: str = ""
     # Whether the model may be given tools (MOD-014), and where it runs (MOD-010).

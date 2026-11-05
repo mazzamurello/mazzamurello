@@ -1,0 +1,89 @@
+#!/opt/reader/bin/python
+"""Read one web page and print its final address, title and main text as JSON (AGT-021, ADR-0075).
+
+Runs in the user's sandbox, under its egress rules. Only http and https
+addresses are fetched, redirects included. HTML keeps its main text, as
+Markdown, through Trafilatura; plain text is kept as it is. Anything else,
+and every failure, is reported on standard error with exit status 1.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import urllib.error
+import urllib.request
+from email.message import Message
+from typing import IO
+from urllib.parse import urlsplit
+
+import lxml.etree
+import lxml.html
+import trafilatura
+
+TIMEOUT_SECONDS = 30
+MAX_BYTES = 5 * 1024 * 1024
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+
+
+class _HttpOnly(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str, headers: Message, newurl: str
+    ) -> urllib.request.Request | None:
+        if urlsplit(newurl).scheme not in ("http", "https"):
+            raise urllib.error.URLError(f"the page redirects to an address that is not http or https: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _fail(reason: str) -> None:
+    print(reason, file=sys.stderr)
+    sys.exit(1)
+
+
+def main(url: str) -> None:
+    if urlsplit(url).scheme not in ("http", "https"):
+        _fail("only http and https addresses can be read")
+    opener = urllib.request.build_opener(_HttpOnly())
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain;q=0.9"})
+    try:
+        with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
+            final = response.geturl()
+            kind = response.headers.get_content_type()
+            charset = response.headers.get_content_charset() or "utf-8"
+            body = response.read(MAX_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        _fail(f"the server answered {error.code} {error.reason}")
+        return
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        _fail(f"the page could not be fetched: {getattr(error, 'reason', error)}")
+        return
+    if len(body) > MAX_BYTES:
+        _fail(f"the page is larger than {MAX_BYTES // (1024 * 1024)} MiB")
+    text = body.decode(charset, errors="replace")
+    if kind == "text/plain":
+        print(json.dumps({"url": final, "title": "", "text": text}))
+        return
+    if kind not in ("text/html", "application/xhtml+xml"):
+        _fail(f"the address is not a web page but {kind}")
+    content = trafilatura.extract(text, url=final, output_format="markdown", include_links=True, favor_recall=True)
+    if not content:
+        content = trafilatura.html2txt(text)
+    print(json.dumps({"url": final, "title": _title(text), "text": content or ""}))
+
+
+def _title(html: str) -> str:
+    """The page's own title, or the one Trafilatura finds."""
+    try:
+        title = (lxml.html.fromstring(html).findtext(".//title") or "").strip()
+    except (ValueError, lxml.etree.ParserError):
+        title = ""
+    if title:
+        return " ".join(title.split())
+    metadata = trafilatura.extract_metadata(html)
+    return metadata.title if metadata is not None and metadata.title else ""
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        _fail("usage: mzm-read-page URL")
+    main(sys.argv[1])

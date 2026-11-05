@@ -57,6 +57,7 @@ from mazzamurello_server.gateway import (
     store_messages,
 )
 from mazzamurello_server.sandbox import SandboxWorkspace
+from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ class _Worker:
     secret_key: bytes = b""
     sandboxd_url: str = ""
     sandboxd_token: str = ""
+    search_url: str = ""
 
 
 _WORKER = _Worker()
@@ -128,6 +130,8 @@ agent = Agent(
     name="mazzamurello",
     deps_type=RunDeps,
     instructions=INSTRUCTIONS,
+    # Web search through the instance's search service, page reading in the sandbox (ADR-0075).
+    tools=WEB_TOOLS,
     capabilities=[
         Gateway(),
         # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
@@ -227,6 +231,7 @@ async def run_workflow(serialized_input: str) -> None:
         model=attribution.model_name or "",
         sandboxd_url=_WORKER.sandboxd_url,
         sandboxd_token=_WORKER.sandboxd_token,
+        search_url=_WORKER.search_url,
         emit=lambda event: _write(run.run_id, event),
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
@@ -415,10 +420,13 @@ async def _serve(configuration: WorkerConfiguration) -> None:
 
 def run_worker(configuration: WorkerConfiguration) -> None:
     logging.basicConfig(level=logging.INFO)
+    # Its requests name search queries and sandbox paths: never logged (OBS-001).
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     _WORKER.engine = create_engine(configuration.database_url)
     _WORKER.secret_key = configuration.secret_key
     _WORKER.sandboxd_url = configuration.sandboxd_url
     _WORKER.sandboxd_token = configuration.sandboxd_token
+    _WORKER.search_url = configuration.search_url
     DBOS(
         config=DBOSConfig(
             name=APPLICATION_NAME,

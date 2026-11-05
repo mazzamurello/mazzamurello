@@ -1,2 +1,5 @@
-# The sandbox image is built from its own directory only.
+# The sandbox image is built from nothing in the repository ...
 *
+# ... and the page reader.
+!deploy/images/sandbox/mzm-read-page
+!deploy/images/sandbox/reader-requirements.txt
