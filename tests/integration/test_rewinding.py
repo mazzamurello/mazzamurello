@@ -138,7 +138,7 @@ def test_history_no_longer_describes_versions(server: Server, token: str) -> Non
     conversation = create_conversation(server, token)
     start_run(server, token, conversation["id"], "plain")
     (run,) = messages(server, token, conversation["id"])["runs"]
-    assert set(run) == {"run_id", "parent_run_id", "kind", "message_ids", "cost"}
+    assert set(run) == {"run_id", "parent_run_id", "kind", "message_ids", "cost", "error"}
     # The active run is no longer set by updating the conversation.
     with server.client(token) as client:
         response = client.patch(f"/conversations/{conversation['id']}", json={"active_run_id": None})

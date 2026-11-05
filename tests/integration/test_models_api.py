@@ -18,7 +18,7 @@ from tests.support.accounts import Account, assert_problem, body, create_account
 from tests.support.database import Database
 from tests.support.fixtures import HarnessModel, HouseholdModel
 from tests.support.model import OPENROUTER_MODELS, REFUSAL, SERVER_MODELS
-from tests.support.runs import create_conversation, run_input, start_run, text_of, wait_for_run
+from tests.support.runs import create_conversation, messages, run_input, start_run, text_of, wait_for_run
 from tests.support.server import Server
 
 
@@ -190,7 +190,7 @@ def test_a_server_that_refuses_tools_fails_the_run(server: Server, household: Ho
     assert all(request.body.get("tools") for request in household.model.endpoint.requests_with(text))
 
 
-@pytest.mark.spec("MOD-015")
+@pytest.mark.spec("MOD-015", "UX-014")
 @pytest.mark.parametrize("through", ["server", "openrouter"])
 def test_a_refused_request_fails_the_run_with_the_reason(server: Server, household: Household, through: str) -> None:
     conversation = create_conversation(server, household.token)
@@ -205,9 +205,16 @@ def test_a_refused_request_fails_the_run_with_the_reason(server: Server, househo
     assert REFUSAL in str(events[-1].data.get("message", ""))
     # The conversation stays usable: the user can rephrase.
     text = f"rephrased {secrets.token_hex(4)}"
+    refused_id = run_id
     run_id, events = start_run(server, household.token, conversation["id"], text, parent_run_id=run_id)
     assert wait_for_run(server, household.token, run_id)["status"] == "completed"
     assert text_of(events) == f"Echo: {text}"
+    # The history keeps the refusal and its reason (UX-014).
+    runs = {run["run_id"]: run for run in messages(server, household.token, conversation["id"])["runs"]}
+    error = runs[refused_id]["error"]
+    assert error["code"] == "model.refused"
+    assert REFUSAL in error["reason"]
+    assert runs[run_id]["error"] is None
 
 
 def _admin_without_models(database: Database, server: Server) -> str:

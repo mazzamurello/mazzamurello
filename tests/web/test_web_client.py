@@ -313,25 +313,37 @@ def test_the_sprite_keeps_still_with_reduced_motion(browser: Browser, web_origin
 def test_errors_say_what_happened_and_what_to_do(page: Page, member: Account) -> None:
     sign_in(page, member)
     _send(page, "fail")
-    notice = page.get_by_role("alert")
-    expect(notice).to_be_visible(timeout=30_000)
-    text = notice.inner_text()
+    # In the conversation, where the answer would be: not a notice.
+    error = page.get_by_role("main").get_by_role("alert")
+    expect(error).to_be_visible(timeout=30_000)
+    text = error.inner_text()
     assert len(text.strip()) > 30, text
-    assert "model.request_failed" not in text, "the notice shows an error code instead of words"
-    expect(notice.locator("[data-sprite-pose]")).to_have_attribute("data-sprite-pose", "error")
+    assert "model.request_failed" not in text, "the error shows a code instead of words"
+    expect(error.locator("[data-sprite-pose]")).to_have_attribute("data-sprite-pose", "error")
+    expect(page.get_by_role("button", name="Dismiss")).to_have_count(0)
     assert accessibility_violations(page) == []
+    # It stays in the conversation, with what went wrong and what to do.
+    title, explanation = [line.strip() for line in text.splitlines() if line.strip()][:2]
+    page.reload()
+    after = page.get_by_role("main").get_by_role("alert")
+    expect(after).to_contain_text(title, timeout=30_000)
+    expect(after).to_contain_text(explanation)
 
 
 @pytest.mark.spec("MOD-015")
 def test_a_refusal_shows_the_providers_reason(page: Page, member: Account) -> None:
     sign_in(page, member)
     _send(page, "refuse")
-    notice = page.get_by_role("alert")
-    expect(notice).to_contain_text(REFUSAL, timeout=30_000)
-    assert "model.refused" not in notice.inner_text(), "the notice shows an error code instead of words"
+    error = page.get_by_role("main").get_by_role("alert")
+    expect(error).to_contain_text(REFUSAL, timeout=30_000)
+    assert "model.refused" not in error.inner_text(), "the error shows a code instead of words"
+    # The reason stays in the conversation.
+    page.reload()
+    expect(page.get_by_role("main").get_by_role("alert")).to_contain_text(REFUSAL, timeout=30_000)
     # The user can rephrase at once.
     _send(page, "rephrased")
     _answer(page, "Echo: rephrased")
+    expect(page.get_by_role("main").get_by_role("alert")).to_contain_text(REFUSAL)
 
 
 @pytest.mark.spec("UX-018")
