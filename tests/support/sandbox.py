@@ -183,7 +183,8 @@ def driver_environment(token: str, image: str, netguard: str, port: int, **overr
     }
 
 
-def _cleanup(image: str, guard_image: str, netguard: str, driver: Process | None) -> None:
+def _cleanup(image: str, removed: tuple[str, ...], netguard: str, driver: Process | None) -> None:
+    """Remove what the session created: its sandboxes, their volumes and bridge, and the images it built."""
     if driver is not None:
         driver.close()
     # Stopped, not killed: the guard removes its table from the host as it stops.
@@ -201,7 +202,8 @@ def _cleanup(image: str, guard_image: str, netguard: str, driver: Process | None
         if volumes:
             docker("volume", "rm", "-f", *volumes, check=False)
     docker("network", "rm", SANDBOX_NETWORK, check=False)
-    docker("rmi", "-f", image, guard_image, check=False)
+    if removed:
+        docker("rmi", "-f", *removed, check=False)
 
 
 _DRIVER = pytest.StashKey[Driver | BaseException]()
@@ -216,13 +218,19 @@ def start_sandboxes(config: pytest.Config) -> Driver:
         return cached
 
     suffix = secrets.token_hex(4)
-    image, guard_image = f"mazzamurello-test/sandbox:{suffix}", f"mazzamurello-test/netguard:{suffix}"
+    # Images CI built with its build cache are used as they are, and kept (ADR-0059).
+    prebuilt = os.environ.get("TEST_SANDBOX_IMAGE"), os.environ.get("TEST_NETGUARD_IMAGE")
+    image = prebuilt[0] or f"mazzamurello-test/sandbox:{suffix}"
+    guard_image = prebuilt[1] or f"mazzamurello-test/netguard:{suffix}"
     netguard = f"mazzamurello-test-netguard-{suffix}"
     holder: dict[str, Process] = {}
-    config.add_cleanup(lambda: _cleanup(image, guard_image, netguard, holder.get("driver")))
+    removed = tuple(name for name, given in zip((image, guard_image), prebuilt, strict=True) if not given)
+    config.add_cleanup(lambda: _cleanup(image, removed, netguard, holder.get("driver")))
     try:
-        _build("sandbox", image)
-        _build("netguard", guard_image)
+        if not prebuilt[0]:
+            _build("sandbox", image)
+        if not prebuilt[1]:
+            _build("netguard", guard_image)
         docker("run", "--detach", "--name", netguard, "--network", "host", "--cap-add", "NET_ADMIN", guard_image)
         _wait_healthy(netguard)
         token, port = secrets.token_urlsafe(32), _free_port()
