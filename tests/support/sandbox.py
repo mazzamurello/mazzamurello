@@ -36,7 +36,10 @@ TEST_LIMITS = {
     "MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS": "8",
     "MZM_SANDBOX_MAX_OUTPUT_BYTES": "65536",
     "MZM_SANDBOX_IDLE_MINUTES": "30",
+    "MZM_SANDBOX_WORKSPACE_QUOTA_MB": "8",
 }
+# The workspace quota above, in bytes (SBX-019).
+WORKSPACE_QUOTA_BYTES = 8 * 1024 * 1024
 
 
 def docker(*args: str, timeout: float = 120, check: bool = True) -> str:
@@ -59,6 +62,9 @@ class ExecResult:
     stderr: str
     timed_out: bool
     truncated: bool
+    # The workspace's size and quota after the command (SBX-019).
+    workspace_bytes: int | None = None
+    workspace_quota_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -100,10 +106,16 @@ class Driver:
             "".join(stderr),
             exit_object["timed_out"],
             exit_object["truncated"],
+            exit_object.get("workspace_bytes"),
+            exit_object.get("workspace_quota_bytes"),
         )
 
     def sh(self, tenant_id: str, user_id: str, command: str, **options: Any) -> ExecResult:
         return self.exec(tenant_id, user_id, {"shell_command": command} | options)
+
+    def stop(self, tenant_id: str, user_id: str) -> None:
+        with self.client() as client:
+            assert client.post(f"/sandboxes/{tenant_id}/{user_id}/stop").status_code == 204
 
     def sandbox_containers(self) -> list[dict[str, Any]]:
         """`docker inspect` of every container of the session's sandbox image."""

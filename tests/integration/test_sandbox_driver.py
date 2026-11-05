@@ -54,7 +54,8 @@ def test_ensure_starts_one_sandbox_per_user(sandboxes: Driver) -> None:
     assert first.status_code == 200, first.text
     assert again.status_code == 200, again.text
     assert first.json()["state"] == "running"
-    assert first.json()["working_dir"] == again.json()["working_dir"] == "/workspace"
+    # Commands start in the scratch folder (SBX-018).
+    assert first.json()["working_dir"] == again.json()["working_dir"] == "/scratch"
     assert first.json()["started_at"] == again.json()["started_at"]
 
 
@@ -70,8 +71,8 @@ def test_commands_return_output_and_exit_codes(sandboxes: Driver) -> None:
         False,
     )
     shell = sandboxes.sh(tenant_id, user_id, "pwd; echo $GREETING", env={"GREETING": "hello"})
-    assert (shell.exit_code, shell.stdout) == (0, "/workspace\nhello\n")
-    elsewhere = sandboxes.sh(tenant_id, user_id, "mkdir -p sub && cd sub && pwd")
+    assert (shell.exit_code, shell.stdout) == (0, "/scratch\nhello\n")
+    elsewhere = sandboxes.sh(tenant_id, user_id, "mkdir -p /workspace/sub && cd /workspace/sub && pwd")
     assert elsewhere.stdout == "/workspace/sub\n"
     workdir = sandboxes.exec(tenant_id, user_id, {"argv": ["pwd"], "workdir": "/workspace/sub"})
     assert workdir.stdout == "/workspace/sub\n"
@@ -118,12 +119,12 @@ def test_output_beyond_the_limit_is_truncated(sandboxes: Driver) -> None:
 @pytest.mark.spec("SBX-010")
 def test_the_workspace_survives_stopping_the_sandbox(sandboxes: Driver) -> None:
     tenant_id, user_id = _user()
-    sandboxes.sh(tenant_id, user_id, "echo kept > notes.txt")
+    sandboxes.sh(tenant_id, user_id, "echo kept > /workspace/notes.txt")
     with sandboxes.client() as client:
         assert client.post(f"/sandboxes/{tenant_id}/{user_id}/stop").status_code == 204
         # Stopping a stopped sandbox is fine too.
         assert client.post(f"/sandboxes/{tenant_id}/{user_id}/stop").status_code == 204
-    assert sandboxes.sh(tenant_id, user_id, "cat notes.txt").stdout == "kept\n"
+    assert sandboxes.sh(tenant_id, user_id, "cat /workspace/notes.txt").stdout == "kept\n"
 
 
 @pytest.mark.spec("AGT-011")
