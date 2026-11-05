@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import socket
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -33,14 +34,15 @@ def _answer(page: Page, text: str) -> None:
 def test_signing_in_and_chatting(page: Page, member: Account, default_model: HarnessModel) -> None:
     page.goto("/")
     assert accessibility_violations(page) == []
-    sign_in(page, member)
+    sign_in(page, member, form=True)
     # The session is a cookie that scripts cannot read (AUTH-005).
     assert "mzm_session" not in page.evaluate("document.cookie")
     mark = uuid4().hex[:8]
     _send(page, f"hello {mark}")
     _answer(page, f"Echo: hello {mark}")
     expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
-    expect(page.get_by_role("navigation")).to_contain_text("New conversation")
+    # The conversation is listed, under the title its model gives it (CNV-006).
+    expect(page.get_by_role("navigation").locator(f"a[href='{urlsplit(page.url).path}']")).to_be_visible()
     assert accessibility_violations(page) == []
     page.reload()
     _answer(page, f"Echo: hello {mark}")
@@ -48,7 +50,7 @@ def test_signing_in_and_chatting(page: Page, member: Account, default_model: Har
 
 @pytest.mark.spec("UX-001", "AUTH-005")
 def test_signing_out_returns_to_sign_in_at_once(page: Page, member: Account) -> None:
-    sign_in(page, member)
+    sign_in(page, member, form=True)
     page.get_by_role("button", name=re.compile("^Sign out")).click()
     expect(page.get_by_label("Username")).to_be_visible()
     page.reload()
@@ -282,7 +284,7 @@ def test_the_sprite_greets_with_a_quote(page: Page, member: Account) -> None:
 @pytest.mark.spec("UX-013")
 def test_the_sprite_acts_out_the_run_and_then_waits(page: Page, member: Account) -> None:
     sign_in(page, member)
-    _send(page, "run:sleep 4; echo acted")
+    _send(page, "run:sleep 2; echo acted")
     sprite = page.get_by_role("main").locator("[data-sprite-pose]").last
     expect(sprite).to_have_attribute("data-sprite-pose", "running", timeout=30_000)
     # The same activity is given as text.
@@ -324,7 +326,7 @@ def test_errors_say_what_happened_and_what_to_do(page: Page, member: Account) ->
 def test_typing_starts_in_the_expected_field(page: Page, member: Account) -> None:
     page.goto("/")
     expect(page.get_by_label("Username")).to_be_focused()
-    sign_in(page, member)
+    sign_in(page, member, form=True)
     expect(page.get_by_label("Message")).to_be_focused()
 
 
@@ -337,7 +339,203 @@ def test_touch_screens_keep_the_keyboard_closed(browser: Browser, web_origin: st
     try:
         page.goto("/")
         expect(page.get_by_label("Username")).not_to_be_focused()
-        sign_in(page, member)
+        sign_in(page, member, form=True)
         expect(page.get_by_label("Message")).not_to_be_focused()
     finally:
         context.close()
+
+
+def _openrouter_default(server: Server, household: HouseholdModel) -> None:
+    _add_openrouter(server, household)
+    with server.client(household.admin_token) as client:
+        (option,) = [m for m in client.get("/models").json()["items"] if m["model"] == "test/popular"]
+        assert client.put(
+            "/tenant/default-model", json={"connection_id": option["connection_id"], "model": "test/popular"}
+        ).is_success
+
+
+@pytest.mark.spec("UX-008", "MOD-007")
+def test_costs_and_context_are_in_view(
+    page: Page, server: Server, member: Account, default_model: HarnessModel
+) -> None:
+    _openrouter_default(server, default_model.connect(member.tenant_id))
+    sign_in(page, member)
+    # A command that takes a while: the run's first model response, its tool call, is already priced.
+    _send(page, "run:sleep 2; echo priced")
+    # While it runs: how much of the context window is used, and the run's cost so far.
+    expect(page.get_by_role("meter", name="Context used")).to_be_visible(timeout=30_000)
+    expect(page.get_by_role("status")).to_contain_text("$", timeout=30_000)
+    expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
+    # After the run, the context stays in view: tokens used, the window, and the share of it.
+    expect(page.get_by_role("main")).to_contain_text(re.compile(r"Context \d[\d.]*k? of 131k tokens · \d+%"))
+    expect(page.get_by_role("meter", name="Context used")).to_be_visible()
+    # Each answer's cost beside it, the conversation's, and the last 24 hours' and 30 days'.
+    # Two priced requests: the tool call and the answer.
+    expect(page.get_by_role("main").get_by_text("$0.00084").first).to_be_visible()
+    expect(page.get_by_text("This conversation", exact=True)).to_be_visible()
+    expect(page.get_by_text("Last 24 hours", exact=True)).to_be_visible()
+    expect(page.get_by_text("Last 30 days", exact=True)).to_be_visible()
+    assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("CNV-005", "UX-007")
+def test_forking_from_an_answer(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:8]
+    _send(page, f"fork one {mark}")
+    _answer(page, f"Echo: fork one {mark}")
+    _send(page, f"fork two {mark}")
+    _answer(page, f"Echo: fork two {mark}")
+    original = page.url
+    page.get_by_role("button", name="Fork from here").first.click()
+    expect(page).not_to_have_url(original)
+    _answer(page, f"Echo: fork one {mark}")
+    expect(page.get_by_role("main")).not_to_contain_text(f"fork two {mark}")
+    expect(page.get_by_role("main")).to_contain_text("Forked from")
+    assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("CNV-007", "CNV-008", "UX-007")
+def test_folders_pins_and_collapsing(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:6]
+    _send(page, f"folder talk {mark}")
+    _answer(page, f"Echo: folder talk {mark}")
+    nav = page.get_by_role("navigation", name="Conversations")
+    nav.get_by_role("button", name="New folder").click()
+    page.get_by_label("Folder name").fill(f"Family {mark}")
+    page.get_by_role("button", name="Create").click()
+    folder = nav.get_by_role("button", name=f"Family {mark}")
+    expect(folder).to_be_visible()
+    menu = nav.get_by_role("button", name=re.compile("^Options for"))
+    menu.first.click()
+    page.get_by_role("menuitem", name="Move to folder").click()
+    page.get_by_role("menuitem", name=f"Family {mark}").click()
+    expect(folder).to_have_attribute("aria-expanded", "true")
+    folder.click()
+    expect(folder).to_have_attribute("aria-expanded", "false")
+    page.reload()
+    expect(nav.get_by_role("button", name=f"Family {mark}")).to_have_attribute("aria-expanded", "false")
+    assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("CNV-008")
+def test_pinning_a_conversation(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:6]
+    for text in (f"first {mark}", f"second {mark}"):
+        page.goto("/")
+        page.get_by_label("Message").fill(text)
+        page.get_by_role("button", name="Send").click()
+        _answer(page, f"Echo: {text}")
+    nav = page.get_by_role("navigation", name="Conversations")
+    links = nav.get_by_role("link")
+    # Pin the older one: it moves to the top.
+    nav.get_by_role("button", name=re.compile("^Options for")).nth(1).click()
+    page.get_by_role("menuitem", name="Pin").click()
+    expect(nav.get_by_text("Pinned")).to_be_visible()
+    assert links.count() >= 2
+
+
+@pytest.mark.spec("CNV-009", "UX-007")
+def test_searching_conversations(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    word = f"rosemary{uuid4().hex[:6]}"
+    _send(page, f"a recipe with {word}")
+    _answer(page, f"Echo: a recipe with {word}")
+    page.goto("/")
+    page.get_by_role("searchbox", name="Search conversations").fill(word)
+    result = page.get_by_role("link", name=re.compile(word))
+    expect(result).to_be_visible(timeout=15_000)
+    assert accessibility_violations(page) == []
+    result.click()
+    expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
+
+
+def _inside_window(page: Page, element: str) -> bool:
+    """Whether the element is wholly in the window, and on top of what it covers."""
+    return bool(
+        page.evaluate(
+            """(element) => {
+                const box = element.getBoundingClientRect();
+                // An open menu turns off pointer events around it, which would hide what covers it.
+                const pointerEvents = document.body.style.pointerEvents;
+                document.body.style.pointerEvents = "auto";
+                const points = [[0.5, 0.5], [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]];
+                const onTop = points.every(([x, y]) =>
+                    element.contains(document.elementFromPoint(box.left + box.width * x, box.top + box.height * y)));
+                document.body.style.pointerEvents = pointerEvents;
+                return box.top >= 0 && box.left >= 0 && box.bottom <= innerHeight && box.right <= innerWidth && onTop;
+            }""",
+            page.locator(element).element_handle(),
+        )
+    )
+
+
+@pytest.mark.spec("UX-001", "UX-015")
+def test_the_model_picker_fits_in_the_window(
+    page: Page, server: Server, member: Account, default_model: HarnessModel
+) -> None:
+    _add_openrouter(server, default_model.connect(member.tenant_id))
+    sign_in(page, member)
+    # The message box is in the middle of a new chat, and at the bottom of a short window.
+    for height in (900, 560):
+        page.set_viewport_size({"width": 1280, "height": height})
+        page.get_by_role("button", name=re.compile("test-model")).click()
+        expect(page.get_by_role("dialog", name="Choose a model")).to_be_visible()
+        assert _inside_window(page, "[role=dialog]")
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("dialog", name="Choose a model")).to_have_count(0)
+
+
+@pytest.mark.spec("UX-001")
+def test_a_long_conversation_scrolls_in_one_place(page: Page, member: Account, default_model: HarnessModel) -> None:
+    page.set_viewport_size({"width": 1280, "height": 600})
+    sign_in(page, member)
+    # A long message and its echo are taller than the window; the next message is below them.
+    for text in ("long " + "word " * 400, "short"):
+        _send(page, text)
+        _answer(page, f"Echo: {text[:5]}")
+        expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
+    assert page.evaluate("document.querySelector('[aria-busy]').scrollHeight > innerHeight")
+    # Only the conversation scrolls; the page itself does not.
+    assert page.evaluate("document.scrollingElement.scrollHeight <= innerHeight")
+
+
+@pytest.mark.spec("UX-001", "CNV-007")
+def test_the_conversation_menu_opens_over_the_list(page: Page, member: Account, default_model: HarnessModel) -> None:
+    page.set_viewport_size({"width": 1280, "height": 800})
+    sign_in(page, member)
+    _send(page, "a conversation with a menu")
+    _answer(page, "Echo: a conversation with a menu")
+    # On a computer, and on a phone, where the list slides over the conversation.
+    for width, height in ((1280, 800), (390, 844)):
+        page.set_viewport_size({"width": width, "height": height})
+        if width < 768:
+            page.get_by_role("button", name="Open the conversation list").click()
+        page.get_by_role("button", name=re.compile("^Options for")).first.click()
+        expect(page.get_by_role("menuitem", name="Rename")).to_be_visible()
+        assert _inside_window(page, "[role=menu]")
+        page.get_by_role("menuitem", name="Move to folder").hover()
+        expect(page.get_by_text("No folders yet.")).to_be_visible()
+        assert _inside_window(page, "[role=menu] >> nth=1")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("menu")).to_have_count(0)
+
+
+@pytest.mark.spec("UX-015", "MOD-012")
+def test_the_default_model_is_chosen_with_the_model_picker(
+    page: Page, server: Server, admin: Account, default_model: HarnessModel
+) -> None:
+    _add_openrouter(server, default_model.connect(admin.tenant_id))
+    sign_in(page, admin)
+    page.get_by_role("link", name="Settings").click()
+    page.get_by_role("button", name="Default model").click()
+    picker = page.get_by_role("dialog", name="Choose a model")
+    expect(picker).to_be_visible()
+    picker.get_by_role("searchbox").fill("popular")
+    picker.get_by_role("button", name=re.compile("Test: Popular")).click()
+    expect(page.get_by_role("button", name="Default model")).to_contain_text("Test: Popular")
+    page.get_by_role("link", name="New chat").click()
+    expect(page.get_by_role("button", name=re.compile("Test: Popular"))).to_be_visible()

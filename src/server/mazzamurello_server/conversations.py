@@ -25,13 +25,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mazzamurello_server import errors, schemas
 from mazzamurello_server.auth import Authenticated, Engine
 from mazzamurello_server.connections import default_model, offered
+from mazzamurello_server.costs import CONVERSATION_COST, money, run_costs
 from mazzamurello_server.credentials import uuid7
 from mazzamurello_server.database import transaction
 
 router = APIRouter()
 
 CONVERSATION_COLUMNS = (
-    "id, title, archived_at IS NOT NULL AS archived, active_run_id, connection_id, model, created_at, updated_at"
+    "id, title, archived_at IS NOT NULL AS archived, active_run_id, connection_id, model, folder_id,"
+    " pinned_at IS NOT NULL AS pinned, forked_from_conversation_id, forked_from_run_id, last_message_at,"
+    f" created_at, updated_at, {CONVERSATION_COST}"
 )
 ACTIVE_STATUSES = ("queued", "running")
 
@@ -58,16 +61,23 @@ def conversation_response(row: Any) -> schemas.Conversation:
         model=None
         if row.connection_id is None or row.model is None
         else schemas.ModelChoiceOut(connection_id=row.connection_id, model=row.model),
+        folder_id=row.folder_id,
+        pinned=row.pinned,
+        forked_from=None
+        if row.forked_from_conversation_id is None and row.forked_from_run_id is None
+        else schemas.ForkedFrom(conversation_id=row.forked_from_conversation_id, run_id=row.forked_from_run_id),
+        cost=money(row.cost),
+        last_message_at=row.last_message_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
 
 
-def _encode(value: object) -> str:
+def encode_cursor(value: object) -> str:
     return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip("=")
 
 
-def _decode(cursor: str) -> Any:
+def decode_cursor(cursor: str) -> Any:
     try:
         return json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
     except (binascii.Error, ValueError):
@@ -100,8 +110,9 @@ async def create_conversation(
         row = (
             await connection.execute(
                 text(
-                    "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, created_at,"  # noqa: S608
-                    " updated_at) VALUES (:id, :tenant_id, :owner_id, :title, :connection_id, :model, now(), now())"
+                    "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, last_message_at,"  # noqa: S608
+                    " created_at, updated_at) VALUES (:id, :tenant_id, :owner_id, :title, :connection_id, :model,"
+                    " now(), now(), now())"
                     f" RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 {
@@ -124,7 +135,7 @@ async def list_conversations(
 ) -> schemas.ConversationPage:
     after: tuple[datetime.datetime, uuid.UUID] | None = None
     if cursor is not None:
-        decoded = _decode(cursor)
+        decoded = decode_cursor(cursor)
         try:
             after = (datetime.datetime.fromisoformat(decoded[0]), uuid.UUID(decoded[1]))
         except (TypeError, ValueError, IndexError):
@@ -151,7 +162,7 @@ async def list_conversations(
     next_cursor = None
     if len(rows) > limit:
         last = rows[limit - 1]
-        next_cursor = _encode([last.updated_at.isoformat(), str(last.id)])
+        next_cursor = encode_cursor([last.updated_at.isoformat(), str(last.id)])
     return schemas.ConversationPage(items=items, next_cursor=next_cursor)
 
 
@@ -174,11 +185,18 @@ async def update_conversation(
         await find_conversation(connection, conversation_id, lock=True)
         if body.model is not None and not await offered(connection, body.model):
             raise errors.invalid("/model", "not_offered")
+        if body.folder_id is not None and not await _owns_folder(connection, body.folder_id):
+            raise errors.invalid("/folder_id", "not_a_folder")
+        if "pinned" in present and body.pinned is None:
+            raise errors.invalid("/pinned", "null")
         changes = {
             "title": body.title if "title" in present else None,
             "archived": body.archived if "archived" in present else None,
             "connection_id": None if body.model is None else body.model.connection_id,
             "model": None if body.model is None else body.model.model,
+            "set_folder": "folder_id" in present,
+            "folder_id": body.folder_id,
+            "pinned": body.pinned,
         }
         row = (
             await connection.execute(
@@ -187,7 +205,11 @@ async def update_conversation(
                     " archived_at = CASE WHEN CAST(:archived AS boolean) IS NULL THEN archived_at"
                     " WHEN CAST(:archived AS boolean) THEN coalesce(archived_at, now()) ELSE NULL END,"
                     " connection_id = coalesce(CAST(:connection_id AS uuid), connection_id),"
-                    " model = coalesce(CAST(:model AS text), model), updated_at = now()"
+                    " model = coalesce(CAST(:model AS text), model),"
+                    " folder_id = CASE WHEN CAST(:set_folder AS boolean) THEN CAST(:folder_id AS uuid)"
+                    " ELSE folder_id END,"
+                    " pinned_at = CASE WHEN CAST(:pinned AS boolean) IS NULL THEN pinned_at"
+                    " WHEN CAST(:pinned AS boolean) THEN coalesce(pinned_at, now()) ELSE NULL END, updated_at = now()"
                     f" WHERE id = :id RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 changes | {"id": conversation_id},
@@ -254,6 +276,75 @@ async def rewind_conversation(
                     f" WHERE id = :id RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 {"run": body.run_id, "id": conversation_id},
+            )
+        ).one()
+    return conversation_response(row)
+
+
+async def _owns_folder(connection: AsyncConnection, folder_id: uuid.UUID) -> bool:
+    """Whether the folder is the user's; row-level security hides the others' (TEN-006)."""
+    row = (await connection.execute(text("SELECT 1 FROM folders WHERE id = :id"), {"id": folder_id})).one_or_none()
+    return row is not None
+
+
+@router.post(
+    "/conversations/{conversation_id}/fork", status_code=status.HTTP_201_CREATED, response_model=schemas.Conversation
+)
+async def fork_conversation(
+    conversation_id: uuid.UUID, body: schemas.ForkRequest, identity: Authenticated, engine: Engine
+) -> schemas.Conversation:
+    """A new conversation with copies of the runs up to `run_id`, in the same folder (CNV-005, ADR-0073)."""
+    async with transaction(engine, identity) as connection:
+        await find_conversation(connection, conversation_id, lock=True)
+        await _refuse_while_active(connection, conversation_id)
+        path = await path_runs(connection, conversation_id, body.run_id)
+        if not path:
+            raise errors.invalid("/run_id", "not_in_conversation")
+        fork_id = uuid7()
+        new_ids = {run.id: uuid7() for run in path}
+        await connection.execute(
+            text(
+                "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, folder_id,"
+                " forked_from_conversation_id, forked_from_run_id, active_run_id, last_message_at, created_at,"
+                " updated_at) SELECT :fork, tenant_id, owner_id, title, connection_id, model, folder_id, id, :run,"
+                " NULL, now(), now(), now() FROM conversations WHERE id = :id"
+            ),
+            {"fork": fork_id, "run": body.run_id, "id": conversation_id},
+        )
+        # In path order, so that each copy's parent exists (ADR-0068).
+        for run in path:
+            await connection.execute(
+                text(
+                    "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status,"
+                    " error_code, connection_id, model_provider, model_name, last_event_seq, created_at, started_at,"
+                    " finished_at) SELECT :new, tenant_id, owner_id, :fork, CAST(:parent AS uuid), kind, status,"
+                    " error_code, connection_id, model_provider, model_name, last_event_seq, created_at, started_at,"
+                    " finished_at FROM runs WHERE id = :old"
+                ),
+                {
+                    "new": new_ids[run.id],
+                    "fork": fork_id,
+                    "parent": None if run.parent_run_id is None else new_ids[run.parent_run_id],
+                    "old": run.id,
+                },
+            )
+            for table, columns in (
+                ("conversation_messages", "seq, tenant_id, owner_id, message, text, created_at"),
+                ("compaction_checkpoints", "tenant_id, owner_id, messages, created_at"),
+            ):
+                await connection.execute(
+                    text(
+                        f"INSERT INTO {table} (run_id, conversation_id, {columns})"  # noqa: S608
+                        f" SELECT :new, :fork, {columns} FROM {table} WHERE run_id = :old"
+                    ),
+                    {"new": new_ids[run.id], "fork": fork_id, "old": run.id},
+                )
+        row = (
+            await connection.execute(
+                text(
+                    f"UPDATE conversations SET active_run_id = :last WHERE id = :fork RETURNING {CONVERSATION_COLUMNS}"  # noqa: S608
+                ),
+                {"last": new_ids[path[-1].id], "fork": fork_id},
             )
         ).one()
     return conversation_response(row)
@@ -339,7 +430,7 @@ async def list_messages(
     cursor: str | None = None,
     limit: Limit = 50,
 ) -> schemas.MessagePage:
-    start = 0 if cursor is None else _decode(cursor)
+    start = 0 if cursor is None else decode_cursor(cursor)
     if not isinstance(start, int) or start < 0:
         raise errors.invalid("cursor", "invalid")
     async with transaction(engine, identity) as connection:
@@ -351,6 +442,7 @@ async def list_messages(
         if not path:
             raise errors.not_found()
         stored = await stored_messages(connection, [run.id for run in path])
+        costs = await run_costs(connection, [run.id for run in path])
     flattened: list[tuple[Any, dict[str, Any]]] = []
     for run in path:
         model_messages = ModelMessagesTypeAdapter.validate_python(stored[run.id])
@@ -363,7 +455,11 @@ async def list_messages(
     runs: list[schemas.PathRun] = []
     for run, message in page:
         if not runs or runs[-1].run_id != run.id:
-            runs.append(schemas.PathRun(run_id=run.id, parent_run_id=run.parent_run_id, kind=run.kind, message_ids=[]))
+            runs.append(
+                schemas.PathRun(
+                    run_id=run.id, parent_run_id=run.parent_run_id, kind=run.kind, message_ids=[], cost=costs[run.id]
+                )
+            )
         runs[-1].message_ids.append(str(message["id"]))
-    next_cursor = _encode(start + limit) if start + limit < len(flattened) else None
+    next_cursor = encode_cursor(start + limit) if start + limit < len(flattened) else None
     return schemas.MessagePage(items=[message for _, message in page], runs=runs, next_cursor=next_cursor)
