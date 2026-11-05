@@ -53,47 +53,58 @@ def test_the_agent_runs_commands_in_the_sandbox(server: Server, token: str, defa
 
 
 @pytest.mark.spec("AGT-011", "SBX-001")
-def test_commands_run_in_the_sandbox_of_the_user_they_act_for(
+def test_commands_run_in_the_sandbox_of_the_conversation_they_act_in(
     server: Server, sandboxes: Driver, account: Account, token: str, default_model: HarnessModel
 ) -> None:
     secret = f"secret-{uuid7()}"
-    sandboxes.sh(str(account.tenant_id), str(account.id), f"echo {secret} > mine.txt")
     conversation = create_conversation(server, token)
-    start_run(server, token, conversation["id"], "run:cat mine.txt")
-    (result,) = _tool_results(default_model, "run:cat mine.txt")
+    sandboxes.sh(str(account.tenant_id), str(account.id), conversation["id"], f"echo {secret} > /workspace/mine.txt")
+    command = f"run:cat /workspace/mine.txt # {uuid7()}"
+    start_run(server, token, conversation["id"], command)
+    (result,) = _tool_results(default_model, command)
     assert secret in result
 
 
 @pytest.mark.spec("AGT-011", "SBX-001")
-def test_the_agent_never_reaches_another_users_sandbox(
-    database: Database, server: Server, sandboxes: Driver, token: str, default_model: HarnessModel
+@pytest.mark.parametrize("whose", ["another-user", "another-conversation"])
+def test_the_agent_never_reaches_another_sandbox(
+    database: Database,
+    server: Server,
+    sandboxes: Driver,
+    account: Account,
+    token: str,
+    default_model: HarnessModel,
+    whose: str,
 ) -> None:
-    other = create_account(database, create_tenant(database))
+    other = create_account(database, create_tenant(database)) if whose == "another-user" else account
     secret = f"theirs-{uuid7()}"
-    sandboxes.sh(str(other.tenant_id), str(other.id), f"echo {secret} > theirs.txt")
+    sandboxes.sh(str(other.tenant_id), str(other.id), str(uuid7()), f"echo {secret} > /workspace/theirs.txt")
     conversation = create_conversation(server, token)
-    command = "run:cat theirs.txt; ls -a /workspace"
+    command = f"run:cat /workspace/theirs.txt; ls -a /workspace # {uuid7()}"
     start_run(server, token, conversation["id"], command)
     (result,) = _tool_results(default_model, command)
     assert secret not in result
 
 
 @pytest.mark.spec("AGT-014")
-def test_large_tool_output_reaches_the_model_bounded_and_stays_in_the_workspace(
+def test_large_tool_output_reaches_the_model_bounded_and_stays_in_the_scratch_folder(
     server: Server, sandboxes: Driver, account: Account, token: str, default_model: HarnessModel
 ) -> None:
     conversation = create_conversation(server, token)
     size = 60_000
-    command = f"run:head -c {size} /dev/zero | tr '\\0' a"
+    # Two commands in one answer: the sandbox, and the scratch folder, end with it (ADR-0076, ADR-0078).
+    command = (
+        f"runs:head -c {size} /dev/zero | tr '\\0' a"
+        " ||| find /scratch -type f -size +50k | wc -l; find /workspace -type f -size +50k | wc -l"
+    )
     run_id, _ = start_run(server, token, conversation["id"], command)
     assert wait_for_run(server, token, run_id)["status"] == "completed"
-    (result,) = _tool_results(default_model, command)
-    assert result.count("a") < size
-    # The rest is in the scratch folder, which the sandbox discards, not in the workspace (ADR-0076).
-    tenant, user = str(account.tenant_id), str(account.id)
-    kept = sandboxes.sh(tenant, user, "find /scratch -type f -size +50k -exec wc -c {} + | tail -1")
-    assert kept.stdout.strip(), "the full output is not in the scratch folder"
-    assert not sandboxes.sh(tenant, user, "find /workspace -type f -size +50k").stdout.strip()
+    (last,) = default_model.endpoint.requests_with(command)[-1:]
+    first, second = [str(m.get("content", "")) for m in last.body.get("messages", []) if m.get("role") == "tool"]
+    assert first.count("a") < size
+    # The rest is in the scratch folder, not in the workspace.
+    counts = [line.strip() for line in second.splitlines() if line.strip().isdigit()]
+    assert counts[:2] == ["1", "0"], second
 
 
 @pytest.mark.spec("AGT-010", "MOD-001")

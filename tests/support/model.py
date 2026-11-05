@@ -11,6 +11,8 @@ last user message:
   provider's reason (MOD-015);
 - `run:<command>` calls the agent's command tool with `<command>`, then, once
   the tool's result arrives, answers `Tool said: <result>`;
+- `runs:<command> ||| <command> …` calls the command tool with each command in
+  turn, in one answer, then answers `Tool said: <last result>`;
 - `tool:<name> <arguments>` calls the tool named `<name>` with the JSON
   `<arguments>`, then answers `Tool said: <result>`, or `No tool <name>` when
   the request does not offer it;
@@ -223,6 +225,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if last == "status:402" and self.openrouter:
                 self._error(402, "Insufficient credits", "payment_required")
                 return
+            if last.startswith("runs:"):
+                self._tool_turns(body, last.removeprefix("runs:").split(" ||| "))
+                return
             if last.startswith("run:"):
                 self._tool_turn(body, last.removeprefix("run:"))
                 return
@@ -272,6 +277,18 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 return
             name, argument = _command_tool(cast(list[dict[str, Any]], body.get("tools", [])))
             self._call(body, name, json.dumps({argument: command}))
+
+        def _tool_turns(self, body: dict[str, Any], commands: list[str]) -> None:
+            messages = cast(list[dict[str, Any]], body.get("messages", []))
+            # The tool results of this answer: those after the last user message.
+            users = [index for index, message in enumerate(messages) if message.get("role") == "user"]
+            done = sum(1 for message in messages[(users[-1] if users else -1) + 1 :] if message.get("role") == "tool")
+            if done >= len(commands):
+                result = str(messages[-1].get("content", ""))
+                self._answer(body, [(f"Tool said: {result[:2000]}", 0.0)])
+                return
+            name, argument = _command_tool(cast(list[dict[str, Any]], body.get("tools", [])))
+            self._call(body, name, json.dumps({argument: commands[done]}))
 
         def _named_tool_turn(self, body: dict[str, Any], name: str, arguments: str) -> None:
             messages = cast(list[dict[str, Any]], body.get("messages", []))

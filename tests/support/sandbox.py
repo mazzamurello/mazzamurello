@@ -38,6 +38,8 @@ TEST_LIMITS = {
     "MZM_SANDBOX_IDLE_MINUTES": "30",
     "MZM_SANDBOX_WORKSPACE_QUOTA_MB": "8",
 }
+# The label the driver gives its sandboxes, with the tenant, the user and the conversation.
+SANDBOX_LABEL = "dev.mazzamurello.sandbox"
 # The workspace quota above, in bytes (SBX-019).
 WORKSPACE_QUOTA_BYTES = 8 * 1024 * 1024
 
@@ -80,14 +82,16 @@ class Driver:
     def client(self, token: str | None = None) -> httpx.Client:
         return httpx.Client(base_url=self.url, headers={"Authorization": f"Bearer {token or self.token}"}, timeout=120)
 
-    def exec(self, tenant_id: str, user_id: str, request: Mapping[str, Any]) -> ExecResult:
-        """Run a command in a user's sandbox and collect its streamed output."""
+    def exec(self, tenant_id: str, user_id: str, conversation_id: str, request: Mapping[str, Any]) -> ExecResult:
+        """Run a command in a conversation's sandbox and collect its streamed output."""
         stdout: list[str] = []
         stderr: list[str] = []
         exit_object: dict[str, Any] | None = None
         with (
             self.client() as client,
-            client.stream("POST", f"/sandboxes/{tenant_id}/{user_id}/exec", json=dict(request)) as response,
+            client.stream(
+                "POST", f"/sandboxes/{tenant_id}/{user_id}/{conversation_id}/exec", json=dict(request)
+            ) as response,
         ):
             assert response.status_code == 200, response.read().decode()
             for line in response.iter_lines():
@@ -110,12 +114,21 @@ class Driver:
             exit_object.get("workspace_quota_bytes"),
         )
 
-    def sh(self, tenant_id: str, user_id: str, command: str, **options: Any) -> ExecResult:
-        return self.exec(tenant_id, user_id, {"shell_command": command} | options)
+    def sh(self, tenant_id: str, user_id: str, conversation_id: str, command: str, **options: Any) -> ExecResult:
+        return self.exec(tenant_id, user_id, conversation_id, {"shell_command": command} | options)
 
-    def stop(self, tenant_id: str, user_id: str) -> None:
+    def stop(self, tenant_id: str, user_id: str, conversation_id: str) -> None:
         with self.client() as client:
-            assert client.post(f"/sandboxes/{tenant_id}/{user_id}/stop").status_code == 204
+            assert client.post(f"/sandboxes/{tenant_id}/{user_id}/{conversation_id}/stop").status_code == 204
+
+    def running(self, conversation_id: str) -> list[dict[str, Any]]:
+        """The running containers of a conversation's sandbox."""
+        return [
+            container
+            for container in self.sandbox_containers()
+            if container["State"]["Running"]
+            and container["Config"]["Labels"].get(f"{SANDBOX_LABEL}.conversation") == conversation_id
+        ]
 
     def sandbox_containers(self) -> list[dict[str, Any]]:
         """`docker inspect` of every container of the session's sandbox image."""
@@ -202,6 +215,10 @@ def _cleanup(image: str, removed: tuple[str, ...], netguard: str, driver: Proces
         docker("rm", "-f", *ids, check=False)
         if volumes:
             docker("volume", "rm", "-f", *volumes, check=False)
+    # Workspaces outlive their containers, which end with each answer (ADR-0078): those of this session's image.
+    workspaces = docker("volume", "ls", "-q", "--filter", f"label={SANDBOX_LABEL}.image={image}", check=False).split()
+    if workspaces:
+        docker("volume", "rm", "-f", *workspaces, check=False)
     docker("network", "rm", SANDBOX_NETWORK, check=False)
     if removed:
         docker("rmi", "-f", *removed, check=False)
