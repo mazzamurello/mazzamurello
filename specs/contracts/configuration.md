@@ -32,9 +32,17 @@ variable.
 | `MZM_RUN_RETENTION_DAYS` | no | `30` | Days after a run finishes before its durable workflow and event stream are deleted (TEN-009), from 1 to 3650. |
 | `MZM_SANDBOXD_URL` | yes | — | Base URL of the sandbox driver's API, such as `http://sandboxd:8100/v1`, on the internal network (ADR-0022). |
 | `MZM_SANDBOXD_TOKEN` | yes | — | The secret shared with the sandbox driver, at least 32 characters (ADR-0022). |
+| `MZM_SEARCH_URL` | no | empty | Base URL of the search service, such as `http://search:8080`, on the `search` network (ADR-0075). When empty, the agent has no `web_search` tool (AGT-020). |
 
 The same rules apply as for the API: a missing, invalid or unknown `MZM_*`
 variable stops the worker before it takes work.
+
+## Search service
+
+The `search` service runs SearXNG (ADR-0075) with the settings in
+`deploy/search/settings.yml`, which the deployment mounts read-only. An
+instance admin changes the engines there, and restarts the service. The
+service reads no `MZM_*` variable and generates its own secret at start.
 
 ## Sandbox driver
 

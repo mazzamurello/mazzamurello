@@ -149,9 +149,11 @@ request (ADR-0033).
 Framework capabilities that execute commands, fetch URLs, search the web
 locally or connect to MCP servers MUST NOT run in the control plane. They MUST
 run in the user's sandbox or use provider-native tools (ADR-0030, ADR-0035).
-The one exception is remote MCP servers over HTTP added by a tenant admin
+There are two exceptions. Remote MCP servers over HTTP added by a tenant admin
 (AGT-019): the control plane calls them as a client, through the address
-rules of ADR-0064, and never starts MCP programs.
+rules of ADR-0064, and never starts MCP programs. Web search (AGT-020): the
+worker sends queries to the instance's search service, and nothing else
+(ADR-0075).
 
 ## AGT-014: Bounded tool output
 
@@ -245,3 +247,32 @@ addresses, checked at connection time (ADR-0061). Results and tool
 descriptions from these servers MUST be treated as untrusted content
 (AGT-003) (ADR-0064).
 
+## AGT-020: Web search
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, security
+
+The agent MUST be able to search the web with a `web_search` tool, for every
+model that can call tools. The tool MUST send only the query, to the
+instance's search service, and return at most ten results, each with its
+title, address and excerpt, as untrusted content (AGT-003) bounded like other
+tool output (AGT-014). It MUST NOT fetch any address itself, and MUST NOT use
+a model provider's web search (ADR-0074). When the search service fails, the
+tool MUST tell the model so, and the run MUST go on. Queries MUST NOT be
+logged (OBS-001) (ADR-0075).
+
+## AGT-021: Reading web pages
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+The agent MUST be able to read a web page with a `read_page` tool, which
+fetches one `http` or `https` address from the user's sandbox, under its
+egress rules, and returns the page's title, final address and main text as
+Markdown, as untrusted content (AGT-003) bounded like other tool output
+(AGT-014). Other addresses MUST be refused. When the page cannot be read,
+the tool MUST tell the model why, and the run MUST go on (ADR-0075).
