@@ -129,7 +129,7 @@ def load_configuration(environment: Mapping[str, str]) -> DriverConfiguration:
         processes=_integer(environment, "MZM_SANDBOX_PROCESSES", 512, 16, 65536),
         command_timeout_seconds=_integer(environment, "MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS", 300, 1, 86400),
         max_output_bytes=_integer(environment, "MZM_SANDBOX_MAX_OUTPUT_BYTES", 1048576, 1024, 67108864),
-        idle_minutes=_integer(environment, "MZM_SANDBOX_IDLE_MINUTES", 30, 1, 10080),
+        idle_minutes=_integer(environment, "MZM_SANDBOX_IDLE_MINUTES", 5, 1, 10080),
         workspace_quota_mb=_integer(environment, "MZM_SANDBOX_WORKSPACE_QUOTA_MB", 2048, 1, 1048576),
         minimum_release=_minimum_release(environment),
     )
