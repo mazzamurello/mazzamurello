@@ -981,6 +981,7 @@ components:
         - run.timeout
         - model.unavailable
         - model.request_failed
+        - model.refused
         - connection.test_failed
         - sandbox.unavailable
         - sandbox.command_failed
@@ -1563,6 +1564,9 @@ components:
         (MOD-007, ADR-0073). When a conversation's automatic title is stored
         during its first run, a `CUSTOM` event named `mzm.title` carries as
         `value` `{title}`, before the run finishes (CNV-006, ADR-0073).
+        `RUN_ERROR` carries the error's `code` and a `message`, which ends
+        with the reason the model or its provider gave, when there is one;
+        a request the model refuses fails with `model.refused` (MOD-015).
       required: [type]
       additionalProperties: true
       properties:
