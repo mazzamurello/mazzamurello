@@ -7,6 +7,8 @@ last user message:
 - `fail` answers with a server error;
 - `status:429` answers "too many requests", with `Retry-After`;
 - `drop:N` streams `N` pieces of text, then closes the connection mid-answer;
+- `refuse` is refused as a content filter refuses, with `REFUSAL` as the
+  provider's reason (MOD-015);
 - `run:<command>` calls the agent's command tool with `<command>`, then, once
   the tool's result arrives, answers `Tool said: <result>`;
 - anything else streams `Echo: <message>`.
@@ -56,6 +58,8 @@ OPENROUTER_COST = 0.000420
 SERVER_MODELS = ("test-model", "refuses-tools", "gpt-4o-mini")
 # What Ollama answers when a model that cannot call tools is offered some.
 REFUSES_TOOLS_ERROR = "registry.ollama.ai/library/refuses-tools does not support tools"
+# The reason a content filter gives for a request it refuses.
+REFUSAL = "Safeguards flagged this message."
 # The key OpenRouter's key check refuses.
 REJECTED_KEY = "sk-or-rejected"
 # OpenRouter's models, most used in the past week first: (id, name, dollars per
@@ -219,6 +223,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if last.startswith("run:"):
                 self._tool_turn(body, last.removeprefix("run:"))
                 return
+            if last == "refuse":
+                self._refuse(body)
+                return
             if body.get("stream"):
                 self._stream(body, _pieces(last))
             else:
@@ -276,6 +283,20 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             delta = {"role": "assistant", "tool_calls": [call | {"index": 0}]}
             self._event(base | {"choices": [self._choice(delta, None)]})
             self._finish(base, "tool_calls")
+
+        def _refuse(self, body: dict[str, Any]) -> None:
+            if not body.get("stream"):
+                completion = self._completion(body, "")
+                completion["choices"][0]["message"] = {"role": "assistant", "content": None, "refusal": REFUSAL}
+                completion["choices"][0]["finish_reason"] = "content_filter"
+                if self.openrouter:
+                    completion["choices"][0]["native_finish_reason"] = "content_filter"
+                self._json(200, completion)
+                return
+            self._start_stream()
+            base = self._chunk_base(body)
+            self._event(base | {"choices": [self._choice({"role": "assistant", "refusal": REFUSAL}, None)]})
+            self._finish(base, "content_filter")
 
         def _answer(self, body: dict[str, Any], pieces: list[tuple[str, float]]) -> None:
             if body.get("stream"):

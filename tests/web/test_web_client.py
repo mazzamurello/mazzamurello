@@ -16,7 +16,7 @@ from playwright.sync_api import Browser, Page, expect
 
 from tests.support.accounts import Account
 from tests.support.fixtures import HarnessModel, HouseholdModel
-from tests.support.model import SERVER_MODELS
+from tests.support.model import REFUSAL, SERVER_MODELS
 from tests.support.server import Server
 from tests.web.conftest import accessibility_violations, sign_in
 
@@ -320,6 +320,18 @@ def test_errors_say_what_happened_and_what_to_do(page: Page, member: Account) ->
     assert "model.request_failed" not in text, "the notice shows an error code instead of words"
     expect(notice.locator("[data-sprite-pose]")).to_have_attribute("data-sprite-pose", "error")
     assert accessibility_violations(page) == []
+
+
+@pytest.mark.spec("MOD-015")
+def test_a_refusal_shows_the_providers_reason(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    _send(page, "refuse")
+    notice = page.get_by_role("alert")
+    expect(notice).to_contain_text(REFUSAL, timeout=30_000)
+    assert "model.refused" not in notice.inner_text(), "the notice shows an error code instead of words"
+    # The user can rephrase at once.
+    _send(page, "rephrased")
+    _answer(page, "Echo: rephrased")
 
 
 @pytest.mark.spec("UX-018")
