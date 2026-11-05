@@ -122,7 +122,8 @@ class Driver:
         ids = docker("ps", "-aq", "--filter", f"ancestor={self.image}").split()
         if not ids:
             return []
-        return cast(list[dict[str, Any]], json.loads(docker("inspect", *ids)))
+        # The driver removes sandboxes as they stop (SBX-018): one listed may be gone by now.
+        return cast(list[dict[str, Any]], json.loads(docker("inspect", *ids, check=False) or "[]"))
 
     def wait_until_ready(self, timeout: float = READY_TIMEOUT_SECONDS) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
