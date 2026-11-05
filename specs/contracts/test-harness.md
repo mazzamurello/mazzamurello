@@ -107,6 +107,15 @@ them. Both refuse a request when the test asks, as a content filter does: a
 (MOD-015). It records the headers of each request, so tests can check what the
 gateway sends.
 
+## Search
+
+Tests never reach a real search engine. The test suite serves its own search
+service on `127.0.0.1`: SearXNG's JSON API, `GET /search?q=…&format=json`,
+whose results the tests script by the query, and gives its address to the
+worker as `MZM_SEARCH_URL` (ADR-0075). It records each query, so that tests
+can check what left the worker. Pages for the reader are served from inside
+the sandbox, on its own loopback address.
+
 ## Web
 
 Tests of the web client (ADR-0067) use this procedure once per test session,
