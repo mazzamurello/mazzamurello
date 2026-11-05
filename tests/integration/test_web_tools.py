@@ -66,22 +66,25 @@ def _tool_result(model: HarnessModel, text: str) -> str:
     return content
 
 
-def _completed(server: Server, token: str, text: str) -> str:
-    """Run `text` in a new conversation; the run's answer, once completed."""
-    conversation = create_conversation(server, token)
-    run_id, events = start_run(server, token, conversation["id"], text)
+def _completed(server: Server, token: str, text: str, conversation_id: str | None = None) -> str:
+    """Run `text` in the conversation, or a new one; the run's answer, once completed."""
+    conversation = conversation_id or create_conversation(server, token)["id"]
+    run_id, events = start_run(server, token, conversation, text)
     assert wait_for_run(server, token, run_id)["status"] == "completed"
     return text_of(events)
 
 
-def _serve_page(sandboxes: Driver, account: Account, name: str, html: str) -> str:
-    """Serve `html` at `name` from inside the user's sandbox; its address there."""
+def _serve_page(sandboxes: Driver, account: Account, conversation_id: str, name: str, html: str) -> str:
+    """Serve `html` at `name` from inside the conversation's sandbox, until its next answer ends; its address there."""
     tenant, user = str(account.tenant_id), str(account.id)
-    written = sandboxes.sh(tenant, user, f"mkdir -p /tmp/site && printf %s {shlex.quote(html)} > /tmp/site/{name}")
+    written = sandboxes.sh(
+        tenant, user, conversation_id, f"mkdir -p /tmp/site && printf %s {shlex.quote(html)} > /tmp/site/{name}"
+    )
     assert written.exit_code == 0, written
     started = sandboxes.sh(
         tenant,
         user,
+        conversation_id,
         f"cd /tmp/site && (setsid python3 -m http.server {PAGE_PORT} --bind 127.0.0.1 >/dev/null 2>&1 &)"
         f" ; for _ in $(seq 50); do curl -fso /dev/null http://127.0.0.1:{PAGE_PORT}/{name} && exit 0; sleep 0.1;"
         " done; exit 1",
@@ -146,9 +149,10 @@ def test_a_failed_or_empty_search_is_told_to_the_model(
 def test_read_page_returns_the_main_text_of_a_page(
     server: Server, sandboxes: Driver, account: Account, token: str, default_model: HarnessModel
 ) -> None:
-    address = _serve_page(sandboxes, account, "notes.html", PAGE)
+    conversation_id = create_conversation(server, token)["id"]
+    address = _serve_page(sandboxes, account, conversation_id, "notes.html", PAGE)
     text = _call("read_page", url=address)
-    assert _completed(server, token, text).startswith("Tool said:")
+    assert _completed(server, token, text, conversation_id).startswith("Tool said:")
     content = _tool_result(default_model, text)
     assert "Garden notes" in content
     assert address in content
@@ -166,9 +170,10 @@ def test_read_page_output_is_bounded(
 ) -> None:
     words = " ".join(f"word{index}" for index in range(3_000))
     html = f"<html><body><article><p>{words}</p></article></body></html>"
-    address = _serve_page(sandboxes, account, "long.html", html)
+    conversation_id = create_conversation(server, token)["id"]
+    address = _serve_page(sandboxes, account, conversation_id, "long.html", html)
     text = _call("read_page", url=address)
-    _completed(server, token, text)
+    _completed(server, token, text, conversation_id)
     content = _tool_result(default_model, text)
     assert "word0 " in content
     assert len(content) < len(words)
