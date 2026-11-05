@@ -55,16 +55,17 @@ paths:
               schema: { $ref: "#/components/schemas/Health" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
-  /sandboxes/{tenant_id}/{user_id}/ensure:
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/ensure:
     parameters:
       - $ref: "#/components/parameters/TenantId"
       - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
     post:
       operationId: ensureSandbox
-      summary: Create the user's sandbox, or return it if it is running (idempotent).
+      summary: Create the conversation's sandbox, or return it if it is running (idempotent).
       description: |
         A sandbox that is not running is always created anew from the
-        sandbox image, with the user's workspace (SBX-018, ADR-0076).
+        sandbox image, with the conversation's workspace (SBX-018, ADR-0076).
       x-requirements: [SBX-001, SBX-002, SBX-012, SBX-015, SBX-018]
       responses:
         "200":
@@ -75,13 +76,14 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
-  /sandboxes/{tenant_id}/{user_id}/exec:
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/exec:
     parameters:
       - $ref: "#/components/parameters/TenantId"
       - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
     post:
       operationId: execInSandbox
-      summary: Run a command in the user's sandbox and stream its output.
+      summary: Run a command in the conversation's sandbox and stream its output.
       description: |
         Ensures the sandbox is running, then executes `argv` inside it. The
         response is a stream of newline-delimited JSON objects: zero or more
@@ -108,10 +110,11 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
-  /sandboxes/{tenant_id}/{user_id}/files/{path}:
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/files/{path}:
     parameters:
       - $ref: "#/components/parameters/TenantId"
       - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
       - name: path
         in: path
         required: true
@@ -119,7 +122,7 @@ paths:
         schema: { type: string }
     put:
       operationId: putFile
-      summary: Write a file into the user's workspace.
+      summary: Write a file into the conversation's workspace.
       x-phase: 1
       x-requirements: [SBX-014]
       requestBody:
@@ -135,7 +138,7 @@ paths:
         "503": { $ref: "#/components/responses/Unavailable" }
     get:
       operationId: getFile
-      summary: Read a file from the user's workspace.
+      summary: Read a file from the conversation's workspace.
       x-phase: 1
       x-requirements: [SBX-014]
       responses:
@@ -149,28 +152,30 @@ paths:
         "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
-  /sandboxes/{tenant_id}/{user_id}/stop:
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/stop:
     parameters:
       - $ref: "#/components/parameters/TenantId"
       - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
     post:
       operationId: stopSandbox
-      summary: Stop the user's sandbox and remove its container, keeping its workspace.
+      summary: Stop the conversation's sandbox and remove its container, keeping its workspace.
       x-requirements: [SBX-001, SBX-018]
       responses:
         "204": { description: "Stopped, or was not running." }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
-  /sandboxes/{tenant_id}/{user_id}/workspace:
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/workspace:
     parameters:
       - $ref: "#/components/parameters/TenantId"
       - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
     get:
       operationId: exportWorkspace
-      summary: Stream the user's workspace as a tar archive, for backups.
+      summary: Stream the conversation's workspace as a tar archive, for backups.
       description: |
         Regular files, directories and symbolic links, with their modes,
-        relative to the workspace root. A user without a workspace yields an
+        relative to the workspace root. A conversation without a workspace yields an
         empty archive (SBX-020, ADR-0077).
       x-requirements: [SBX-020]
       responses:
@@ -183,9 +188,9 @@ paths:
         "503": { $ref: "#/components/responses/Unavailable" }
     put:
       operationId: importWorkspace
-      summary: Replace the user's workspace with a tar archive, for restores.
+      summary: Replace the conversation's workspace with a tar archive, for restores.
       description: |
-        Stops the user's sandbox, empties the workspace, and unpacks the
+        Stops the conversation's sandbox, empties the workspace, and unpacks the
         archive into it, running nothing from it. An entry with an absolute
         path, a `..` segment, a link that leaves the workspace, or a type
         other than a regular file, a directory or a symbolic link refuses the
@@ -198,6 +203,43 @@ paths:
             schema: { type: string, format: binary }
       responses:
         "204": { description: The workspace was replaced. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    delete:
+      operationId: deleteWorkspace
+      summary: Stop the conversation's sandbox and delete its workspace, when the conversation is deleted.
+      x-requirements: [SBX-010]
+      responses:
+        "204": { description: "Deleted, or there was none." }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/workspace/copy:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      operationId: copyWorkspace
+      summary: Replace the conversation's workspace with a copy of another conversation's of the same user, for forks.
+      description: |
+        The source is another conversation of the same tenant and user; its
+        workspace is copied as it is, and its sandbox keeps running (SBX-010,
+        CNV-005, ADR-0078). A source without a workspace leaves this one empty.
+      x-requirements: [SBX-010, CNV-005]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_conversation_id]
+              additionalProperties: false
+              properties:
+                from_conversation_id: { type: string, format: uuid }
+      responses:
+        "204": { description: The workspace was copied. }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "503": { $ref: "#/components/responses/Unavailable" }
@@ -214,6 +256,12 @@ components:
       name: tenant_id
       in: path
       required: true
+      schema: { type: string, format: uuid }
+    ConversationId:
+      name: conversation_id
+      in: path
+      required: true
+      description: The conversation whose sandbox and workspace are meant (SBX-001, ADR-0078).
       schema: { type: string, format: uuid }
     UserId:
       name: user_id

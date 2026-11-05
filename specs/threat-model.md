@@ -40,7 +40,7 @@ whenever a requirement in the security-relevant areas changes.
 |---|---|---|
 | X1 | Author of untrusted content | Controls a web page, an email, a document or a package the agent reads or installs. The most common adversary. |
 | X2 | Curious or malicious user | Has a legitimate account in a tenant; tries to read other users' or tenants' data, or to escape their sandbox. |
-| X3 | Compromised sandbox | Arbitrary code running in a user's sandbox (via X1 or X2), with internet access. |
+| X3 | Compromised sandbox | Arbitrary code running in a conversation's sandbox (via X1 or X2), with internet access, until the answer it runs in ends. |
 | X4 | Network attacker | Reaches the instance's exposed endpoint from the internet or the LAN. |
 | X5 | Supply-chain attacker | Compromises a dependency, a container image or a CI workflow of the project. |
 
@@ -80,7 +80,7 @@ beyond keeping them configurable and updatable.
 | T-02 | A user of one tenant reaches data of another tenant | X2 | TEN-002, TEN-003, TEN-006, TEN-008 |
 | T-03 | Code in a sandbox escapes to the host | X3 | SBX-002, SBX-003, SBX-011, SBX-012, SBX-017, OPS-004 |
 | T-04 | Code in a sandbox scans or attacks the LAN, the host's services or cloud metadata endpoints | X1, X3 | SBX-005, SBX-007, SBX-013, SBX-015, OPS-003 |
-| T-05 | Code in one sandbox reaches another user's sandbox | X3 | SBX-001, SBX-006 |
+| T-05 | Code in one sandbox reaches another user's or another conversation's sandbox | X3 | SBX-001, SBX-006 |
 | T-06 | Secrets are stolen from inside a sandbox | X3 | SBX-008, MOD-002 |
 | T-07 | Compromise of the control plane yields control of the container runtime (root on the host) | X4, X5 | SBX-009 |
 | T-08 | **Lethal trifecta:** injected instructions make the agent send private data to an attacker (e.g. "forward the last invoices to …") | X1 | AGT-001, AGT-003, AGT-004, AGT-005, EVL-003 |
@@ -108,7 +108,7 @@ beyond keeping them configurable and updatable.
 | T-30 | A stolen device credential lets an attacker pose as the device, receive its tool calls and return forged results | X4 | DEV-001, DEV-002 |
 | T-31 | A tenant admin uses connection tests to probe the household's network, or to read what internal services answer, through the details of failed steps | X2 | MOD-009, MOD-013 |
 | T-32 | A dependency or an asset of the web app contacts a third party at run time, telling it who uses the instance and when, or making the instance depend on it | X5 | OBS-001, OBS-006 |
-| T-33 | Injected instructions plant files or programs in a user's sandbox that steer or attack later runs, and are carried into backups | X1 | SBX-018, SBX-019, OPS-006, AGT-003, AGT-022 |
+| T-33 | Injected instructions plant files or programs in a sandbox that steer or attack later runs, and are carried into backups | X1 | SBX-001, SBX-018, SBX-019, OPS-006, AGT-003, AGT-022 |
 
 ## The lethal trifecta in Mazzamurello
 
@@ -131,7 +131,8 @@ Prompts are never relied upon as a security boundary.
 
 - **Exfiltration from a compromised sandbox.** Internet egress is allowed by
   design; a compromised sandbox can send out the data it contains. This is
-  bounded to that user's workspace, which never contains secrets (SBX-008).
+  bounded to that conversation's workspace and the answer it runs in, which
+  never contain secrets (SBX-001, SBX-008, ADR-0078).
 - **Approval fatigue.** Users may approve requests without reading them.
   Approval prompts must show what will be sent and where.
 - **Model-level manipulation without tools.** An injected page can still make

@@ -69,7 +69,7 @@ in UTC, `null` for what has not happened yet, and `outcome` `succeeded` or
 fresh installation, decrypting it with `MZM_BACKUP_KEY`, which must be the
 key of the instance that made it; with `--config PATH` it writes the
 archive's secret key into that `.env` file. `restore --workspace
-USERNAME FILE` restores one user's workspace into a running instance. Both
+USERNAME FILE` restores the workspaces of that user's conversations into a running instance. Both
 read the variables above.
 
 ## Sandbox driver
@@ -95,7 +95,7 @@ it listens.
 | `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS` | no | `300` | The longest a command may run, from 1 to 86400. |
 | `MZM_SANDBOX_MAX_OUTPUT_BYTES` | no | `1048576` | The most output a command returns, from 1024 to 67108864. |
 | `MZM_SANDBOX_WORKSPACE_QUOTA_MB` | no | `2048` | The workspace quota in MiB, from 1 to 1048576 (SBX-019). |
-| `MZM_SANDBOX_IDLE_MINUTES` | no | `30` | Minutes without commands before a sandbox is stopped and its container removed (SBX-018), from 1 to 10080. |
+| `MZM_SANDBOX_IDLE_MINUTES` | no | `5` | Minutes without commands before a sandbox is stopped and its container removed, for a run that ended without stopping it (SBX-018, ADR-0078), from 1 to 10080. |
 
 The minimum gVisor release is `release-20261026.0` (SBX-017, ADR-0053).
 

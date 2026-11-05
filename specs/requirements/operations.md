@@ -65,9 +65,9 @@ earlier version.
 - **Verification:** e2e
 
 An operator command MUST back up an instance into one encrypted archive
-holding its database, its secret key and its users' workspaces, and another
+holding its database, its secret key and its conversations' workspaces, and another
 MUST restore it into a fresh installation with only the archive and its
-backup key; a single user's workspace MUST be restorable from an archive into
+backup key; a single user's workspaces MUST be restorable from an archive into
 a running instance. Backup and restore MUST be documented, and CI MUST verify
 that a backup can be restored into a working instance (ADR-0077).
 
