@@ -13,7 +13,7 @@ import datetime
 import json
 import uuid
 from collections.abc import Sequence
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from dbos import DBOSClient
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -37,6 +37,8 @@ CONVERSATION_COLUMNS = (
     f" created_at, updated_at, {CONVERSATION_COST}"
 )
 ACTIVE_STATUSES = ("queued", "running")
+# The most of a model's stated reason a failed run's error repeats (MOD-015).
+REASON_CHARS = 500
 
 type Limit = Annotated[int, Query(ge=1, le=100)]
 
@@ -390,12 +392,12 @@ async def path_runs(connection: AsyncConnection, conversation_id: uuid.UUID, las
             await connection.execute(
                 text(
                     "WITH RECURSIVE path AS ("
-                    " SELECT id, parent_run_id, kind, 0 AS depth FROM runs"
+                    " SELECT id, parent_run_id, kind, status, error_code, 0 AS depth FROM runs"
                     " WHERE id = :last AND conversation_id = :conversation"
                     " UNION ALL"
-                    " SELECT r.id, r.parent_run_id, r.kind, p.depth + 1"
+                    " SELECT r.id, r.parent_run_id, r.kind, r.status, r.error_code, p.depth + 1"
                     " FROM runs r JOIN path p ON r.id = p.parent_run_id"
-                    ") SELECT id, parent_run_id, kind FROM path ORDER BY depth DESC"
+                    ") SELECT id, parent_run_id, kind, status, error_code FROM path ORDER BY depth DESC"
                 ),
                 {"last": last_run_id, "conversation": conversation_id},
             )
@@ -415,6 +417,22 @@ async def stored_messages(connection: AsyncConnection, run_ids: Sequence[uuid.UU
     for row in rows:
         by_run[row.run_id].append(row.message)
     return by_run
+
+
+def run_error(run: Any, messages: Sequence[Any]) -> schemas.RunError | None:
+    """Why a run failed, with the reason its stored answer keeps, such as a refusal's (UX-014, MOD-015)."""
+    if run.status != "failed":
+        return None
+    reason: str | None = None
+    for raw in reversed(messages):
+        message = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
+        details = message.get("provider_details")
+        if message.get("kind") == "response" and isinstance(details, dict):
+            found = cast(dict[str, Any], details).get("refusal") or cast(dict[str, Any], details).get("block_reason")
+            if isinstance(found, str) and found:
+                reason = found[:REASON_CHARS]
+                break
+    return schemas.RunError(code=run.error_code or "internal.error", reason=reason)
 
 
 def message_id(run_id: uuid.UUID, position: int) -> uuid.UUID:
@@ -457,7 +475,12 @@ async def list_messages(
         if not runs or runs[-1].run_id != run.id:
             runs.append(
                 schemas.PathRun(
-                    run_id=run.id, parent_run_id=run.parent_run_id, kind=run.kind, message_ids=[], cost=costs[run.id]
+                    run_id=run.id,
+                    parent_run_id=run.parent_run_id,
+                    kind=run.kind,
+                    message_ids=[],
+                    cost=costs[run.id],
+                    error=run_error(run, stored[run.id]),
                 )
             )
         runs[-1].message_ids.append(str(message["id"]))
