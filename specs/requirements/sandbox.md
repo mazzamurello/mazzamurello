@@ -197,7 +197,7 @@ official repository.
 
 ## SBX-018: Ephemeral sandboxes
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, security
@@ -213,7 +213,7 @@ sandbox (T-33), and only what was deliberately kept is persistent.
 
 ## SBX-019: Workspace quota
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -225,7 +225,7 @@ the command's result MUST tell the agent when the workspace uses more than
 
 ## SBX-020: Workspace export and import
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, security

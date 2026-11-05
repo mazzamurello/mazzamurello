@@ -59,7 +59,7 @@ earlier version.
 
 ## OPS-006: Backup and restore
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -105,7 +105,7 @@ performance only.
 
 ## OPS-010: Nightly backups
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -116,7 +116,7 @@ admin can change, 14 by default (ADR-0077).
 
 ## OPS-011: Backups that fail are reported
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
