@@ -1,0 +1,28 @@
+# The settings of the search service, SearXNG (ADR-0075, configuration
+# contract "Search service"). Only what differs from SearXNG's defaults is
+# here; an instance admin may change the engines, then restart the service.
+use_default_settings: true
+
+general:
+  instance_name: "Mazzamurello search"
+  # No statistics of searches.
+  enable_metrics: false
+
+server:
+  # Set at every start from SEARXNG_SECRET, by the deployment.
+  secret_key: "replaced-at-start"
+  # Only the worker reaches the service: no bot protection, no Valkey.
+  limiter: false
+  public_instance: false
+  # Never fetch an address on behalf of a request.
+  image_proxy: false
+
+search:
+  # The worker reads JSON; nothing else is served.
+  formats:
+    - json
+
+engines:
+  # SearXNG ships Google disabled.
+  - name: google
+    disabled: false
