@@ -15,7 +15,6 @@ import contextlib
 import json
 import logging
 import time
-import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,10 +30,9 @@ from mazzamurello_sandboxd.policy import (
     NETWORK,
     SCRATCH,
     WORKSPACE,
+    SandboxId,
     container_config,
-    container_name,
     network_config,
-    volume_name,
 )
 from mazzamurello_sandboxd.workspaces import check_archive, workspace_entries
 
@@ -86,7 +84,9 @@ class Sandboxes:
         """Create and start a container with the fixed policy, then point it at the instance's resolver."""
         await self.ensure_network()
         if volume is not None:
-            await self.docker.volumes.create({"Name": volume, "Labels": {LABEL: "workspace"} | labels})
+            # Labelled with the image too, so that what a driver created can be told from another's.
+            image = {f"{LABEL}.image": self.configuration.image}
+            await self.docker.volumes.create({"Name": volume, "Labels": {LABEL: "workspace"} | labels | image})
         container = await self.docker.containers.create(container_config(self.configuration, volume, labels), name=name)
         await container.start()
         await self._write_resolver(container)
@@ -119,9 +119,9 @@ class Sandboxes:
             logger.warning("the workspace of %s could not be measured", container.id)
             return 0
 
-    async def ensure(self, tenant_id: uuid.UUID, user_id: uuid.UUID) -> dict[str, Any]:
-        """The user's sandbox, created or started if needed (idempotent)."""
-        name = container_name(tenant_id, user_id)
+    async def ensure(self, sandbox: SandboxId) -> dict[str, Any]:
+        """The conversation's sandbox, created if needed (idempotent)."""
+        name = sandbox.container
         lock = self._locks.setdefault(name, asyncio.Lock())
         async with lock:
             container: Any = None
@@ -135,14 +135,13 @@ class Sandboxes:
                 if error.status != NOT_FOUND:
                     raise
             if container is None:
-                labels = {f"{LABEL}.tenant": str(tenant_id), f"{LABEL}.user": str(user_id)}
-                container = await self.start_container(name, volume_name(tenant_id, user_id), labels)
+                container = await self.start_container(name, sandbox.volume, sandbox.labels)
             info = await container.show()
             self._last_used[name] = time.monotonic()
         return {"state": "running", "started_at": info["State"]["StartedAt"], "working_dir": SCRATCH}
 
-    async def stop(self, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        name = container_name(tenant_id, user_id)
+    async def stop(self, sandbox: SandboxId) -> None:
+        name = sandbox.container
         lock = self._locks.setdefault(name, asyncio.Lock())
         async with lock:
             await self._remove(name)
@@ -160,8 +159,14 @@ class Sandboxes:
                 raise
 
     async def stop_all(self) -> int:
-        """Stop every running sandbox, as when the egress rules disappear (SBX-015)."""
-        containers = await self.docker.containers.list(filters=json.dumps({"label": [f"{LABEL}=sandbox"]}))
+        """Stop and remove every sandbox of this driver's image, running or not.
+
+        As when the egress rules disappear (SBX-015), and when the driver starts,
+        so that no sandbox is left that the driver does not track (SBX-018,
+        ADR-0078). Another driver's sandboxes, of another image, are left alone.
+        """
+        filters = {"label": [f"{LABEL}=sandbox"], "ancestor": [self.configuration.image]}
+        containers = await self.docker.containers.list(all=True, filters=json.dumps(filters))
         await asyncio.gather(*(container.delete(force=True) for container in containers), return_exceptions=True)
         self._last_used.clear()
         return len(containers)
@@ -178,8 +183,7 @@ class Sandboxes:
 
     async def execute(
         self,
-        tenant_id: uuid.UUID,
-        user_id: uuid.UUID,
+        sandbox: SandboxId,
         argv: Sequence[str],
         *,
         env: Mapping[str, str],
@@ -187,9 +191,9 @@ class Sandboxes:
         timeout_seconds: int | None,
         max_output_bytes: int | None,
     ) -> AsyncIterator[Output | Exit]:
-        """Run a command in the user's sandbox: its output, then exactly one exit."""
-        await self.ensure(tenant_id, user_id)
-        container = await self.docker.containers.get(container_name(tenant_id, user_id))
+        """Run a command in the conversation's sandbox: its output, then exactly one exit."""
+        await self.ensure(sandbox)
+        container = await self.docker.containers.get(sandbox.container)
         timeout = min(
             timeout_seconds or self.configuration.command_timeout_seconds, self.configuration.command_timeout_seconds
         )
@@ -237,7 +241,7 @@ class Sandboxes:
             exit_code = (await execute.inspect()).get("ExitCode")
         elapsed = time.monotonic() - started
         timed_out = not finished_in_time or (exit_code in KILLED_EXIT_CODES and elapsed >= timeout)
-        self._last_used[container_name(tenant_id, user_id)] = time.monotonic()
+        self._last_used[sandbox.container] = time.monotonic()
         yield Exit(
             exit_code=None if timed_out else exit_code,
             timed_out=timed_out,
@@ -247,10 +251,10 @@ class Sandboxes:
             workspace_quota_bytes=self.configuration.workspace_quota_mb * MIB,
         )
 
-    async def export_workspace(self, tenant_id: uuid.UUID, user_id: uuid.UUID, destination: Path) -> None:
-        """Write the user's workspace to `destination` as a tar archive of paths relative to it (SBX-020)."""
-        await self.ensure(tenant_id, user_id)
-        container = await self.docker.containers.get(container_name(tenant_id, user_id))
+    async def export_workspace(self, sandbox: SandboxId, destination: Path) -> None:
+        """Write the conversation's workspace to `destination` as a tar archive of paths relative to it (SBX-020)."""
+        await self.ensure(sandbox)
+        container = await self.docker.containers.get(sandbox.container)
         raw = destination.with_name(f"{destination.name}.docker")
         try:
             async with self.docker._query(  # pyright: ignore[reportPrivateUsage]
@@ -263,16 +267,17 @@ class Sandboxes:
         finally:
             raw.unlink(missing_ok=True)
 
-    async def import_workspace(self, tenant_id: uuid.UUID, user_id: uuid.UUID, source: Path) -> None:
-        """Replace the user's workspace with the archive at `source`, unpacked by Docker, run by no one (SBX-020).
+    async def import_workspace(self, sandbox: SandboxId, source: Path) -> None:
+        """Replace the conversation's workspace with the archive at `source`, unpacked by Docker (SBX-020).
+
+        Nothing from the archive is run.
 
         The workspace is emptied first; an archive that would write outside it
         is refused whole, leaving it empty. The sandbox is removed afterwards,
         so that the next command sees the workspace as unpacked.
         """
-        name = container_name(tenant_id, user_id)
-        await self.ensure(tenant_id, user_id)
-        container = await self.docker.containers.get(name)
+        await self.ensure(sandbox)
+        container = await self.docker.containers.get(sandbox.container)
         try:
             await self._run_quietly(container, ["find", WORKSPACE, "-mindepth", "1", "-delete"])
             await asyncio.to_thread(check_archive, source)
@@ -286,4 +291,19 @@ class Sandboxes:
                 ) as response:
                     await response.read()
         finally:
-            await self.stop(tenant_id, user_id)
+            await self.stop(sandbox)
+
+    async def delete_workspace(self, sandbox: SandboxId) -> None:
+        """Remove the conversation's sandbox and delete its workspace, as the conversation is deleted (SBX-010)."""
+        await self.stop(sandbox)
+        try:
+            await (await self.docker.volumes.get(sandbox.volume)).delete()
+        except DockerError as error:
+            if error.status != NOT_FOUND:
+                raise
+
+    async def copy_workspace(self, sandbox: SandboxId, source: SandboxId, folder: Path) -> None:
+        """Replace the conversation's workspace with a copy of `source`'s, for a fork (SBX-010, CNV-005)."""
+        archive = folder / "workspace.tar"
+        await self.export_workspace(source, archive)
+        await self.import_workspace(sandbox, archive)

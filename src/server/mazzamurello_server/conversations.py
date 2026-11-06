@@ -28,6 +28,7 @@ from mazzamurello_server.connections import default_model, offered
 from mazzamurello_server.costs import CONVERSATION_COST, money, run_costs
 from mazzamurello_server.credentials import uuid7
 from mazzamurello_server.database import transaction
+from mazzamurello_server.sandbox import SandboxDriver, workspace_request
 
 router = APIRouter()
 
@@ -293,9 +294,12 @@ async def _owns_folder(connection: AsyncConnection, folder_id: uuid.UUID) -> boo
     "/conversations/{conversation_id}/fork", status_code=status.HTTP_201_CREATED, response_model=schemas.Conversation
 )
 async def fork_conversation(
-    conversation_id: uuid.UUID, body: schemas.ForkRequest, identity: Authenticated, engine: Engine
+    conversation_id: uuid.UUID, body: schemas.ForkRequest, identity: Authenticated, engine: Engine, request: Request
 ) -> schemas.Conversation:
-    """A new conversation with copies of the runs up to `run_id`, in the same folder (CNV-005, ADR-0073)."""
+    """A new conversation with copies of the runs up to `run_id`, in the same folder (CNV-005, ADR-0073).
+
+    Its workspace starts as a copy of this conversation's (SBX-010, ADR-0078); when the copy fails, there is no fork.
+    """
     async with transaction(engine, identity) as connection:
         await find_conversation(connection, conversation_id, lock=True)
         await _refuse_while_active(connection, conversation_id)
@@ -349,7 +353,14 @@ async def fork_conversation(
                 {"last": new_ids[path[-1].id], "fork": fork_id},
             )
         ).one()
+        source = {"from_conversation_id": str(conversation_id)}
+        await workspace_request(_driver(request), identity, fork_id, "POST", source)
     return conversation_response(row)
+
+
+def _driver(request: Request) -> SandboxDriver:
+    configuration = request.app.state.configuration
+    return SandboxDriver(configuration.sandboxd_url, configuration.sandboxd_token)
 
 
 async def _refuse_while_active(connection: AsyncConnection, conversation_id: uuid.UUID) -> None:
@@ -365,7 +376,7 @@ async def _refuse_while_active(connection: AsyncConnection, conversation_id: uui
 
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 async def delete_conversation(
-    conversation_id: uuid.UUID, identity: Authenticated, engine: Engine, durable: Durable
+    conversation_id: uuid.UUID, identity: Authenticated, engine: Engine, durable: Durable, request: Request
 ) -> Response:
     async with transaction(engine, identity) as connection:
         await find_conversation(connection, conversation_id, lock=True)
@@ -380,6 +391,8 @@ async def delete_conversation(
         # they go first; their IDs come from the row-level-secured runs (TEN-009).
         if run_ids:
             await durable.delete_workflows_async(run_ids)
+        # Its workspace goes with it; when it cannot, nothing is deleted (SBX-010, ADR-0078).
+        await workspace_request(_driver(request), identity, conversation_id, "DELETE")
         # Messages and runs follow by cascade; ledger entries are detached (ADR-0042).
         await connection.execute(text("DELETE FROM conversations WHERE id = :id"), {"id": conversation_id})
     return Response(status_code=status.HTTP_204_NO_CONTENT)

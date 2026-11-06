@@ -465,13 +465,14 @@ paths:
     delete:
       tags: [conversations]
       operationId: deleteConversation
-      summary: Permanently delete a conversation, its messages, runs and run events.
-      x-requirements: [API-003, TEN-006]
+      summary: Permanently delete a conversation, its messages, runs and run events, and its workspace.
+      x-requirements: [API-003, SBX-010, TEN-006]
       responses:
         "204": { description: Conversation deleted. }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/RunInProgress" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
 
   /conversations/{conversation_id}/rewind:
     parameters:
@@ -516,9 +517,10 @@ paths:
       description: |
         The fork holds copies of the runs and messages from the first run to
         `run_id`, under new identifiers, in the same folder, with the same
-        title and model; it records where it came from. Ledger entries are
-        not copied (CNV-005, ADR-0073). Refused with `run.in_progress` while
-        a run of the conversation is queued or running.
+        title and model; it records where it came from. Its workspace starts
+        as a copy of this conversation's (SBX-010, ADR-0078). Ledger entries
+        are not copied (CNV-005, ADR-0073). Refused with `run.in_progress`
+        while a run of the conversation is queued or running.
       x-requirements: [CNV-005, TEN-006]
       requestBody:
         required: true
@@ -535,6 +537,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/RunInProgress" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
 
   /conversation-list:
     get:
@@ -886,6 +889,11 @@ components:
       schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
 
   responses:
+    SandboxUnavailable:
+      description: The sandbox driver could not delete or copy the conversation's workspace; nothing was changed (`sandbox.unavailable`, SBX-010).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     Unauthenticated:
       description: Missing, invalid, expired or revoked session token.
       content:

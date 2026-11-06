@@ -122,9 +122,9 @@ user.
 - **Verification:** integration
 
 The agent MUST have mediated workspace tools that run commands and read,
-write and edit files in the sandbox of the user it acts for, returning
-command output and exit codes (ADR-0035). The tools MUST NOT be able to target
-any other user's sandbox.
+write and edit files in the sandbox of the conversation it acts in,
+returning command output and exit codes (ADR-0035, ADR-0078). The tools MUST
+NOT be able to target any other conversation's sandbox.
 
 ## AGT-012: Approvals verified against stored requests
 
@@ -272,7 +272,7 @@ logged (OBS-001) (ADR-0075).
 - **Verification:** integration
 
 The agent MUST be able to read a web page with a `read_page` tool, which
-fetches one `http` or `https` address from the user's sandbox, under its
+fetches one `http` or `https` address from the conversation's sandbox, under its
 egress rules, and returns the page's title, final address and main text as
 Markdown, as untrusted content (AGT-003) bounded like other tool output
 (AGT-014). Other addresses MUST be refused. When the page cannot be read,

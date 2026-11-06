@@ -20,10 +20,10 @@ knows inside your home.
   Docker Compose on a Linux home server. Like Immich or Home Assistant, but for
   an AI assistant.
 - **Private by design.** Your data stays on your server. Every user has private
-  data and a private, strongly isolated sandbox. Nothing runs on the host on
-  behalf of users.
+  data, and every conversation a private, strongly isolated sandbox. Nothing
+  runs on the host on behalf of users.
 - **Capable.** The assistant can search the web, read pages, run code, install
-  software and launch programs — inside a per-user sandbox with internet
+  software and launch programs — inside each conversation's sandbox, with internet
   access but no view of your home network. Searches go through a search
   engine running on your server, never through the model's provider.
 - **Model-agnostic.** Local models (Ollama, llama.cpp, any OpenAI-compatible
@@ -55,7 +55,7 @@ is deliberately **not**.
  │ driver      │
  └──────┬──────┘
  ┌──────▼──────┐ ┌─────────────┐ ┌─────────────┐
- │ sandbox A   │ │ sandbox B   │ │ sandbox C   │  one per user, gVisor by default,
+ │ sandbox A   │ │ sandbox B   │ │ sandbox C   │  one per conversation, gVisor,
  │ workspace A │ │ workspace B │ │ workspace C │  internet yes, LAN no, no secrets
  └─────────────┘ └─────────────┘ └─────────────┘
 ```
@@ -186,19 +186,25 @@ the assistant's behalf: they see your server's address and the query, never
 who asked (ADR-0075). It keeps no logs. The engines it uses are set in
 `deploy/search/settings.yml`: SearXNG's defaults, plus Google. Edit the file
 and run `docker compose restart search` to change them. Pages the assistant
-reads are fetched from the user's sandbox.
+reads are fetched from the conversation's sandbox.
 
 Every setting is listed in the
 [configuration contract](specs/contracts/configuration.md).
 
 **Sandboxes and workspaces**
 
-Each user's sandbox keeps one folder, `/workspace`, for what they want to
-keep: scripts, results and notes the assistant made for them. Everything
-else in the sandbox, including software installed into it, is discarded
-when it stops after 30 idle minutes, and the next command gets a new one
-(ADR-0076). Each workspace has a quota, 2 GiB by default
+Every conversation has a sandbox of its own, which no other conversation
+sees (ADR-0078). It keeps one folder, `/workspace`, for what the user wants
+to keep from that conversation: scripts, results and notes the assistant
+made. Everything else, including software installed into it and programs it
+started, is discarded when the answer ends, and the next answer gets a new
+sandbox (ADR-0076). Deleting a conversation deletes its workspace; a fork
+starts with a copy. Each workspace has a quota, 2 GiB by default
 (`MZM_SANDBOX_WORKSPACE_QUOTA_MB`); the assistant is told when it nears it.
+
+Workspaces from before sandboxes were per conversation are no longer used:
+`docker volume ls --filter label=dev.mazzamurello.sandbox=workspace` lists
+them, and those without a third identifier in their name can be removed.
 
 **Backups**
 
@@ -238,8 +244,8 @@ docker compose run --rm restore /backups/mazzamurello-20261106T030000Z.tar.age
 docker compose up --detach --wait
 ```
 
-To bring back only one user's workspace from an earlier archive, for example
-after something went wrong in it, in a running instance:
+To bring back only one user's workspaces from an earlier archive, for example
+after something went wrong in them, in a running instance:
 
 ```bash
 docker compose run --rm restore --workspace alice /backups/mazzamurello-20261101T030000Z.tar.age
