@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from mazzamurello_sandboxd.config import DriverConfiguration
@@ -16,12 +17,29 @@ LABEL = "dev.mazzamurello.sandbox"
 MIB = 1024 * 1024
 
 
-def container_name(tenant_id: uuid.UUID, user_id: uuid.UUID) -> str:
-    return f"mzm-sandbox-{tenant_id}-{user_id}"
+@dataclass(frozen=True)
+class SandboxId:
+    """A conversation's sandbox and workspace: its tenant, its user and the conversation (SBX-001, ADR-0078)."""
 
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
+    conversation_id: uuid.UUID
 
-def volume_name(tenant_id: uuid.UUID, user_id: uuid.UUID) -> str:
-    return f"mzm-workspace-{tenant_id}-{user_id}"
+    @property
+    def container(self) -> str:
+        return f"mzm-sandbox-{self.tenant_id}-{self.user_id}-{self.conversation_id}"
+
+    @property
+    def volume(self) -> str:
+        return f"mzm-workspace-{self.tenant_id}-{self.user_id}-{self.conversation_id}"
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {
+            f"{LABEL}.tenant": str(self.tenant_id),
+            f"{LABEL}.user": str(self.user_id),
+            f"{LABEL}.conversation": str(self.conversation_id),
+        }
 
 
 def network_config() -> dict[str, Any]:

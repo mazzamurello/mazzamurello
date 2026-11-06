@@ -75,10 +75,11 @@ def test_rewinding_deletes_what_followed(database: Database, server: Server, tok
 def test_rewinding_leaves_the_workspace_alone(server: Server, token: str) -> None:
     conversation = create_conversation(server, token)
     name, before, after = f"rewind-{secrets.token_hex(4)}.txt", secrets.token_hex(6), secrets.token_hex(6)
-    first, _ = start_run(server, token, conversation["id"], f"run:echo {before} > {name}")
-    start_run(server, token, conversation["id"], f"run:echo {after} > {name}")
+    # In the workspace, which outlives the answers that use it (ADR-0078).
+    first, _ = start_run(server, token, conversation["id"], f"run:echo {before} > /workspace/{name}")
+    start_run(server, token, conversation["id"], f"run:echo {after} > /workspace/{name}")
     assert _rewind(server, token, conversation["id"], first).status_code == 200
-    run_id, events = start_run(server, token, conversation["id"], f"run:cat {name}")
+    run_id, events = start_run(server, token, conversation["id"], f"run:cat /workspace/{name}")
     assert wait_for_run(server, token, run_id)["status"] == "completed"
     assert after in text_of(events), "rewinding changed a file of the workspace"
 

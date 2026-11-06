@@ -64,18 +64,21 @@ BLOCKED_RANGES = (
 )
 
 
-def _user() -> tuple[str, str]:
-    return str(uuid7()), str(uuid7())
+def _sandbox() -> tuple[str, str, str]:
+    """A tenant, a user and a conversation of theirs: one sandbox (SBX-001)."""
+    return str(uuid7()), str(uuid7()), str(uuid7())
 
 
-def _connects(driver: Driver, tenant_id: str, user_id: str, host: str, port: int) -> bool:
-    result = driver.sh(tenant_id, user_id, f"{CONNECT} {host} {port}", timeout_seconds=15)
+def _connects(driver: Driver, tenant_id: str, user_id: str, conversation_id: str, host: str, port: int) -> bool:
+    result = driver.sh(tenant_id, user_id, conversation_id, f"{CONNECT} {host} {port}", timeout_seconds=15)
     return result.exit_code == 0 and "connected" in result.stdout
 
 
-def _reachable(driver: Driver, tenant_id: str, user_id: str, hosts: list[str], port: int) -> set[str]:
+def _reachable(
+    driver: Driver, tenant_id: str, user_id: str, conversation_id: str, hosts: list[str], port: int
+) -> set[str]:
     """The hosts a sandbox connects to, probed all at once."""
-    result = driver.sh(tenant_id, user_id, f"{PROBE} {port} {' '.join(hosts)}", timeout_seconds=15)
+    result = driver.sh(tenant_id, user_id, conversation_id, f"{PROBE} {port} {' '.join(hosts)}", timeout_seconds=15)
     return {line.split()[1] for line in result.stdout.splitlines() if line.startswith("connected ")}
 
 
@@ -124,8 +127,8 @@ def _reachable_from_a_plain_container(image: str, hosts: list[str], port: int) -
 
 @pytest.mark.spec("SBX-002")
 def test_sandboxes_run_under_gvisor(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
-    result = sandboxes.sh(tenant_id, user_id, "dmesg 2>/dev/null | head -n 1")
+    tenant_id, user_id, conversation_id = _sandbox()
+    result = sandboxes.sh(tenant_id, user_id, conversation_id, "dmesg 2>/dev/null | head -n 1")
     assert "gVisor" in result.stdout
     for container in sandboxes.sandbox_containers():
         assert container["HostConfig"]["Runtime"] == "runsc"
@@ -133,50 +136,54 @@ def test_sandboxes_run_under_gvisor(sandboxes: Driver) -> None:
 
 @pytest.mark.spec("SBX-005")
 def test_the_host_is_unreachable_from_sandboxes(sandboxes: Driver, host_listener: int) -> None:
-    tenant_id, user_id = _user()
+    tenant_id, user_id, conversation_id = _sandbox()
     addresses = _host_addresses()
     assert addresses
     controls = _reachable_from_a_plain_container(sandboxes.image, addresses, host_listener)
     assert controls == set(addresses), "negative control: every address is reachable without the egress rules"
-    assert _reachable(sandboxes, tenant_id, user_id, addresses, host_listener) == set()
+    assert _reachable(sandboxes, tenant_id, user_id, conversation_id, addresses, host_listener) == set()
 
 
 @pytest.mark.spec("SBX-005", "SBX-013")
 def test_local_ranges_are_unreachable_from_sandboxes(sandboxes: Driver, host_listener: int) -> None:
-    tenant_id, user_id = _user()
-    assert _reachable(sandboxes, tenant_id, user_id, list(BLOCKED_RANGES), host_listener) == set()
+    tenant_id, user_id, conversation_id = _sandbox()
+    assert _reachable(sandboxes, tenant_id, user_id, conversation_id, list(BLOCKED_RANGES), host_listener) == set()
 
 
 @pytest.mark.spec("SBX-005")
 def test_rewriting_routes_inside_the_sandbox_does_not_help(sandboxes: Driver, host_listener: int) -> None:
-    tenant_id, user_id = _user()
+    tenant_id, user_id, conversation_id = _sandbox()
     # Root in the sandbox controls its own network configuration.
-    sandboxes.sh(tenant_id, user_id, "ip route add 192.168.0.0/16 dev eth0 2>/dev/null; ip route show")
-    assert _reachable(sandboxes, tenant_id, user_id, _host_addresses(), host_listener) == set()
+    sandboxes.sh(tenant_id, user_id, conversation_id, "ip route add 192.168.0.0/16 dev eth0 2>/dev/null; ip route show")
+    assert _reachable(sandboxes, tenant_id, user_id, conversation_id, _host_addresses(), host_listener) == set()
 
 
 @pytest.mark.spec("SBX-013")
 def test_sandboxes_have_no_ipv6(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
-    result = sandboxes.sh(tenant_id, user_id, "cat /proc/net/if_inet6 2>/dev/null; ip -6 addr show scope global")
+    tenant_id, user_id, conversation_id = _sandbox()
+    result = sandboxes.sh(
+        tenant_id, user_id, conversation_id, "cat /proc/net/if_inet6 2>/dev/null; ip -6 addr show scope global"
+    )
     assert "global" not in result.stdout
-    assert not _connects(sandboxes, tenant_id, user_id, "2606:4700:4700::1111", 443)
+    assert not _connects(sandboxes, tenant_id, user_id, conversation_id, "2606:4700:4700::1111", 443)
 
 
 @pytest.mark.spec("SBX-004")
 def test_sandboxes_reach_the_internet(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
-    assert _connects(sandboxes, tenant_id, user_id, "1.1.1.1", 443)
-    by_name = sandboxes.sh(tenant_id, user_id, "curl -sS -o /dev/null -w '%{http_code}' https://example.com")
+    tenant_id, user_id, conversation_id = _sandbox()
+    assert _connects(sandboxes, tenant_id, user_id, conversation_id, "1.1.1.1", 443)
+    by_name = sandboxes.sh(
+        tenant_id, user_id, conversation_id, "curl -sS -o /dev/null -w '%{http_code}' https://example.com"
+    )
     assert by_name.stdout in {"200", "301", "302"}, by_name.stderr
 
 
 @pytest.mark.spec("SBX-006")
 def test_sandboxes_cannot_reach_each_other(sandboxes: Driver) -> None:
-    listener, intruder = _user(), _user()
+    listener, intruder = _sandbox(), _sandbox()
     port = 8765
     with sandboxes.client() as client:
-        client.post(f"/sandboxes/{listener[0]}/{listener[1]}/ensure")
+        client.post(f"/sandboxes/{listener[0]}/{listener[1]}/{listener[2]}/ensure")
     sandboxes.sh(*listener, f"nohup python3 -m http.server {port} >/dev/null 2>&1 & sleep 1")
     address = sandboxes.sh(*listener, "hostname -i").stdout.split()[0]
     assert _connects(sandboxes, *listener, "127.0.0.1", port), "negative control: the server listens"
@@ -184,32 +191,39 @@ def test_sandboxes_cannot_reach_each_other(sandboxes: Driver) -> None:
 
 
 @pytest.mark.spec("SBX-001")
-@pytest.mark.parametrize("same_tenant", [True, False], ids=["same-tenant", "other-tenant"])
-def test_workspaces_are_separate(sandboxes: Driver, same_tenant: bool) -> None:
-    owner = _user()
-    other = (owner[0], str(uuid7())) if same_tenant else _user()
+@pytest.mark.parametrize("whose", ["same-user", "same-tenant", "other-tenant"])
+def test_workspaces_are_separate(sandboxes: Driver, whose: str) -> None:
+    owner = _sandbox()
+    other = {
+        # Another conversation of the same user (ADR-0078).
+        "same-user": (owner[0], owner[1], str(uuid7())),
+        "same-tenant": (owner[0], str(uuid7()), str(uuid7())),
+        "other-tenant": _sandbox(),
+    }[whose]
     secret = f"secret-{uuid7()}"
-    sandboxes.sh(*owner, f"echo {secret} > secret.txt")
+    written = sandboxes.sh(*owner, f"echo {secret} > /workspace/secret.txt; cat /workspace/secret.txt")
+    # Not vacuous: the owner's sandbox has the file.
+    assert secret in written.stdout
     found = sandboxes.sh(*other, "ls -a /workspace; cat /workspace/secret.txt 2>/dev/null")
     assert secret not in found.stdout
 
 
 @pytest.mark.spec("SBX-008")
 def test_sandboxes_hold_no_credentials(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
-    environment = sandboxes.sh(tenant_id, user_id, "env").stdout
+    tenant_id, user_id, conversation_id = _sandbox()
+    environment = sandboxes.sh(tenant_id, user_id, conversation_id, "env").stdout
     assert sandboxes.token not in environment
     assert "MZM_" not in environment
     assert "DOCKER" not in environment
-    assert sandboxes.sh(tenant_id, user_id, "test -e /var/run/docker.sock").exit_code != 0
+    assert sandboxes.sh(tenant_id, user_id, conversation_id, "test -e /var/run/docker.sock").exit_code != 0
     for container in sandboxes.sandbox_containers():
         assert not [entry for entry in container["Config"]["Env"] if "TOKEN" in entry or "KEY" in entry]
 
 
 @pytest.mark.spec("SBX-012", "SBX-002", "SBX-011")
 def test_sandbox_containers_follow_the_fixed_policy(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
-    sandboxes.sh(tenant_id, user_id, "true")
+    tenant_id, user_id, conversation_id = _sandbox()
+    sandboxes.sh(tenant_id, user_id, conversation_id, "true")
     containers = sandboxes.sandbox_containers()
     assert containers
     for container in containers:
@@ -231,16 +245,20 @@ def test_sandbox_containers_follow_the_fixed_policy(sandboxes: Driver) -> None:
 
 @pytest.mark.spec("SBX-011")
 def test_memory_is_limited(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
+    tenant_id, user_id, conversation_id = _sandbox()
     result = sandboxes.sh(
-        tenant_id, user_id, "python3 -c \"b=bytearray(600*1024*1024); print('allocated')\"", timeout_seconds=20
+        tenant_id,
+        user_id,
+        conversation_id,
+        "python3 -c \"b=bytearray(600*1024*1024); print('allocated')\"",
+        timeout_seconds=20,
     )
     assert "allocated" not in result.stdout
 
 
 @pytest.mark.spec("SBX-011")
 def test_processes_are_limited_inside_the_sandbox(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
+    tenant_id, user_id, conversation_id = _sandbox()
     # Small processes, so that the process limit is reached before memory
     # runs out: forked copies of the interpreter exhaust a small sandbox first.
     script = (
@@ -254,7 +272,9 @@ def test_processes_are_limited_inside_the_sandbox(sandboxes: Driver) -> None:
         "        break\n"
         "print(started)\n"
     )
-    result = sandboxes.exec(tenant_id, user_id, {"argv": ["python3", "-c", script], "timeout_seconds": 20})
+    result = sandboxes.exec(
+        tenant_id, user_id, conversation_id, {"argv": ["python3", "-c", script], "timeout_seconds": 20}
+    )
     assert int(result.stdout.strip().splitlines()[-1]) < 64
 
 
@@ -297,9 +317,9 @@ def test_the_driver_refuses_sandboxes_without_gvisor(sandboxes: Driver, runtime:
         assert last is not None, process.output()
         assert last["ready"] is False
         assert not (last["checks"]["isolation_runtime"]["ok"] and last["checks"]["canary"]["ok"])
-        tenant_id, user_id = _user()
+        tenant_id, user_id, conversation_id = _sandbox()
         refused = httpx.post(
-            f"http://127.0.0.1:{port}/v1/sandboxes/{tenant_id}/{user_id}/ensure",
+            f"http://127.0.0.1:{port}/v1/sandboxes/{tenant_id}/{user_id}/{conversation_id}/ensure",
             headers={"Authorization": f"Bearer {sandboxes.token}"},
             timeout=30,
         )
@@ -311,8 +331,8 @@ def test_the_driver_refuses_sandboxes_without_gvisor(sandboxes: Driver, runtime:
 
 @pytest.mark.spec("SBX-015")
 def test_sandboxes_stop_when_the_egress_rules_disappear(sandboxes: Driver) -> None:
-    tenant_id, user_id = _user()
-    sandboxes.sh(tenant_id, user_id, "true")
+    tenant_id, user_id, conversation_id = _sandbox()
+    sandboxes.sh(tenant_id, user_id, conversation_id, "true")
     running = [c for c in sandboxes.sandbox_containers() if c["State"]["Running"]]
     assert running
     docker("exec", sandboxes.netguard, "nft", "delete", "table", "inet", "mazzamurello")
@@ -325,4 +345,4 @@ def test_sandboxes_stop_when_the_egress_rules_disappear(sandboxes: Driver) -> No
     # The guard restores the table; after a new canary, sandboxes start again.
     health = sandboxes.wait_until_ready()
     assert health["checks"]["egress_table"]["ok"] is True
-    assert sandboxes.sh(tenant_id, user_id, "echo back").stdout == "back\n"
+    assert sandboxes.sh(tenant_id, user_id, conversation_id, "echo back").stdout == "back\n"

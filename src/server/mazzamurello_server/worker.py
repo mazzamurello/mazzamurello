@@ -56,7 +56,7 @@ from mazzamurello_server.gateway import (
     record_usage,
     store_messages,
 )
-from mazzamurello_server.sandbox import SandboxWorkspace
+from mazzamurello_server.sandbox import SandboxWorkspace, sandbox_ref, stop_sandbox
 from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
@@ -251,10 +251,12 @@ async def run_workflow(serialized_input: str) -> None:
         await _write_error(run.run_id, code)
         await _set_status(identity, run_id, "failed", code)
     except BaseException:
-        # Cancelled: the API has recorded it, and the stream ends with the workflow (CNV-003).
+        # Cancelled: the API has recorded it and stops the sandbox, and the stream ends with the workflow (CNV-003).
         _ENCODERS.pop(run.run_id, None)
         _WRITTEN.pop(run.run_id, None)
         raise
+    # The sandbox ends with the answer, and whatever it started with it (SBX-018, ADR-0078).
+    await _end_sandbox(deps)
     _ENCODERS.pop(run.run_id, None)
     async with transaction(_engine(), identity) as connection:
         await connection.execute(
@@ -262,6 +264,14 @@ async def run_workflow(serialized_input: str) -> None:
             {"id": run_id, "count": _WRITTEN.pop(run.run_id, 0)},
         )
     await DBOS.close_stream_async(EVENTS_STREAM)
+
+
+async def _end_sandbox(deps: RunDeps) -> None:
+    try:
+        await stop_sandbox(deps)
+    except Exception:
+        # The driver's idle limit removes it later (SBX-018).
+        logger.warning("run %s: its sandbox could not be stopped", deps.run_id)
 
 
 async def _execute(
@@ -285,6 +295,8 @@ async def _execute(
             deps=deps,
             run_id=run.run_id,
             conversation_id=run.conversation_id,
+            # The conversation's own sandbox, whatever an earlier reference in its history names (ADR-0078).
+            workspace=sandbox_ref(str(identity.tenant_id), str(identity.user_id), run.conversation_id),
         )
     except (ModelUnavailableError, ModelAPIError, ContentFilterError) as error:
         code = _error_code(error)

@@ -3,15 +3,16 @@
 Where and how user and agent code runs. Background: ADR-0010, threat model
 T-03 to T-07.
 
-## SBX-001: One sandbox per user
+## SBX-001: One sandbox per conversation
 
 - **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 0
 - **Verification:** integration
 
-Each user MUST have their own sandbox. A sandbox MUST NOT be shared between
-users, and code run on behalf of a user MUST run only in that user's sandbox.
+Each conversation MUST have its own sandbox and workspace. A sandbox MUST NOT
+be shared between users or between conversations, and code run for a
+conversation MUST run only in that conversation's sandbox (ADR-0078).
 
 ## SBX-002: Strong isolation runtime
 
@@ -116,6 +117,9 @@ with sandboxes only through the sandbox driver's authenticated API.
 Each sandbox MUST have a persistent workspace, mounted at `/workspace`, that
 survives sandbox restarts and re-creation, so that the files the user wants
 to keep persist. Nothing else in the sandbox persists (SBX-018, ADR-0076).
+Deleting a conversation MUST delete its workspace, and a fork MUST start with
+a copy of the original conversation's workspace as it was when the fork was
+made (ADR-0078).
 
 ## SBX-011: Resource limits
 
@@ -155,7 +159,7 @@ SBX-005 are enforced for IPv6.
 - **Phase:** 1
 - **Verification:** integration
 
-The control plane MUST be able to place files into a user's workspace and
+The control plane MUST be able to place files into a conversation's workspace and
 retrieve files from it through the sandbox driver, streamed and subject to
 size limits configurable by the instance admin, so that the assistant can
 work on files provided by the user and return the files it produces.
@@ -206,10 +210,12 @@ When a sandbox stops, for inactivity or on request, its container MUST be
 removed, so that the next command runs in a new one from the sandbox image:
 processes, installed software and every file outside `/workspace` are gone.
 Commands MUST start in a scratch folder, `/scratch`, outside the workspace
-(ADR-0076).
+(ADR-0076). A sandbox MUST be stopped when the run it serves ends, and the
+driver MUST stop every sandbox when it starts (ADR-0078).
 
 Rationale: anything planted outside the workspace must not outlive the
-sandbox (T-33), and only what was deliberately kept is persistent.
+answer that planted it (T-33), and only what was deliberately kept is
+persistent.
 
 ## SBX-019: Workspace quota
 
@@ -230,7 +236,7 @@ the command's result MUST tell the agent when the workspace uses more than
 - **Phase:** 1
 - **Verification:** integration, security
 
-The sandbox driver MUST be able to stream a user's workspace as a tar
+The sandbox driver MUST be able to stream a conversation's workspace as a tar
 archive, and to replace the workspace of a stopped sandbox with one, for
 backups (ADR-0077). The import MUST NOT run anything from the archive, and
 MUST refuse entries that would be written outside the workspace, such as

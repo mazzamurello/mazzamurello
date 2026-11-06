@@ -2,7 +2,7 @@
 
 An archive is a tar file encrypted with age to the backup key's recipient:
 a manifest, the database as `pg_dump` writes it, the secret key, and every
-user's workspace as the sandbox driver exports it (SBX-020). The external
+conversation's workspace as the sandbox driver exports it (SBX-020, ADR-0078). The external
 programs, `pg_dump`, `pg_restore` and `age`, run on files of the backup's
 own, never on anything a user chose.
 """
@@ -205,15 +205,18 @@ async def _wait_until_quiet(engine: AsyncEngine) -> None:
         await asyncio.sleep(QUIET_POLL_SECONDS)
 
 
-async def _users(engine: AsyncEngine) -> list[tuple[str, str]]:
+async def _conversations(engine: AsyncEngine) -> list[tuple[str, str, str]]:
+    """Every conversation, with its tenant and owner: each has a workspace (ADR-0078)."""
     async with engine.connect() as connection:
-        rows = (await connection.execute(text("SELECT tenant_id, id FROM users ORDER BY tenant_id, id"))).all()
-    return [(str(row[0]), str(row[1])) for row in rows]
+        rows = (
+            await connection.execute(text("SELECT tenant_id, owner_id, id FROM conversations ORDER BY tenant_id, id"))
+        ).all()
+    return [(str(row[0]), str(row[1]), str(row[2])) for row in rows]
 
 
-async def _export_workspace(configuration: BackupConfiguration, tenant: str, user: str, destination: Path) -> None:
+async def _export_workspace(configuration: BackupConfiguration, sandbox: str, destination: Path) -> None:
     headers = {"Authorization": f"Bearer {configuration.sandboxd_token}"}
-    url = f"{configuration.sandboxd_url}/sandboxes/{tenant}/{user}/workspace"
+    url = f"{configuration.sandboxd_url}/sandboxes/{sandbox}/workspace"
     async with (
         httpx.AsyncClient(timeout=DRIVER_TIMEOUT_SECONDS) as client,
         client.stream("GET", url, headers=headers) as response,
@@ -241,9 +244,12 @@ async def make_backup(configuration: BackupConfiguration) -> Path:
         )
         database_taken = _now()
         (contents / SECRET_KEY).write_text(configuration.secret_key)
-        for tenant, user in await _users(engine):
-            (contents / "workspaces" / tenant).mkdir(exist_ok=True)
-            await _export_workspace(configuration, tenant, user, contents / "workspaces" / tenant / f"{user}.tar")
+        for tenant, user, conversation in await _conversations(engine):
+            folder_of_user = contents / "workspaces" / tenant / user
+            folder_of_user.mkdir(parents=True, exist_ok=True)
+            await _export_workspace(
+                configuration, f"{tenant}/{user}/{conversation}", folder_of_user / f"{conversation}.tar"
+            )
         entries = sorted(path for path in contents.rglob("*") if path.is_file())
         checksums = {path: await asyncio.to_thread(_sha256, path) for path in entries}
         manifest = {
@@ -341,11 +347,11 @@ def _unpack(configuration: BackupConfiguration, archive: Path, folder: Path) -> 
     return contents
 
 
-async def _import_workspace(configuration: BackupConfiguration, tenant: str, user: str, source: Path) -> None:
+async def _import_workspace(configuration: BackupConfiguration, sandbox: str, source: Path) -> None:
     headers = {"Authorization": f"Bearer {configuration.sandboxd_token}", "Content-Type": "application/x-tar"}
     async with httpx.AsyncClient(timeout=DRIVER_TIMEOUT_SECONDS) as client:
         response = await client.put(
-            f"{configuration.sandboxd_url}/sandboxes/{tenant}/{user}/workspace",
+            f"{configuration.sandboxd_url}/sandboxes/{sandbox}/workspace",
             content=await asyncio.to_thread(source.read_bytes),
             headers=headers,
         )
@@ -383,8 +389,8 @@ async def restore(configuration: BackupConfiguration, archive: Path, env_file: P
                 str(contents / DATABASE),
             ],
         )
-        for path in sorted((contents / "workspaces").glob("*/*.tar")):
-            await _import_workspace(configuration, path.parent.name, path.stem, path)
+        for path in sorted((contents / "workspaces").glob("*/*/*.tar")):
+            await _import_workspace(configuration, f"{path.parent.parent.name}/{path.parent.name}/{path.stem}", path)
         if env_file is not None:
             await asyncio.to_thread(_set_secret_key, env_file, (contents / SECRET_KEY).read_text().strip())
     finally:
@@ -393,7 +399,10 @@ async def restore(configuration: BackupConfiguration, archive: Path, env_file: P
 
 
 async def restore_workspace(configuration: BackupConfiguration, archive: Path, username: str) -> None:
-    """Replace one user's workspace with the one in an archive, in a running instance (OPS-006, T-33)."""
+    """Replace the workspaces of one user's conversations with those in an archive, in a running instance.
+
+    Only conversations that still exist are restored (OPS-006, T-33, ADR-0078).
+    """
     folder = await asyncio.to_thread(_temporary_folder, ".restore-", configuration.backup_dir)
     engine = create_engine(configuration.database_url)
     try:
@@ -405,12 +414,20 @@ async def restore_workspace(configuration: BackupConfiguration, archive: Path, u
                     {"username": username},
                 )
             ).one_or_none()
-        if row is None:
-            raise BackupError(f"there is no user {username}")
-        source = contents / "workspaces" / str(row[0]) / f"{row[1]}.tar"
-        if not source.is_file():
-            raise BackupError(f"the archive has no workspace of {username}")
-        await _import_workspace(configuration, str(row[0]), str(row[1]), source)
+            if row is None:
+                raise BackupError(f"there is no user {username}")
+            existing = {
+                str(found[0])
+                for found in await connection.execute(
+                    text("SELECT id FROM conversations WHERE owner_id = :user"), {"user": row[1]}
+                )
+            }
+        folder_of_user = contents / "workspaces" / str(row[0]) / str(row[1])
+        sources = [path for path in sorted(folder_of_user.glob("*.tar")) if path.stem in existing]
+        if not sources:
+            raise BackupError(f"the archive has no workspace of {username}'s conversations")
+        for source in sources:
+            await _import_workspace(configuration, f"{row[0]}/{row[1]}/{source.stem}", source)
     finally:
         await engine.dispose()
         with contextlib.suppress(OSError):
