@@ -25,6 +25,7 @@ new entry here first (ADR-0005).
 | Term | Definition |
 |---|---|
 | Conversation | An independent chat between a user and the assistant, with its own history. A user has many. |
+| Attachment | A file the user adds to a message, uploaded into `/workspace/uploads/` of the conversation's workspace (CNV-017, ADR-0079). |
 | Message | One entry in a conversation, from the user or the assistant. |
 | Folder | A user's named group of conversations in the conversation list; carries no instructions or settings (CNV-007). |
 | Fork | A new conversation started from a copy of another conversation up to a turn, which records where it came from (CNV-005, ADR-0073). |
@@ -84,6 +85,7 @@ new entry here first (ADR-0005).
 | Sandbox | A per-user isolated execution environment with internet access and no access to local networks. |
 | Workspace | The persistent folder of a conversation's sandbox, `/workspace`, which keeps what the user wants to keep; everything else in the sandbox is discarded when it stops (ADR-0076, ADR-0078). |
 | Scratch folder | The folder where a sandbox's commands start, `/scratch`, discarded with the sandbox (ADR-0076). |
+| Workspace panel | The client's view of a conversation's workspace, as a tree of files and folders to preview, download, upload, move and delete (UX-019, ADR-0079). |
 | Sandbox driver | The only component allowed to manage containers; exposes a minimal API to the control plane. |
 | Workspace backend | The control-plane component that presents a conversation's sandbox to Pydantic AI as a workspace, through the sandbox driver (ADR-0035, ADR-0078). |
 | Sandbox bridge | The host network bridge, with a fixed interface name, to which all sandboxes attach; the egress table matches it (ADR-0021). |

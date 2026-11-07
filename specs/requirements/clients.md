@@ -238,3 +238,33 @@ On devices with a keyboard, clients SHOULD put the focus in the field where
 the user starts typing: the username on the sign-in screen, and the message
 box when a new chat opens. On touch screens they SHOULD NOT, since focusing a
 field opens the on-screen keyboard over the screen.
+
+## UX-019: The workspace panel
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST let the user browse a conversation's workspace as a tree,
+beside the conversation or, on a phone, as a full-screen sheet, with each
+entry's size and when it changed, and the workspace's size against its quota
+(SBX-019). The user MUST be able to preview, download, upload into a folder,
+create a folder, rename and move, and delete files and folders, and reset the
+whole workspace; deleting and resetting MUST ask first. A folder MUST download
+as a `.zip`. The panel MUST show the workspace as it is after each answer
+(ADR-0079).
+
+## UX-020: Workspace files never run in the app
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** security, e2e
+
+A workspace file MUST NOT be served or shown as a page or a script of the
+app's origin. The API MUST serve a file for download as an attachment, and
+for preview only as one of a fixed list of types, with
+`X-Content-Type-Options: nosniff` and a Content Security Policy that lets a
+file opened by itself run nothing in the app's origin; clients MUST show HTML
+as its source and SVG as an image (ADR-0079, T-22).

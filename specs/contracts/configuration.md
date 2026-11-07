@@ -20,6 +20,7 @@ variable.
 | `MZM_SANDBOXD_URL` | yes | — | Base URL of the sandbox driver's API, for `/health` (ADR-0054). |
 | `MZM_SANDBOXD_TOKEN` | yes | — | The secret shared with the sandbox driver. |
 | `MZM_SECRET_KEY` | yes | — | 32 random bytes, base64url-encoded (for example `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Encrypts the API keys of connections (ADR-0051, ADR-0069). The API and the worker must share it; changing it makes stored API keys unusable. |
+| `MZM_UPLOAD_MAX_MB` | no | `1024` | The largest file one upload may bring into a workspace, in MiB, from 1 to 1048576 (CNV-017, ADR-0079). A reverse proxy in front of the API must let bodies this large through. |
 | `MZM_BACKUP_STATUS` | no | empty | Path of the backup service's `status.json` (ADR-0077). When set, `/health` is `degraded` when the file is missing, when the newest attempt failed, or when neither the last success nor the schedule's start is within the last two days (OPS-011). |
 
 ## Worker
@@ -141,7 +142,7 @@ by `MZM_CONFIG_DIR` in the environment of the `docker compose` command,
 | `MZM_BACKUP_KEY` | yes | As above. Keep a copy away from the server: without it, no archive can be restored. |
 | `MZM_BACKUP_DIR` | no | The host folder for archives, relative to `deploy/` or absolute; default `./backups`. |
 | `MZM_PUBLISH` | no | Where the API is published, `HOST:PORT`; default `127.0.0.1:8080`. |
-| `MZM_TRUSTED_PROXIES`, `MZM_RUN_RETENTION_DAYS`, `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE`, `MZM_SANDBOX_RESOLVER`, `MZM_SANDBOX_CPUS`, `MZM_SANDBOX_MEMORY_MB`, `MZM_SANDBOX_PROCESSES`, `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS`, `MZM_SANDBOX_MAX_OUTPUT_BYTES`, `MZM_SANDBOX_IDLE_MINUTES`, `MZM_SANDBOX_WORKSPACE_QUOTA_MB`, `MZM_BACKUP_TIME`, `MZM_BACKUP_KEEP` | no | Passed to the services that read them, with the defaults above. |
+| `MZM_TRUSTED_PROXIES`, `MZM_RUN_RETENTION_DAYS`, `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE`, `MZM_SANDBOX_RESOLVER`, `MZM_SANDBOX_CPUS`, `MZM_SANDBOX_MEMORY_MB`, `MZM_SANDBOX_PROCESSES`, `MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS`, `MZM_SANDBOX_MAX_OUTPUT_BYTES`, `MZM_SANDBOX_IDLE_MINUTES`, `MZM_SANDBOX_WORKSPACE_QUOTA_MB`, `MZM_BACKUP_TIME`, `MZM_BACKUP_KEEP`, `MZM_UPLOAD_MAX_MB` | no | Passed to the services that read them, with the defaults above. |
 
 ## Migrations
 

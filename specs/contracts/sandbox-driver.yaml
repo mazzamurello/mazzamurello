@@ -110,47 +110,195 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
-  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/files/{path}:
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/size:
     parameters:
       - $ref: "#/components/parameters/TenantId"
       - $ref: "#/components/parameters/UserId"
       - $ref: "#/components/parameters/ConversationId"
-      - name: path
-        in: path
-        required: true
-        description: Path relative to the workspace root; `..` segments and absolute paths are rejected.
-        schema: { type: string }
-    put:
-      operationId: putFile
-      summary: Write a file into the conversation's workspace.
-      x-phase: 1
+    get:
+      operationId: workspaceSize
+      summary: The workspace's size and quota (SBX-019).
+      x-requirements: [SBX-014, SBX-019]
+      responses:
+        "200":
+          description: The workspace's size.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bytes, quota_bytes]
+                properties:
+                  bytes: { type: integer, minimum: 0 }
+                  quota_bytes: { type: integer, minimum: 1 }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/entries:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
+      - $ref: "#/components/parameters/Path"
+    get:
+      operationId: listFolder
+      summary: The entries of a folder of the workspace; links are listed, not followed.
       x-requirements: [SBX-014]
+      responses:
+        "200":
+          description: The folder's entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/Entry" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    delete:
+      operationId: deleteEntry
+      summary: Delete a file, a link (not what it points to), or a folder with its contents.
+      x-requirements: [SBX-014]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/files:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
+      - $ref: "#/components/parameters/Path"
+    get:
+      operationId: readFile
+      summary: Stream a regular file of the workspace; a link or a folder is not read.
+      x-requirements: [SBX-014]
+      responses:
+        "200":
+          description: The file's content.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    put:
+      operationId: writeFile
+      summary: Stream a new file into the workspace, complete or not at all.
+      description: |
+        `Content-Length` is required. The content is written under a temporary
+        name and renamed when complete; an interrupted write leaves nothing.
+        Missing folders are created. A path that exists is refused with `409`,
+        and content that would take the workspace over its quota with `413`
+        (SBX-014, SBX-019).
+      x-requirements: [SBX-014, SBX-019]
       requestBody:
         required: true
         content:
           application/octet-stream:
             schema: { type: string, format: binary }
       responses:
-        "201": { description: File written. }
+        "201":
+          description: The file, written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entry" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/archive:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
+      - $ref: "#/components/parameters/Path"
     get:
-      operationId: getFile
-      summary: Read a file from the conversation's workspace.
-      x-phase: 1
+      operationId: zipFolder
+      summary: Stream a folder of the workspace as a zip archive, links left out.
       x-requirements: [SBX-014]
       responses:
         "200":
-          description: The file content.
+          description: The folder, zipped.
           content:
-            application/octet-stream:
+            application/zip:
               schema: { type: string, format: binary }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/folders:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      operationId: createFolder
+      summary: Create a folder and the folders above it that are missing.
+      x-requirements: [SBX-014]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              additionalProperties: false
+              properties:
+                path: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: The folder.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entry" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /sandboxes/{tenant_id}/{user_id}/{conversation_id}/move:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/UserId"
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      operationId: moveEntry
+      summary: Rename or move a file, link or folder within the workspace; an existing destination is refused.
+      x-requirements: [SBX-014]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              additionalProperties: false
+              properties:
+                from: { type: string, minLength: 1 }
+                to: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: The entry at its new path.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entry" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /sandboxes/{tenant_id}/{user_id}/{conversation_id}/stop:
     parameters:
@@ -252,6 +400,17 @@ components:
       description: Secret shared between the control plane and the driver (ADR-0022).
 
   parameters:
+    Path:
+      name: path
+      in: query
+      required: true
+      description: |
+        Relative to the workspace's root; empty for the root where a folder is
+        meant. Absolute paths, `..` segments and paths through a link are
+        refused with `422` (SBX-014, T-34). The operations of this group start
+        the conversation's sandbox if it is not running, and remove it again
+        when they are done, so that none outlives them (SBX-018, ADR-0079).
+      schema: { type: string }
     TenantId:
       name: tenant_id
       in: path
@@ -282,6 +441,11 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
     NotFound:
       description: No such file in the workspace.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: The path exists already.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -341,6 +505,16 @@ components:
             runtime_version: { $ref: "#/components/schemas/Check" }
             egress_table: { $ref: "#/components/schemas/Check" }
             canary: { $ref: "#/components/schemas/Check" }
+
+    Entry:
+      type: object
+      required: [name, path, type, size, modified]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        type: { type: string, enum: [file, folder, link] }
+        size: { type: integer, minimum: 0 }
+        modified: { type: string, format: date-time }
 
     Sandbox:
       type: object
