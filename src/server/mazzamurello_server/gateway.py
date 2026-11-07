@@ -242,7 +242,9 @@ async def _compacted(ctx: RunContext[RunDeps], messages: list[ModelMessage]) -> 
         ModelResponse(parts=[TextPart("Noted. I will continue from this summary.")]),
     ]
     deps.compacted = (cut, summary)
-    checkpoint = ModelMessagesTypeAdapter.dump_python([*summary, *messages[cut : deps.history_length]], mode="json")
+    checkpoint = storable(
+        ModelMessagesTypeAdapter.dump_python([*summary, *messages[cut : deps.history_length]], mode="json")
+    )
     async with transaction(deps.engine, deps.identity) as connection:
         await connection.execute(
             text(
@@ -338,11 +340,22 @@ async def record_usage(deps: RunDeps, entry_id: uuid.UUID, response: ModelRespon
         )
 
 
+def storable(value: Any) -> Any:
+    """`value` with every NUL character as U+FFFD: Postgres stores none in text or JSONB (CNV-018)."""
+    if isinstance(value, str):
+        return value.replace("\x00", "\ufffd")
+    if isinstance(value, list):
+        return [storable(item) for item in cast(list[Any], value)]
+    if isinstance(value, dict):
+        return {key: storable(item) for key, item in cast(dict[str, Any], value).items()}
+    return value
+
+
 async def store_messages(deps: RunDeps, messages: list[ModelMessage]) -> None:
     """Store the run's messages so far; already stored ones are kept as they are (ADR-0041)."""
     if not messages:
         return
-    serialized = ModelMessagesTypeAdapter.dump_python(messages, mode="json")
+    serialized = storable(ModelMessagesTypeAdapter.dump_python(messages, mode="json"))
     async with transaction(deps.engine, deps.identity) as connection:
         for seq, message in enumerate(serialized, start=1):
             await connection.execute(
@@ -358,7 +371,7 @@ async def store_messages(deps: RunDeps, messages: list[ModelMessage]) -> None:
                     "owner_id": deps.identity.user_id,
                     "conversation_id": deps.conversation_id,
                     "message": json.dumps(message),
-                    "text": readable_text(messages[seq - 1]),
+                    "text": storable(readable_text(messages[seq - 1])),
                 },
             )
         # The list orders conversations by their latest message (CNV-008).
