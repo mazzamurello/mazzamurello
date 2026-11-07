@@ -1,7 +1,11 @@
-"""The sandbox driver's API (specs/contracts/sandbox-driver.yaml, ADR-0022, ADR-0053)."""
+"""The sandbox driver's API, and the tools its sandboxes hold.
+
+specs/contracts/sandbox-driver.yaml, ADR-0022, ADR-0053 and ADR-0080.
+"""
 
 from __future__ import annotations
 
+import textwrap
 import time
 from typing import Any, cast
 
@@ -229,3 +233,142 @@ def test_the_gvisor_minimum_cannot_be_lowered(sandboxes: Driver) -> None:
         assert "release-20261026.0" in process.output()
     finally:
         process.close()
+
+
+def _tools(sandboxes: Driver, script: str) -> str:
+    """Run a script of tool calls in a new sandbox, a step per paragraph, each in a command of its own (SBX-021).
+
+    The test driver ends a command after a few seconds (SBX-011); the steps share the sandbox's /scratch.
+    """
+    sandbox = _sandbox()
+    output = ""
+    try:
+        for step in textwrap.dedent(script).strip().split("\n\n"):
+            result = sandboxes.sh(*sandbox, f"set -eu\n{step}")
+            assert result.exit_code == 0, f"{step}\n{result.stdout}\n{result.stderr}"
+            output += result.stdout
+    finally:
+        # Stopped at once, as after an answer, so that no test waits on it (SBX-018).
+        sandboxes.stop(*sandbox)
+    return output
+
+
+@pytest.mark.spec("SBX-021")
+def test_the_sandbox_reads_and_makes_documents(sandboxes: Driver) -> None:
+    output = _tools(
+        sandboxes,
+        """
+        python3 - <<'EOF'
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        figure = plt.figure()
+        figure.text(0.1, 0.5, "Household budget")
+        figure.savefig("budget.pdf")
+        EOF
+
+        pdftotext budget.pdf -
+        pdfinfo budget.pdf | grep -c '^Pages:'
+        qpdf --check budget.pdf >/dev/null && echo qpdf-ok
+
+        printf '# Shopping\\n\\n- basil\\n' | pandoc -f markdown -t html
+        printf '# Shopping\\n' | pandoc -o list.docx && test -s list.docx && echo pandoc-docx-ok
+
+        fc-list : family | sort -u
+        """,
+    )
+    assert "Household budget" in output
+    assert "qpdf-ok" in output
+    assert "<li>basil</li>" in output
+    assert "pandoc-docx-ok" in output
+    for family in ("DejaVu Sans", "Liberation Sans", "Liberation Serif", "Noto Sans"):
+        assert family in output, f"no {family} font"
+
+
+@pytest.mark.spec("SBX-021")
+def test_office_files_are_read_and_written_and_turned_into_markdown(sandboxes: Driver) -> None:
+    output = _tools(
+        sandboxes,
+        """
+        python3 - <<'EOF'
+        import docx, openpyxl, pptx
+        document = docx.Document()
+        document.add_paragraph("Letter to the landlord")
+        document.save("letter.docx")
+        book = openpyxl.Workbook()
+        book.active.append(["item", "cost"])
+        book.active.append(["tomatoes", 3])
+        book.save("costs.xlsx")
+        deck = pptx.Presentation()
+        slide = deck.slides.add_slide(deck.slide_layouts[1])
+        slide.shapes.title.text = "Holiday plan"
+        deck.save("plan.pptx")
+        print(openpyxl.load_workbook("costs.xlsx").active["A2"].value)
+        EOF
+
+        python3 -c "
+        from markitdown import MarkItDown
+        converter = MarkItDown()
+        for name in ('letter.docx', 'costs.xlsx', 'plan.pptx'):
+            print(converter.convert(name).text_content)
+        "
+
+        printf '<h1>Recipe</h1><p>Pesto</p>' > recipe.html
+        markitdown recipe.html
+        """,
+    )
+    assert "tomatoes" in output
+    for text in ("Letter to the landlord", "| item | cost |", "Holiday plan", "# Recipe"):
+        assert text in output, f"markitdown did not give {text!r}"
+
+
+@pytest.mark.spec("SBX-021")
+def test_images_audio_and_video_are_converted(sandboxes: Driver) -> None:
+    output = _tools(
+        sandboxes,
+        """
+        magick -size 40x20 xc:red photo.png
+        magick photo.png -resize 20x10 small.jpg
+        magick identify -format '%m %wx%h\\n' small.jpg
+
+        ffmpeg -loglevel error -f lavfi -i sine=frequency=440:duration=1 tone.mp3
+        ffprobe -loglevel error -show_entries format=duration -of csv=p=0 tone.mp3
+
+        ffmpeg -loglevel error -f lavfi -i testsrc=duration=1:size=64x48:rate=5 clip.mp4
+        ffprobe -loglevel error -select_streams v -show_entries stream=width -of csv=p=0 clip.mp4
+
+        python3 -c "from PIL import Image; print(Image.open('photo.png').size)"
+        """,
+    )
+    assert "JPEG 20x10" in output
+    assert "1.0" in output
+    assert "64" in output.split()
+    assert "(40, 20)" in output
+
+
+@pytest.mark.spec("SBX-021")
+def test_data_tools_and_node_are_there(sandboxes: Driver) -> None:
+    output = _tools(
+        sandboxes,
+        """
+        printf 'item,cost\\ntomatoes,3\\nbasil,2\\n' > costs.csv
+        python3 -c "import pandas, numpy; print('total', int(numpy.sum(pandas.read_csv('costs.csv')['cost'])))"
+
+        python3 -c "import pypdf; print('pypdf', pypdf.__version__ > '')"
+
+        echo '{"name": "basil"}' | jq -r .name
+        sqlite3 :memory: 'SELECT 6 * 7;'
+        zip -q archive.zip costs.csv && unzip -l archive.zip | grep -c costs.csv
+        file --brief --mime-type archive.zip
+
+        node -e 'console.log("node", 2 + 3)'
+        npm --version >/dev/null && echo npm-ok
+
+        # The tools' Python is the one the agent gets, with its own pip.
+        python3 -c 'import sys; print(sys.prefix)'
+        pip --version
+        """,
+    )
+    for text in ("total 5", "pypdf True", "basil", "42", "application/zip", "node 5", "npm-ok", "/opt/tools"):
+        assert text in output, f"no {text!r} in the output"
+    assert "/opt/tools" in output.splitlines()[-1]
