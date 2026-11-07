@@ -497,7 +497,8 @@ function FilePreview({ conversationId, entry }: { conversationId: string; entry:
   if (kind === "audio") return <audio src={source} controls className="w-full" aria-label={entry.name} onError={() => setBroken(true)} />;
   if (kind === "video") return <video src={source} controls className="max-h-[60vh] w-full rounded-lg" aria-label={entry.name} onError={() => setBroken(true)} />;
   if (content.data === undefined) return <p className="text-sm text-muted">{t("files.loading")}</p>;
-  const cut = entry.size > TEXT_PREVIEW_BYTES && <p className="mt-2 text-xs text-muted">{t("files.cut")}</p>;
+  const truncated = TEXT_PREVIEW_BYTES < entry.size;
+  const cut = truncated ? <p className="mt-2 text-xs text-muted">{t("files.cut")}</p> : null;
   if (kind === "markdown") {
     return (
       <div className="text-[14.5px]">
