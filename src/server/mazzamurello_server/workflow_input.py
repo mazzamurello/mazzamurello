@@ -8,7 +8,8 @@ row-level security (TEN-009).
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class RunWorkflowInput:
     # The connection and the model that answer (MOD-012).
     connection_id: str
     model: str
+    # The files attached to the message, as `{path, size}` (CNV-017).
+    attachments: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))

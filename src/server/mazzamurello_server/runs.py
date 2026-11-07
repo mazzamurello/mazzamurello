@@ -28,6 +28,7 @@ from mazzamurello_server.database import UNIQUE_VIOLATION, Identity, sqlstate, t
 from mazzamurello_server.durable import APPLICATION_VERSION, EVENTS_STREAM, RUN_QUEUE, RUN_WORKFLOW
 from mazzamurello_server.sandbox import SandboxDriver, stop_conversation_sandbox
 from mazzamurello_server.workflow_input import RunWorkflowInput
+from mazzamurello_server.workspace import attachment_entries
 
 router = APIRouter()
 
@@ -164,7 +165,12 @@ async def _run_model(connection: AsyncConnection, conversation: Any) -> Any:
 
 @router.post("/conversations/{conversation_id}/runs")
 async def start_run(
-    conversation_id: uuid.UUID, body: schemas.RunInput, identity: Authenticated, engine: Engine, durable: Durable
+    conversation_id: uuid.UUID,
+    body: schemas.RunInput,
+    identity: Authenticated,
+    engine: Engine,
+    durable: Durable,
+    request: Request,
 ) -> StreamingResponse:
     if body.thread_id != conversation_id:
         raise errors.invalid("/threadId", "must_match_conversation")
@@ -172,6 +178,11 @@ async def start_run(
         # No interrupt can be pending yet: there are no tools that ask for approval.
         raise errors.ApiError(422, "approval.invalid", "No interrupt to answer")
     user_text = _user_text(body)
+    attachments: list[dict[str, Any]] = []
+    if body.attachments:
+        async with transaction(engine, identity) as connection:
+            await find_conversation(connection, conversation_id)
+        attachments = await attachment_entries(request, identity, conversation_id, body.attachments)
     try:
         async with transaction(engine, identity) as connection:
             conversation = await find_conversation(connection, conversation_id, lock=True)
@@ -238,6 +249,7 @@ async def start_run(
         user_text=user_text,
         connection_id=str(model.id),
         model=model.model,
+        attachments=attachments,
     )
     try:
         await durable.enqueue_async(

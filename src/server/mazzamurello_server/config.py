@@ -28,6 +28,7 @@ API_VARIABLES = frozenset(
         "MZM_SANDBOXD_TOKEN",
         "MZM_WEB_ROOT",
         "MZM_BACKUP_STATUS",
+        "MZM_UPLOAD_MAX_MB",
     }
 )
 BACKUP_VARIABLES = frozenset(
@@ -76,6 +77,8 @@ class ApiConfiguration:
     web_root: Path = DEFAULT_WEB_ROOT
     # The backup service's status file, when backups are checked (OPS-011).
     backup_status: Path | None = None
+    # The largest upload into a workspace, in MiB (CNV-017, ADR-0079).
+    upload_max_mb: int = 1024
 
 
 @dataclass(frozen=True)
@@ -186,7 +189,15 @@ def load_api_configuration(environment: Mapping[str, str]) -> ApiConfiguration:
         sandboxd_token=driver_token,
         web_root=Path(environment.get("MZM_WEB_ROOT") or DEFAULT_WEB_ROOT),
         backup_status=Path(status) if (status := environment.get("MZM_BACKUP_STATUS")) else None,
+        upload_max_mb=_upload_max_mb(environment),
     )
+
+
+def _upload_max_mb(environment: Mapping[str, str]) -> int:
+    value = environment.get("MZM_UPLOAD_MAX_MB", "1024")
+    if not value.isdigit() or not 1 <= int(value) <= 1048576:
+        raise ConfigurationError("MZM_UPLOAD_MAX_MB must be a number of MiB from 1 to 1048576")
+    return int(value)
 
 
 @dataclass(frozen=True)

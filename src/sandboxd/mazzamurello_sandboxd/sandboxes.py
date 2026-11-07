@@ -80,8 +80,6 @@ class Sandboxes:
         self.configuration = configuration
         self._locks: dict[str, asyncio.Lock] = {}
         self._last_used: dict[str, float] = {}
-        # When each sandbox last ran a command, as a run uses it: a file operation leaves those running.
-        self._commanded: dict[str, float] = {}
 
     async def ensure_network(self) -> dict[str, Any]:
         """The sandbox bridge, created on first use; returns its inspection."""
@@ -115,13 +113,18 @@ class Sandboxes:
 
     async def _run(self, container: Any, argv: Sequence[str]) -> tuple[int, str]:
         """Run a command of the driver's own in the container: its exit code and standard output."""
+        code, output, _ = await self._run_logged(container, argv)
+        return code, output
+
+    async def _run_logged(self, container: Any, argv: Sequence[str]) -> tuple[int, str, str]:
+        """Run a command of the driver's own in the container: its exit code, standard output and error."""
         execute = await container.exec(cmd=list(argv), stdout=True, stderr=True, stdin=False, user="root")
-        output: list[bytes] = []
+        streams: dict[int, list[bytes]] = {1: [], 2: []}
         async with execute.start(detach=False) as stream:
             while (message := await stream.read_out()) is not None:
-                if message.stream == 1:
-                    output.append(message.data)
-        return int((await execute.inspect())["ExitCode"] or 0), b"".join(output).decode(errors="replace")
+                streams[message.stream].append(message.data)
+        code = int((await execute.inspect())["ExitCode"] or 0)
+        return code, b"".join(streams[1]).decode(errors="replace"), b"".join(streams[2]).decode(errors="replace")
 
     async def _workspace_bytes(self, container: Any) -> int:
         """The workspace's size, measured inside the sandbox (SBX-019)."""
@@ -135,23 +138,29 @@ class Sandboxes:
     async def ensure(self, sandbox: SandboxId) -> dict[str, Any]:
         """The conversation's sandbox, created if needed (idempotent)."""
         name = sandbox.container
-        lock = self._locks.setdefault(name, asyncio.Lock())
-        async with lock:
-            container: Any = None
-            try:
-                container = await self.docker.containers.get(name)
-                if not (await container.show())["State"]["Running"]:
-                    # A sandbox that stopped is never started again: a new one is (SBX-018).
-                    await container.delete(force=True)
-                    container = None
-            except DockerError as error:
-                if error.status != NOT_FOUND:
-                    raise
-            if container is None:
-                container = await self.start_container(name, sandbox.volume, sandbox.labels)
+        async with self._locks.setdefault(name, asyncio.Lock()):
+            container, _ = await self._running(sandbox)
             info = await container.show()
-            self._last_used[name] = time.monotonic()
         return {"state": "running", "started_at": info["State"]["StartedAt"], "working_dir": SCRATCH}
+
+    async def _running(self, sandbox: SandboxId) -> tuple[Any, bool]:
+        """The sandbox's running container, started if needed, and whether it was started; under its lock."""
+        name = sandbox.container
+        container: Any = None
+        try:
+            container = await self.docker.containers.get(name)
+            if not (await container.show())["State"]["Running"]:
+                # A sandbox that stopped is never started again: a new one is (SBX-018).
+                await container.delete(force=True)
+                container = None
+        except DockerError as error:
+            if error.status != NOT_FOUND:
+                raise
+        started = container is None
+        if started:
+            container = await self.start_container(name, sandbox.volume, sandbox.labels)
+        self._last_used[name] = time.monotonic()
+        return container, started
 
     async def stop(self, sandbox: SandboxId) -> None:
         name = sandbox.container
@@ -255,7 +264,6 @@ class Sandboxes:
         elapsed = time.monotonic() - started
         timed_out = not finished_in_time or (exit_code in KILLED_EXIT_CODES and elapsed >= timeout)
         self._last_used[sandbox.container] = time.monotonic()
-        self._commanded[sandbox.container] = time.monotonic()
         yield Exit(
             exit_code=None if timed_out else exit_code,
             timed_out=timed_out,
@@ -326,37 +334,43 @@ class Sandboxes:
 
     async def _helper(self, container: Any, *args: str) -> dict[str, Any]:
         """Run the driver's file helper in the sandbox; its answer, or the refusal it reports."""
-        code, output = await self._run(container, ["python3", "-I", "-c", HELPER, *args])
+        code, output, errors = await self._run_logged(container, ["python3", "-I", "-c", HELPER, *args])
         try:
             answer: dict[str, Any] = json.loads(output.strip().splitlines()[-1])
         except (ValueError, IndexError) as error:
+            logger.warning("the file helper failed in %s (%d): %s", container.id[:12], code, errors[-300:])
             raise FileOperationError(503, f"the file helper failed ({code})") from error
         if "error" in answer:
             raise FileOperationError(int(answer["status"]), str(answer["error"]))
         return answer
 
-    async def _borrow(self, sandbox: SandboxId) -> tuple[Any, bool, float]:
-        """The sandbox's container for a file operation: whether it was running, and when the operation began."""
-        running = False
-        with contextlib.suppress(DockerError):
-            running = bool((await (await self.docker.containers.get(sandbox.container)).show())["State"]["Running"])
-        began = time.monotonic()
-        await self.ensure(sandbox)
-        return await self.docker.containers.get(sandbox.container), running, began
-
-    async def _give_back(self, sandbox: SandboxId, running: bool, began: float) -> None:
-        """Remove a sandbox started for a file operation, unless a command used it meanwhile (SBX-018)."""
-        if running or self._commanded.get(sandbox.container, 0.0) > began:
-            return
-        await self.stop(sandbox)
-
     @contextlib.asynccontextmanager
     async def _borrowed(self, sandbox: SandboxId) -> AsyncGenerator[Any]:
-        container, running, began = await self._borrow(sandbox)
+        """A container of its own for one file operation: no network, the workspace, removed after (ADR-0079).
+
+        It never shares a container with a run, so neither can stop the other's.
+        """
+        container = await self._files_container(sandbox)
         try:
             yield container
         finally:
-            await self._give_back(sandbox, running, began)
+            with contextlib.suppress(DockerError):
+                await container.delete(force=True)
+
+    async def _files_container(self, sandbox: SandboxId) -> Any:
+        await self.docker.volumes.create(
+            {
+                "Name": sandbox.volume,
+                "Labels": {LABEL: "workspace"} | sandbox.labels | {f"{LABEL}.image": self.configuration.image},
+            }
+        )
+        config = container_config(self.configuration, sandbox.volume, sandbox.labels | {f"{LABEL}.files": "true"})
+        # File operations need no network at all.
+        config["HostConfig"] = {**config["HostConfig"], "NetworkMode": "none", "Dns": []}
+        name = f"mzm-files-{sandbox.conversation_id}-{uuid.uuid4().hex[:8]}"
+        container = await self.docker.containers.create(config, name=name)
+        await container.start()
+        return container
 
     async def workspace_size(self, sandbox: SandboxId) -> dict[str, int]:
         async with self._borrowed(sandbox) as container:
@@ -380,12 +394,13 @@ class Sandboxes:
             return await self._helper(container, "move", relative(source), relative(target))
 
     async def read_file(self, sandbox: SandboxId, path: str) -> tuple[dict[str, Any], AsyncIterator[bytes]]:
-        """A regular file's entry, and its content as a stream that gives the sandbox back when it ends."""
-        container, running, began = await self._borrow(sandbox)
+        """A regular file's entry, and its content as a stream that removes its container when it ends."""
+        container = await self._files_container(sandbox)
         try:
             item = await self._helper(container, "stat", relative(path), "regular")
         except BaseException:
-            await self._give_back(sandbox, running, began)
+            with contextlib.suppress(DockerError):
+                await container.delete(force=True)
             raise
 
         async def content() -> AsyncIterator[bytes]:
@@ -396,7 +411,8 @@ class Sandboxes:
                     async for piece in tar_member_content(response.content.iter_chunked(ARCHIVE_CHUNK_BYTES)):
                         yield piece
             finally:
-                await self._give_back(sandbox, running, began)
+                with contextlib.suppress(DockerError):
+                    await container.delete(force=True)
 
         return item, content()
 
