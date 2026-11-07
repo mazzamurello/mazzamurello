@@ -88,6 +88,7 @@ jobs:
               --ignore=tests/integration/test_rewinding.py --ignore=tests/integration/test_models_api.py
               --ignore=tests/integration/test_titles_and_compaction.py --ignore=tests/integration/test_usage.py
               --ignore=tests/integration/test_forks.py --ignore=tests/integration/test_conversation_list.py
+              --ignore=tests/integration/test_workspace_files.py --ignore=tests/integration/test_conversation_files.py
             budget: 130
           - part: runs
             paths: tests/integration/test_runs_api.py tests/integration/test_agent_tools.py
@@ -103,6 +104,10 @@ jobs:
               tests/integration/test_titles_and_compaction.py tests/integration/test_usage.py
               tests/integration/test_forks.py tests/integration/test_conversation_list.py
             budget: 150
+          # Files in a conversation (ADR-0079): every file operation starts a container.
+          - part: files
+            paths: tests/integration/test_workspace_files.py tests/integration/test_conversation_files.py
+            budget: 90
           - part: sandbox
             paths: tests/security tests/integration/test_sandbox_driver.py
             budget: 150
