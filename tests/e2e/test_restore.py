@@ -66,7 +66,7 @@ def restored(deployment: Deployment, reachable_model: ModelServer) -> Restored:
     # The server is lost: everything goes but the archive and the backup key.
     port = int(deployment.base_url.split(":")[-1].split("/")[0])
     compose(deployment.project, deployment.config_dir, "stop", "sandboxd", check=False)
-    remove_sandboxes()
+    remove_sandboxes(deployment)
     deployment.compose("down", "--volumes", "--timeout", "20", timeout=600)
     deployment.env_file.unlink()
 

@@ -178,6 +178,14 @@ install it. Publishing plain HTTP on your network
 (`MZM_PUBLISH=0.0.0.0:8080`) leaves only the API usable, and sends passwords
 and tokens unencrypted: do it only on a network you fully trust.
 
+The proxy must also let large uploads through: a file attached to a message
+can be up to 1 GB (`MZM_UPLOAD_MAX_MB`), and nginx refuses anything over
+1 MB unless told otherwise. In nginx, add to the app's `server` block:
+
+```nginx
+client_max_body_size 1g;
+```
+
 **Web search**
 
 The assistant searches the web through SearXNG, a search engine that runs
@@ -201,6 +209,14 @@ started, is discarded when the answer ends, and the next answer gets a new
 sandbox (ADR-0076). Deleting a conversation deletes its workspace; a fork
 starts with a copy. Each workspace has a quota, 2 GiB by default
 (`MZM_SANDBOX_WORKSPACE_QUOTA_MB`); the assistant is told when it nears it.
+
+**Files** opens a conversation's workspace beside it, or full screen on a
+phone: browse it as a tree, preview text, images, PDF, audio and video,
+download a file or a folder as a `.zip`, upload, rename, move and delete
+(ADR-0079). Files attached to a message upload at once into
+`/workspace/uploads/`, and the assistant can offer a file as a card with a
+download button. Previews never run a file: an HTML page shows as its
+source.
 
 Workspaces from before sandboxes were per conversation are no longer used:
 `docker volume ls --filter label=dev.mazzamurello.sandbox=workspace` lists

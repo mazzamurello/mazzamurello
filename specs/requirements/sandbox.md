@@ -154,15 +154,20 @@ SBX-005 are enforced for IPv6.
 
 ## SBX-014: File exchange with the workspace
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
-- **Verification:** integration
+- **Verification:** integration, security
 
-The control plane MUST be able to place files into a conversation's workspace and
-retrieve files from it through the sandbox driver, streamed and subject to
-size limits configurable by the instance admin, so that the assistant can
-work on files provided by the user and return the files it produces.
+The control plane MUST be able to list, read, write, move and delete files and
+folders of a conversation's workspace through the sandbox driver, streamed
+and held in memory by neither, so that the assistant can work on files
+provided by the user and return the files it produces. A write MUST be
+complete or absent, never partial, and MUST be refused when it would exceed
+the workspace's quota (SBX-019). The driver MUST refuse paths outside the
+workspace, including through links, and MUST NOT follow a link to read or
+write. An operation outside an answer MUST NOT leave the sandbox running
+(SBX-018, ADR-0079).
 
 ## SBX-015: Network restrictions before any code runs
 
