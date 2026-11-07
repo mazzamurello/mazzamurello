@@ -258,7 +258,7 @@ Rationale: journey J5.
 
 ## CNV-018: A failed run leaves a conversation that continues
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
