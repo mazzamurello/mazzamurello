@@ -55,6 +55,8 @@ export interface StartRun {
   conversationId: string;
   runId: string;
   text: string;
+  // Files already uploaded to the workspace's `uploads/` (CNV-017).
+  attachments?: { path: string; size: number }[];
   parentRunId?: string;
   signal?: AbortSignal;
 }
@@ -67,6 +69,7 @@ export async function startRun(start: StartRun): Promise<AsyncGenerator<RunEvent
     messages: [{ id: crypto.randomUUID(), role: "user", content: start.text }],
   };
   if (start.parentRunId !== undefined) input.parentRunId = start.parentRunId;
+  if (start.attachments !== undefined && start.attachments.length > 0) input.attachments = start.attachments.map((file) => file.path);
   const init: RequestInit = {
     method: "POST",
     credentials: "same-origin",
