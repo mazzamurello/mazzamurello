@@ -1,0 +1,10 @@
+# The Python environment of the agent's work (SBX-021, ADR-0080).
+markitdown[docx,xlsx,pptx,pdf]
+matplotlib
+numpy
+openpyxl
+pandas
+pillow
+pypdf
+python-docx
+python-pptx
