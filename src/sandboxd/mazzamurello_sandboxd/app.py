@@ -28,6 +28,7 @@ from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from mazzamurello_sandboxd.config import DriverConfiguration
+from mazzamurello_sandboxd.files import FileOperationError, PathRefusedError
 from mazzamurello_sandboxd.isolation import Isolation
 from mazzamurello_sandboxd.policy import SandboxId
 from mazzamurello_sandboxd.sandboxes import Exit, Output, Sandboxes
@@ -67,6 +68,17 @@ class ExecRequest(BaseModel):
         if (self.argv is None) == (self.shell_command is None):
             raise ValueError("exactly one of argv and shell_command is required")
         return self
+
+
+class PathRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(min_length=1)
+
+
+class MoveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    from_: str = Field(alias="from", min_length=1)
+    to: str = Field(min_length=1)
 
 
 class CopyRequest(BaseModel):
@@ -144,6 +156,15 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
     @app.exception_handler(DriverError)
     async def driver_error(request: Request, error: DriverError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         return _problem(error.status, error.code, error.title)
+
+    @app.exception_handler(FileOperationError)
+    async def file_error(request: Request, error: FileOperationError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        codes = {404: "driver.not_found", 409: "driver.conflict", 413: "driver.too_large"}
+        return _problem(error.status, codes.get(error.status, "driver.validation_failed"), str(error))
+
+    @app.exception_handler(PathRefusedError)
+    async def path_refused(request: Request, error: PathRefusedError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return _problem(422, "driver.validation_failed", f"The path is refused: {error}")
 
     @app.exception_handler(RequestValidationError)
     async def invalid(request: Request, error: RequestValidationError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
@@ -263,5 +284,73 @@ def create_app(configuration: DriverConfiguration) -> FastAPI:
         finally:
             await asyncio.to_thread(shutil.rmtree, folder, True)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # Files of the workspace (SBX-014, ADR-0079).
+
+    @app.get(f"{SANDBOX}/size", dependencies=authenticated)
+    async def workspace_size(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> dict[str, int]:
+        return await sandboxes.workspace_size(sandbox)
+
+    @app.get(f"{SANDBOX}/entries", dependencies=authenticated)
+    async def list_folder(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, path: str, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> dict[str, Any]:
+        return await sandboxes.list_folder(sandbox, path)
+
+    @app.delete(f"{SANDBOX}/entries", dependencies=authenticated)
+    async def delete_entry(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, path: str, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> Response:
+        await sandboxes.delete_entry(sandbox, path)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get(f"{SANDBOX}/files", dependencies=authenticated)
+    async def read_file(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, path: str, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> StreamingResponse:
+        item, content = await sandboxes.read_file(sandbox, path)
+        return StreamingResponse(
+            content, media_type="application/octet-stream", headers={"Content-Length": str(item["size"])}
+        )
+
+    @app.put(f"{SANDBOX}/files", dependencies=authenticated, status_code=status.HTTP_201_CREATED)
+    async def write_file(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, path: str, request: Request, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> dict[str, Any]:
+        length = request.headers.get("content-length", "")
+        if not length.isdigit():
+            raise DriverError(422, "driver.validation_failed", "Content-Length is required")
+        return await sandboxes.write_file(sandbox, path, int(length), request.stream())
+
+    @app.get(f"{SANDBOX}/archive", dependencies=authenticated)
+    async def zip_folder(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, path: str, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> FileResponse:
+        folder = await asyncio.to_thread(_temporary_folder, "mzm-zip-", None)
+        archive = folder / "folder.zip"
+        try:
+            await sandboxes.zip_folder(sandbox, path, archive)
+        except BaseException:
+            await asyncio.to_thread(shutil.rmtree, folder, True)
+            raise
+        return FileResponse(
+            archive,
+            media_type="application/zip",
+            background=BackgroundTask(asyncio.to_thread, shutil.rmtree, folder, True),
+        )
+
+    @app.post(f"{SANDBOX}/folders", dependencies=authenticated, status_code=status.HTTP_201_CREATED)
+    async def create_folder(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, body: PathRequest, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> dict[str, Any]:
+        return await sandboxes.create_folder(sandbox, body.path)
+
+    @app.post(f"{SANDBOX}/move", dependencies=authenticated)
+    async def move_entry(  # pyright: ignore[reportUnusedFunction]
+        sandbox: Addressed, body: MoveRequest, sandboxes: Annotated[Sandboxes, Depends(ready)]
+    ) -> dict[str, Any]:
+        return await sandboxes.move_entry(sandbox, body.from_, body.to)
 
     return app

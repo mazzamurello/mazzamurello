@@ -14,8 +14,11 @@ import codecs
 import contextlib
 import json
 import logging
+import tarfile
 import time
-from collections.abc import AsyncIterator, Mapping, Sequence
+import uuid
+import zipfile
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +27,14 @@ import aiodocker
 from aiodocker.exceptions import DockerError
 
 from mazzamurello_sandboxd.config import DriverConfiguration
+from mazzamurello_sandboxd.files import (
+    HELPER,
+    FileOperationError,
+    file_header,
+    padding,
+    relative,
+    tar_member_content,
+)
 from mazzamurello_sandboxd.policy import (
     LABEL,
     MIB,
@@ -69,6 +80,8 @@ class Sandboxes:
         self.configuration = configuration
         self._locks: dict[str, asyncio.Lock] = {}
         self._last_used: dict[str, float] = {}
+        # When each sandbox last ran a command, as a run uses it: a file operation leaves those running.
+        self._commanded: dict[str, float] = {}
 
     async def ensure_network(self) -> dict[str, Any]:
         """The sandbox bridge, created on first use; returns its inspection."""
@@ -242,6 +255,7 @@ class Sandboxes:
         elapsed = time.monotonic() - started
         timed_out = not finished_in_time or (exit_code in KILLED_EXIT_CODES and elapsed >= timeout)
         self._last_used[sandbox.container] = time.monotonic()
+        self._commanded[sandbox.container] = time.monotonic()
         yield Exit(
             exit_code=None if timed_out else exit_code,
             timed_out=timed_out,
@@ -307,3 +321,156 @@ class Sandboxes:
         archive = folder / "workspace.tar"
         await self.export_workspace(source, archive)
         await self.import_workspace(sandbox, archive)
+
+    # --- Files of the workspace (SBX-014, ADR-0079) ---
+
+    async def _helper(self, container: Any, *args: str) -> dict[str, Any]:
+        """Run the driver's file helper in the sandbox; its answer, or the refusal it reports."""
+        code, output = await self._run(container, ["python3", "-I", "-c", HELPER, *args])
+        try:
+            answer: dict[str, Any] = json.loads(output.strip().splitlines()[-1])
+        except (ValueError, IndexError) as error:
+            raise FileOperationError(503, f"the file helper failed ({code})") from error
+        if "error" in answer:
+            raise FileOperationError(int(answer["status"]), str(answer["error"]))
+        return answer
+
+    async def _borrow(self, sandbox: SandboxId) -> tuple[Any, bool, float]:
+        """The sandbox's container for a file operation: whether it was running, and when the operation began."""
+        running = False
+        with contextlib.suppress(DockerError):
+            running = bool((await (await self.docker.containers.get(sandbox.container)).show())["State"]["Running"])
+        began = time.monotonic()
+        await self.ensure(sandbox)
+        return await self.docker.containers.get(sandbox.container), running, began
+
+    async def _give_back(self, sandbox: SandboxId, running: bool, began: float) -> None:
+        """Remove a sandbox started for a file operation, unless a command used it meanwhile (SBX-018)."""
+        if running or self._commanded.get(sandbox.container, 0.0) > began:
+            return
+        await self.stop(sandbox)
+
+    @contextlib.asynccontextmanager
+    async def _borrowed(self, sandbox: SandboxId) -> AsyncGenerator[Any]:
+        container, running, began = await self._borrow(sandbox)
+        try:
+            yield container
+        finally:
+            await self._give_back(sandbox, running, began)
+
+    async def workspace_size(self, sandbox: SandboxId) -> dict[str, int]:
+        async with self._borrowed(sandbox) as container:
+            used = await self._workspace_bytes(container)
+        return {"bytes": used, "quota_bytes": self.configuration.workspace_quota_mb * MIB}
+
+    async def list_folder(self, sandbox: SandboxId, path: str) -> dict[str, Any]:
+        async with self._borrowed(sandbox) as container:
+            return await self._helper(container, "list", relative(path))
+
+    async def delete_entry(self, sandbox: SandboxId, path: str) -> None:
+        async with self._borrowed(sandbox) as container:
+            await self._helper(container, "delete", relative(path))
+
+    async def create_folder(self, sandbox: SandboxId, path: str) -> dict[str, Any]:
+        async with self._borrowed(sandbox) as container:
+            return await self._helper(container, "mkdir", relative(path))
+
+    async def move_entry(self, sandbox: SandboxId, source: str, target: str) -> dict[str, Any]:
+        async with self._borrowed(sandbox) as container:
+            return await self._helper(container, "move", relative(source), relative(target))
+
+    async def read_file(self, sandbox: SandboxId, path: str) -> tuple[dict[str, Any], AsyncIterator[bytes]]:
+        """A regular file's entry, and its content as a stream that gives the sandbox back when it ends."""
+        container, running, began = await self._borrow(sandbox)
+        try:
+            item = await self._helper(container, "stat", relative(path), "regular")
+        except BaseException:
+            await self._give_back(sandbox, running, began)
+            raise
+
+        async def content() -> AsyncIterator[bytes]:
+            try:
+                async with self.docker._query(  # pyright: ignore[reportPrivateUsage]
+                    f"containers/{container.id}/archive", params={"path": f"{WORKSPACE}/{item['path']}"}
+                ) as response:
+                    async for piece in tar_member_content(response.content.iter_chunked(ARCHIVE_CHUNK_BYTES)):
+                        yield piece
+            finally:
+                await self._give_back(sandbox, running, began)
+
+        return item, content()
+
+    async def write_file(
+        self, sandbox: SandboxId, path: str, length: int, body: AsyncIterator[bytes]
+    ) -> dict[str, Any]:
+        """Write a new file of `length` bytes from `body`, complete or not at all (SBX-014, SBX-019)."""
+        target = relative(path)
+        if not target:
+            raise FileOperationError(422, "the workspace itself")
+        quota = self.configuration.workspace_quota_mb * MIB
+        temporary = f".mzm-upload-{uuid.uuid4().hex}"
+        async with self._borrowed(sandbox) as container:
+            await self._helper(container, "prepare", target, str(length), str(quota))
+            received = 0
+
+            async def stream() -> AsyncIterator[bytes]:
+                nonlocal received
+                yield file_header(temporary, length)
+                async for chunk in body:
+                    received += len(chunk)
+                    if received > length:
+                        raise FileOperationError(422, "more than Content-Length")
+                    yield chunk
+                if received != length:
+                    raise FileOperationError(422, "less than Content-Length")
+                yield padding(length)
+
+            try:
+                async with self.docker._query(  # pyright: ignore[reportPrivateUsage]
+                    f"containers/{container.id}/archive",
+                    method="PUT",
+                    params={"path": WORKSPACE},
+                    data=stream(),
+                    headers={"content-type": "application/x-tar"},
+                ) as response:
+                    await response.read()
+                if received != length:
+                    raise FileOperationError(422, "less than Content-Length")
+            except BaseException:
+                with contextlib.suppress(Exception):
+                    await self._helper(container, "discard", temporary)
+                raise
+            return await self._helper(container, "commit", temporary, target)
+
+    async def zip_folder(self, sandbox: SandboxId, path: str, destination: Path) -> None:
+        """Write a folder of the workspace to `destination` as a zip archive, links left out."""
+        folder = relative(path)
+        source = f"{WORKSPACE}/{folder}" if folder else WORKSPACE
+        raw = destination.with_name(f"{destination.name}.tar")
+        async with self._borrowed(sandbox) as container:
+            await self._helper(container, "folder", folder)
+            try:
+                async with self.docker._query(  # pyright: ignore[reportPrivateUsage]
+                    f"containers/{container.id}/archive", params={"path": source}
+                ) as response:
+                    with raw.open("wb") as file:
+                        async for chunk in response.content.iter_chunked(ARCHIVE_CHUNK_BYTES):
+                            await asyncio.to_thread(file.write, chunk)
+                await asyncio.to_thread(zip_from_tar, raw, destination)
+            finally:
+                raw.unlink(missing_ok=True)
+
+
+def zip_from_tar(source: Path, destination: Path) -> None:
+    """Rewrite Docker's tar of a folder as a zip of its regular files, named relative to that folder."""
+    with tarfile.open(source, "r:") as archive, zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as result:
+        for member in archive:
+            if not member.isreg():
+                continue
+            name = member.name.split("/", 1)[1] if "/" in member.name else member.name
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                continue
+            with extracted, result.open(name, "w") as target:
+                while chunk := extracted.read(ARCHIVE_CHUNK_BYTES):
+                    target.write(chunk)
