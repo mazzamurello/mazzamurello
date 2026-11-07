@@ -166,10 +166,12 @@ Rationale: journey J10.
 - **Phase:** 1
 - **Verification:** integration, security
 
-Every user MUST have a file library holding the files they upload, such as
-images, PDF files and documents. A file attached to a message MUST be stored
-in the file library, and any of the user's conversations MUST be able to
-reference files of the library. Files MUST be private data of the user
+Every user MUST have a file library holding files they choose to keep across
+conversations, such as images, PDF files and documents, and any of the user's
+conversations MUST be able to reference files of the library. A file attached
+to a message goes into that conversation's workspace instead (CNV-017); the
+library is a bridge between conversations, and needs a decision of its own
+(ADR-0078, ADR-0079). Files MUST be private data of the user
 (TEN-008), MUST be made available to the agent in that user's sandbox only,
 and MUST be subject to the data egress policy when sent to a remote model
 (MOD-003). The user MUST be able to list, rename and delete their files.
@@ -237,3 +239,19 @@ the edited message as a new turn. To keep what followed as well, the user
 forks the conversation first (CNV-005, ADR-0068).
 
 Rationale: journey J2.
+
+## CNV-017: Files attached to a message
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, e2e
+
+A user MUST be able to attach files to a message, from their device's files
+or, on a phone, its camera. Each file MUST upload as soon as it is picked
+into `/workspace/uploads/` of the conversation's workspace, never replacing a
+file already there, and removing it before sending MUST delete it. The message
+MUST list its attachments: the model reads their paths and sizes as part of
+the user's message, and the history shows them (ADR-0079).
+
+Rationale: journey J5.
