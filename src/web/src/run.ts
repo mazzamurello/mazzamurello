@@ -14,6 +14,7 @@ export type LivePart =
 export interface LiveRun {
   runId: string;
   userText: string | null;
+  attachments?: { path: string; size: number }[];
   parts: LivePart[];
   status: "running" | "finished" | "failed";
   errorCode?: string;
@@ -111,7 +112,7 @@ export function useLiveRun(onEnd: () => Promise<void>) {
   const start = useCallback(
     (run: Omit<StartRun, "runId">) => {
       const id = crypto.randomUUID();
-      void consume({ runId: id, userText: run.text, parts: [], status: "running" }, startRun({ ...run, runId: id }));
+      void consume({ runId: id, userText: run.text, attachments: run.attachments ?? [], parts: [], status: "running" }, startRun({ ...run, runId: id }));
     },
     [consume],
   );

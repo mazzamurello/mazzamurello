@@ -1,11 +1,12 @@
 import { RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 
 import type { ModelChoice, User } from "../api/client";
 import { createConversation, useRefreshConversations } from "../conversations";
 import { useModels } from "../models";
+import { type AttachedFile, useAttachments } from "../workspace";
 import { Composer } from "./Composer";
 import { Sprite } from "./Sprite";
 
@@ -31,10 +32,18 @@ export function Welcome({ me }: { me: User }) {
   const name = me.display_name;
   const greeting = hour < 12 ? t("welcome.morning", { name }) : hour < 18 ? t("welcome.afternoon", { name }) : t("welcome.evening", { name });
 
-  async function start(text: string) {
-    const conversation = await createConversation(chosen ?? undefined);
+  // The conversation is created with the first attachment, whose workspace receives it, or else with the first message.
+  const created = useRef<Promise<string> | null>(null);
+  const conversation = useCallback(() => {
+    created.current ??= createConversation(chosen ?? undefined).then((made) => made.id);
+    return created.current;
+  }, [chosen]);
+  const attachments = useAttachments(conversation);
+
+  async function start(text: string, files: AttachedFile[]) {
+    const id = await conversation();
     await refresh();
-    await navigate(`/c/${conversation.id}`, { state: { firstMessage: text } });
+    await navigate(`/c/${id}`, { state: { firstMessage: text, attachments: files } });
   }
 
   function another() {
@@ -69,7 +78,7 @@ export function Welcome({ me }: { me: User }) {
             </figure>
           )}
         </div>
-        <Composer onSend={(text) => void start(text)} running={false} model={model} onModel={setChosen} placeholder={t("welcome.placeholder")} autoFocus />
+        <Composer onSend={(text, files) => void start(text, files)} attachments={attachments} running={false} model={model} onModel={setChosen} placeholder={t("welcome.placeholder")} autoFocus />
       </div>
     </div>
   );

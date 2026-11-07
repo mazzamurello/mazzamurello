@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import posixpath
 import tarfile
+import time
 from collections.abc import AsyncIterator
 
 TAR_BLOCK = 512
@@ -44,6 +45,7 @@ def file_header(name: str, size: int) -> bytes:
     info = tarfile.TarInfo(name)
     info.size = size
     info.mode = 0o644
+    info.mtime = int(time.time())
     return info.tobuf(format=tarfile.USTAR_FORMAT)
 
 
