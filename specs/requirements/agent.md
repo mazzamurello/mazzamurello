@@ -291,3 +291,17 @@ will want again: scripts, results and notes, each piece of work in its own
 folder with a `README.md` saying what it is and how to make it again, and
 not bulk data that can be fetched again. Evals MUST check that the agent
 keeps the right files (ADR-0076).
+
+## AGT-023: Offering a file to download
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, e2e
+
+The agent MUST be able to offer one file of the conversation's workspace for
+download with an `offer_download` tool. Clients MUST show the offer in the
+answer, with the file's name and size and a button that downloads it, and
+MUST NOT download it without the user's action. The offer names the file in
+the workspace: it downloads the file's current content, or says that it is
+gone (ADR-0079).

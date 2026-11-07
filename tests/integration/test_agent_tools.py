@@ -1,4 +1,4 @@
-"""The agent's workspace tools, through runs (AGT-011, AGT-014, SBX-001, ADR-0035, ADR-0053).
+"""The agent's workspace tools, through runs (AGT-011, AGT-014, CNV-018, SBX-001, ADR-0035, ADR-0053).
 
 The model the tests serve calls the agent's command tool when the user's
 message is `run:<command>` (tests/support/model.py).
@@ -11,7 +11,15 @@ import pytest
 from tests.support.accounts import Account, create_account, create_tenant, login
 from tests.support.database import Database, uuid7
 from tests.support.fixtures import HarnessModel
-from tests.support.runs import create_conversation, start_run, text_of, wait_for_run
+from tests.support.runs import (
+    create_conversation,
+    messages,
+    parse_events,
+    run_input,
+    start_run,
+    text_of,
+    wait_for_run,
+)
 from tests.support.sandbox import Driver
 from tests.support.server import Server
 
@@ -130,3 +138,43 @@ def test_the_agent_can_delete_files_in_its_workspace(server: Server, token: str,
     (result,) = _tool_results(default_model, command)
     # The sandbox, not a list of command names, decides what a command can do (ADR-0062).
     assert f"removed-{name}" in result, result
+
+
+@pytest.mark.spec("CNV-018")
+def test_a_tool_result_with_a_nul_character_is_kept(server: Server, token: str) -> None:
+    conversation = create_conversation(server, token)
+    # As `cat` of a binary file prints it.
+    run_id, events = start_run(server, token, conversation["id"], "run:printf 'before\\000after'")
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    assert "before" in text_of(events)
+    history = messages(server, token, conversation["id"])["items"]
+    results = [str(message.get("content", "")) for message in history if message.get("role") == "tool"]
+    assert any("before\ufffdafter" in result for result in results), results
+
+
+@pytest.mark.spec("CNV-018")
+def test_the_message_after_a_run_stopped_mid_tool_is_answered(
+    server: Server, token: str, default_model: HarnessModel
+) -> None:
+    conversation = create_conversation(server, token)
+    payload = run_input(conversation["id"], "run:sleep 30")
+    stopped = payload["runId"]
+    # Stopped while the command runs: once the call is complete, its result is 30 seconds away.
+    with (
+        server.client(token) as client,
+        client.stream("POST", f"/conversations/{conversation['id']}/runs", json=payload, timeout=60) as response,
+    ):
+        lines: list[str] = []
+        for line in response.iter_lines():
+            lines.append(line)
+            if line == "" and any(event.type == "TOOL_CALL_END" for event in parse_events(lines)):
+                break
+    with server.client(token) as client:
+        assert client.post(f"/runs/{stopped}/cancel").status_code == 200
+    assert wait_for_run(server, token, stopped)["status"] == "cancelled"
+    run_id, events = start_run(server, token, conversation["id"], "after the stop")
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    assert "Echo: after the stop" in text_of(events)
+    # The call the stopped run left reaches the model with a result, as interrupted.
+    (request,) = default_model.endpoint.requests_with("after the stop")
+    assert any(message.get("role") == "tool" for message in request.body.get("messages", []))

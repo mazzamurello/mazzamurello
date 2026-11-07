@@ -28,8 +28,8 @@ ALLOWED_CAPABILITIES = {
 # Tools the provider runs: only the search over the agent's own tools.
 ALLOWED_NATIVE_TOOLS = {"tool_search"}
 # The agent's own tools: web search through the instance's search service,
-# and page reading in the user's sandbox (AGT-020, AGT-021, ADR-0075).
-ALLOWED_OWN_TOOLS = {"web_search", "read_page"}
+# page reading in the sandbox, and offering a file to download (AGT-020, AGT-021, AGT-023, ADR-0075, ADR-0079).
+ALLOWED_OWN_TOOLS = {"web_search", "read_page", "offer_download"}
 # The only places a component runs a command on the host, by file and
 # enclosing function. None runs anything a user or the agent chose.
 ALLOWED_HOST_COMMANDS = {

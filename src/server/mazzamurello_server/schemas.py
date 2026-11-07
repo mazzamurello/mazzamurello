@@ -387,3 +387,37 @@ class RunInput(BaseModel):
     parent_run_id: uuid.UUID | None = Field(default=None, alias="parentRunId")
     messages: Annotated[list[AgUiInputMessage], Field(min_length=1)]
     resume: list[dict[str, Any]] | None = None
+    # A Mazzamurello extension: the files attached to the message, already uploaded (CNV-017).
+    attachments: Annotated[list[Annotated[str, Field(max_length=4096)]], Field(max_length=20)] = []
+
+
+# A conversation's workspace (UX-019, ADR-0079).
+
+
+class WorkspaceSummary(Response):
+    size: int
+    quota: int
+
+
+class WorkspaceEntry(Response):
+    name: str
+    path: str
+    type: Literal["file", "folder", "link"]
+    size: int
+    modified: Timestamp
+
+
+class WorkspaceFolder(Response):
+    path: str
+    entries: list[WorkspaceEntry]
+
+
+class WorkspacePathRequest(Request):
+    path: Annotated[str, Field(min_length=1, max_length=4096)]
+
+
+class WorkspaceMoveRequest(Request):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_: Annotated[str, Field(alias="from", min_length=1, max_length=4096)]
+    to: Annotated[str, Field(min_length=1, max_length=4096)]

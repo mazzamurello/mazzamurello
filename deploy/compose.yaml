@@ -76,6 +76,7 @@ services:
       MZM_HTTP_PORT: "8000"
       MZM_SECRET_KEY: ${MZM_SECRET_KEY:-}
       MZM_TRUSTED_PROXIES: ${MZM_TRUSTED_PROXIES:-}
+      MZM_UPLOAD_MAX_MB: ${MZM_UPLOAD_MAX_MB:-1024}
       MZM_SANDBOXD_URL: http://sandboxd:8100/v1
       MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
       # A failing backup makes the health degraded (OPS-011).

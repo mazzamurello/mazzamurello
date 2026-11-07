@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Copy, FilePen, GitFork, Pencil } from "lucide-react";
+import { ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, GitFork, Pencil } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
@@ -10,19 +10,23 @@ import { forkConversation, rewindConversation, updateConversation, useRefreshCon
 import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
 import { type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
+import { type AttachedFile, download, downloadUrl, formatSize, listFolder, useAttachments } from "../workspace";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { Sprite } from "./Sprite";
+import { type Reveal, WorkspacePanel } from "./WorkspacePanel";
 
 type AgUiMessage = MessagePage["items"][number] & {
   content?: unknown;
   toolCalls?: { id: string; function: { name: string; arguments: string } }[];
   toolCallId?: string;
+  attachments?: AttachedFile[];
 };
 
 interface Turn {
   run: PathRun;
   userText: string | null;
+  attachments: AttachedFile[];
   parts: LivePart[];
 }
 
@@ -33,9 +37,13 @@ function turnsOf(page: MessagePage): Turn[] {
     const messages = run.message_ids.flatMap((id) => byId.get(id) ?? []);
     const results = new Map(messages.filter((m) => m.role === "tool").map((m) => [m.toolCallId, textOf(m.content)]));
     let userText: string | null = null;
+    let attachments: AttachedFile[] = [];
     const parts: LivePart[] = [];
     for (const message of messages) {
-      if (message.role === "user" && userText === null) userText = textOf(message.content);
+      if (message.role === "user" && userText === null) {
+        userText = textOf(message.content);
+        attachments = message.attachments ?? [];
+      }
       else if (message.role === "assistant") {
         const text = textOf(message.content);
         if (text) parts.push({ kind: "text", id: message.id, text });
@@ -45,7 +53,7 @@ function turnsOf(page: MessagePage): Turn[] {
         }
       }
     }
-    return { run, userText, parts };
+    return { run, userText, attachments, parts };
   });
 }
 
@@ -125,17 +133,32 @@ export function ConversationView() {
   const [pending, setPending] = useState<PendingEdit | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const thread = useRef<HTMLDivElement>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [reveal, setReveal] = useState<Reveal | null>(null);
+  const [panelFor, setPanelFor] = useState(conversationId);
+  if (panelFor !== conversationId) {
+    setPanelFor(conversationId);
+    setReveal(null);
+  }
+  const owner = useCallback(() => Promise.resolve(conversationId), [conversationId]);
+  const attachments = useAttachments(owner);
+  const show = useCallback((path: string) => {
+    setReveal({ path, at: Date.now() });
+    setPanelOpen(true);
+  }, []);
 
-  // The first message of a new chat, handed over by the new-chat screen.
-  const firstMessage = (location.state as { firstMessage?: string } | null)?.firstMessage;
+  // The first message of a new chat, handed over by the new-chat screen, with its attachments.
+  const handedOver = location.state as { firstMessage?: string; attachments?: AttachedFile[] } | null;
+  const firstMessage = handedOver?.firstMessage;
+  const firstAttachments = handedOver?.attachments;
   const started = useRef(false);
   useEffect(() => {
     if (firstMessage && !started.current) {
       started.current = true;
-      start({ conversationId, text: firstMessage });
+      start({ conversationId, text: firstMessage, attachments: firstAttachments ?? [] });
       void navigate(location.pathname, { replace: true, state: null });
     }
-  }, [firstMessage, conversationId, start, navigate, location.pathname]);
+  }, [firstMessage, firstAttachments, conversationId, start, navigate, location.pathname]);
 
   // A run in progress, started on another device or before a reload: follow it (CNV-015).
   const activeRunId = conversation.data?.active_run_id;
@@ -203,7 +226,8 @@ export function ConversationView() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
       <div ref={thread} className="relative min-h-0 flex-1 overflow-y-auto" aria-busy={running}>
         <ol className="mx-auto w-full max-w-[740px] px-4 pt-2 pb-6">
           {conversation.data?.forked_from && (
@@ -230,12 +254,14 @@ export function ConversationView() {
               onCancelEdit={() => setEditing(null)}
               onSendEdit={(text) => askToEdit(index, turn, text)}
               onFork={() => void fork(turn)}
+              conversationId={conversationId}
+              onShow={show}
             />
           ))}
           {live && !settled && (
             <li className="my-5 flex flex-col gap-1">
-              {live.userText !== null && <UserBubble text={live.userText} />}
-              <Answer parts={live.parts} />
+              {live.userText !== null && <UserBubble text={live.userText} attachments={live.attachments ?? []} onShow={show} />}
+              <Answer parts={live.parts} conversationId={conversationId} onShow={show} />
               {live.status === "failed" && live.errorCode !== "run.cancelled" ? (
                 <RunErrorView code={live.errorCode ?? "internal.error"} reason={live.reason ?? null} />
               ) : (
@@ -249,6 +275,15 @@ export function ConversationView() {
         <div className="mx-auto max-w-[740px]">
           {/* The open conversation's cost and its context stay in view (UX-008). */}
           <div className="mb-1.5 flex min-h-4 flex-wrap items-center justify-end gap-x-4 gap-y-1 text-xs text-muted tabular-nums">
+            <button
+              type="button"
+              onClick={() => setPanelOpen((open) => !open)}
+              aria-expanded={panelOpen}
+              className="-ml-1.5 mr-auto flex items-center gap-1.5 rounded-lg px-1.5 py-1 font-semibold hover:bg-hover hover:text-fg"
+            >
+              <FolderOpen className="size-4" aria-hidden="true" />
+              {t("files.title")}
+            </button>
             {conversation.data && (
               <span className="flex items-center gap-1.5">
                 <span>{t("usage.conversation")}</span>
@@ -258,7 +293,8 @@ export function ConversationView() {
             {contextUsage && <ContextGauge usage={contextUsage} />}
           </div>
           <Composer
-            onSend={(text) => start({ conversationId, text })}
+            onSend={(text, files) => start({ conversationId, text, attachments: files })}
+            attachments={attachments}
             onStop={() => void stop()}
             running={running}
             model={conversation.data?.model ?? null}
@@ -267,6 +303,8 @@ export function ConversationView() {
           />
         </div>
       </div>
+      </div>
+      <WorkspacePanel conversationId={conversationId} open={panelOpen} onOpenChange={setPanelOpen} reveal={reveal} />
       <Dialog.Root open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
@@ -293,7 +331,7 @@ export function ConversationView() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-    </>
+    </div>
   );
 }
 
@@ -381,6 +419,8 @@ function TurnView(props: {
   onCancelEdit: () => void;
   onSendEdit: (text: string) => void;
   onFork: () => void;
+  conversationId: string;
+  onShow: (path: string) => void;
 }) {
   const { t } = useTranslation();
   const { turn, busy } = props;
@@ -413,7 +453,7 @@ function TurnView(props: {
           </form>
         ) : (
           <div className="group/message flex flex-col items-end gap-1">
-            <UserBubble text={turn.userText} />
+            <UserBubble text={turn.userText} attachments={turn.attachments} onShow={props.onShow} />
             <div className="flex gap-0.5 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100">
               <CopyButton text={turn.userText} />
               <IconButton label={t("message.edit")} disabled={busy} onClick={props.onEdit}>
@@ -422,7 +462,7 @@ function TurnView(props: {
             </div>
           </div>
         ))}
-      <Answer parts={turn.parts} />
+      <Answer parts={turn.parts} conversationId={props.conversationId} onShow={props.onShow} />
       {turn.run.error && turn.run.error.code !== "run.cancelled" && (
         <RunErrorView code={turn.run.error.code} reason={turn.run.error.reason ?? props.reason ?? null} />
       )}
@@ -477,20 +517,39 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function UserBubble({ text }: { text: string }) {
+/** A message's attachments, as chips that show the file in the workspace panel (CNV-017). */
+function UserBubble({ text, attachments, onShow }: { text: string; attachments: AttachedFile[]; onShow: (path: string) => void }) {
   const { t } = useTranslation();
   return (
-    <div className="flex justify-end">
+    <div className="flex flex-col items-end gap-1.5">
+      {attachments.length > 0 && (
+        <ul aria-label={t("files.attachments")} className="flex max-w-[min(85%,560px)] flex-wrap justify-end gap-1.5">
+          {attachments.map((file) => (
+            <li key={file.path}>
+              <button type="button" onClick={() => onShow(file.path)} className="flex max-w-[260px] items-center gap-2 rounded-xl border border-line bg-surface py-1.5 pr-3 pl-2.5 text-left text-[13px] hover:bg-hover">
+                <FileText className="size-4 flex-none text-muted" aria-hidden="true" />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate font-semibold">{file.path.split("/").at(-1)}</span>
+                  <span className="text-muted">{formatSize(file.size)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    <div className="flex w-full justify-end">
       <div className="max-w-[min(85%,560px)] rounded-[20px] bg-bubble px-[15px] py-2.5 break-words whitespace-pre-wrap">
         <span className="sr-only">{t("message.you")}: </span>
         {text}
       </div>
     </div>
+    </div>
   );
 }
 
-function Answer({ parts }: { parts: LivePart[] }) {
-  const tools = parts.filter((part) => part.kind === "tool");
+function Answer({ parts, conversationId, onShow }: { parts: LivePart[]; conversationId: string; onShow: (path: string) => void }) {
+  const offers = parts.flatMap((part) => (part.kind === "tool" ? (offerOf(part) ?? []) : []));
+  const tools = parts.flatMap((part) => (part.kind === "tool" && offerOf(part) === null ? [part] : []));
   const texts = parts.filter((part) => part.kind === "text");
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
@@ -504,6 +563,13 @@ function Answer({ parts }: { parts: LivePart[] }) {
       {texts.map((part) => (
         <Markdown key={part.id} text={part.text} />
       ))}
+      {offers.length > 0 && (
+        <div className="flex flex-col items-start gap-1.5">
+          {offers.map((offer) => (
+            <OfferCard key={offer.id} offer={offer} conversationId={conversationId} onShow={onShow} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -543,5 +609,66 @@ function ToolCall({ part }: { part: Extract<LivePart, { kind: "tool" }> }) {
         )}
       </div>
     </details>
+  );
+}
+
+interface Offer {
+  id: string;
+  path: string;
+  size: number | null;
+}
+
+/** A file the assistant offered, once the tool found it (AGT-023). */
+function offerOf(part: Extract<LivePart, { kind: "tool" }>): Offer | null {
+  if (part.name !== "offer_download" || part.result === undefined || !part.result.startsWith("Offered ")) return null;
+  let path = "";
+  try {
+    path = String((JSON.parse(part.args) as { path?: unknown }).path ?? "");
+  } catch {
+    return null;
+  }
+  path = path.trim().replace(/^\/workspace/, "").replace(/^\/+|\/+$/g, "");
+  const size = /\((\d+) bytes\)/.exec(part.result)?.[1];
+  return path ? { id: part.id, path, size: size === undefined ? null : Number(size) } : null;
+}
+
+/** An offered file: it downloads as it is now, when the user taps it, or says it is gone (AGT-023, ADR-0079). */
+function OfferCard({ offer, conversationId, onShow }: { offer: Offer; conversationId: string; onShow: (path: string) => void }) {
+  const { t } = useTranslation();
+  const [gone, setGone] = useState(false);
+  const name = offer.path.split("/").at(-1) ?? offer.path;
+  const folder = offer.path.includes("/") ? offer.path.slice(0, offer.path.lastIndexOf("/")) : "";
+
+  async function get() {
+    try {
+      const entries = await listFolder(conversationId, folder);
+      if (!entries.some((entry) => entry.path === offer.path && entry.type === "file")) {
+        setGone(true);
+        return;
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setGone(true);
+        return;
+      }
+    }
+    setGone(false);
+    download(downloadUrl(conversationId, offer.path));
+  }
+
+  return (
+    <div role="group" aria-label={name} className="flex w-[min(100%,360px)] items-center gap-3 rounded-2xl border border-line bg-surface py-2.5 pr-2.5 pl-3 shadow-soft">
+      <span className="grid size-10 flex-none place-items-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
+        <FileText className="size-5" />
+      </span>
+      <button type="button" onClick={() => onShow(offer.path)} className="flex min-w-0 flex-1 flex-col text-left" title={t("files.show")}>
+        <span className="truncate font-semibold">{name}</span>
+        <span className={`text-[12.5px] ${gone ? "text-danger" : "text-muted"}`}>{gone ? t("files.gone") : offer.size === null ? "" : formatSize(offer.size)}</span>
+      </button>
+      <button type="button" onClick={() => void get()} className="flex h-9 flex-none items-center gap-1.5 rounded-xl bg-fg px-3 text-sm font-semibold text-bg">
+        <Download className="size-4" aria-hidden="true" />
+        {t("files.download")}
+      </button>
+    </div>
   );
 }

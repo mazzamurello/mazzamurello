@@ -1,15 +1,17 @@
-import { ArrowUp, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { ArrowUp, FileText, Paperclip, Square, X } from "lucide-react";
+import { type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ModelChoice } from "../api/client";
 import { hasKeyboard } from "../focus";
 import { findModel, useModels } from "../models";
+import { type AttachedFile, formatSize, type useAttachments } from "../workspace";
 import { ModelSelect } from "./ModelPicker";
 
-/** The message box: Enter sends, Shift+Enter starts a new line; while a run goes on, Stop. */
+/** The message box: Enter sends, Shift+Enter starts a new line; while a run goes on, Stop. Files attach by picking or dropping (CNV-017). */
 export function Composer(props: {
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments: AttachedFile[]) => void;
+  attachments: ReturnType<typeof useAttachments>;
   onStop?: () => void;
   running: boolean;
   model: ModelChoice | null;
@@ -23,6 +25,9 @@ export function Composer(props: {
   const models = useModels();
   const chosen = findModel(models.data?.items, props.model);
   const area = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const files = props.attachments;
 
   useEffect(() => {
     const element = area.current;
@@ -34,13 +39,20 @@ export function Composer(props: {
   function send(event?: FormEvent) {
     event?.preventDefault();
     const message = text.trim();
-    if (!message || props.running) return;
-    props.onSend(message);
+    if (!message || props.running || files.uploading) return;
+    props.onSend(message, files.ready);
     setText("");
+    files.clear();
   }
 
   function keyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) send(event);
+  }
+
+  function drop(event: DragEvent) {
+    event.preventDefault();
+    setDragging(false);
+    if (event.dataTransfer.files.length > 0) files.add([...event.dataTransfer.files]);
   }
 
   const local = chosen?.location === "local";
@@ -48,8 +60,46 @@ export function Composer(props: {
     <div className="w-full">
       <form
         onSubmit={send}
-        className="relative flex flex-col gap-2 rounded-3xl border border-line-strong bg-surface pt-3.5 pr-3 pb-2.5 pl-[18px] shadow-soft focus-within:border-accent/45"
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes("Files")) {
+            event.preventDefault();
+            setDragging(true);
+          }
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={drop}
+        className={`relative flex flex-col gap-2 rounded-3xl border bg-surface pt-3.5 pr-3 pb-2.5 pl-[18px] shadow-soft focus-within:border-accent/45 ${dragging ? "border-accent" : "border-line-strong"}`}
       >
+        {files.items.length > 0 && (
+          <ul aria-label={t("files.attachments")} className="-ml-1.5 flex flex-wrap gap-1.5">
+            {files.items.map((item) => (
+              <li key={item.key} className="flex max-w-full items-center gap-2 rounded-xl border border-line bg-hover py-1.5 pr-1 pl-2.5 text-[13px]">
+                <FileText className="size-4 flex-none text-muted" aria-hidden="true" />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate font-semibold">{item.name}</span>
+                  <span className={item.error ? "text-danger" : "text-muted"}>
+                    {item.error
+                      ? t(`files.errors.${errorKey(item.error)}`)
+                      : item.path === undefined
+                        ? item.progress >= 1
+                          ? t("files.saving")
+                          : t("files.uploading", { percent: Math.round(item.progress * 100) })
+                        : formatSize(item.size)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => files.remove(item.key)}
+                  className="grid size-7 flex-none place-items-center rounded-lg text-muted hover:bg-surface hover:text-fg"
+                  aria-label={t("files.remove", { name: item.name })}
+                  title={t("files.remove", { name: item.name })}
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <label className="sr-only" htmlFor="composer">
           {t("composer.label")}
         </label>
@@ -65,6 +115,26 @@ export function Composer(props: {
           className="max-h-[220px] min-h-[26px] resize-none bg-transparent text-base leading-normal outline-none placeholder:text-faint"
         />
         <div className="flex items-center gap-1.5">
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            aria-label={t("files.attach")}
+            onChange={(event) => {
+              if (event.target.files) files.add([...event.target.files]);
+              event.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => picker.current?.click()}
+            title={t("files.attachOne")}
+            aria-label={t("files.attachOne")}
+            className="-ml-2 grid size-9 place-items-center rounded-xl text-muted hover:bg-hover hover:text-fg"
+          >
+            <Paperclip className="size-[18px]" aria-hidden="true" />
+          </button>
           <span className="flex-1" />
           <ModelSelect compact value={props.model} onChange={props.onModel} />
           {props.running && props.onStop ? (
@@ -72,7 +142,7 @@ export function Composer(props: {
               <Square className="size-3.5" fill="currentColor" aria-hidden="true" />
             </button>
           ) : (
-            <button type="submit" disabled={!text.trim()} className="grid size-9 flex-none place-items-center rounded-xl bg-accent text-on-accent transition-opacity disabled:opacity-35" aria-label={t("composer.send")}>
+            <button type="submit" disabled={!text.trim() || files.uploading} className="grid size-9 flex-none place-items-center rounded-xl bg-accent text-on-accent transition-opacity disabled:opacity-35" aria-label={t("composer.send")}>
               <ArrowUp className="size-[18px]" strokeWidth={2.4} aria-hidden="true" />
             </button>
           )}
@@ -92,4 +162,9 @@ export function Composer(props: {
       </p>
     </div>
   );
+}
+
+/** The translation key of an upload's error. */
+export function errorKey(code: string): string {
+  return ["file.too_large", "workspace.quota_exceeded", "resource.conflict", "sandbox.unavailable", "network"].includes(code) ? code.replace(".", "_") : "internal_error";
 }

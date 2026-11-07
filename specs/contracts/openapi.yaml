@@ -507,6 +507,246 @@ paths:
         "409": { $ref: "#/components/responses/RunInProgress" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /conversations/{conversation_id}/workspace:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    get:
+      tags: [workspace]
+      operationId: getWorkspace
+      summary: The size of the conversation's workspace and its quota.
+      x-requirements: [UX-019, SBX-019, TEN-006]
+      responses:
+        "200":
+          description: The workspace's size.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceSummary" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+    delete:
+      tags: [workspace]
+      operationId: resetWorkspace
+      summary: Empty the conversation's workspace.
+      description: Refused with `run.in_progress` while a run of the conversation is queued or running.
+      x-requirements: [UX-019, TEN-006]
+      responses:
+        "204": { description: The workspace is empty. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/RunInProgress" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+
+  /conversations/{conversation_id}/workspace/entries:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+      - $ref: "#/components/parameters/WorkspacePath"
+    get:
+      tags: [workspace]
+      operationId: listWorkspaceFolder
+      summary: The entries of one folder of the workspace, `path` being empty for its root.
+      description: Links are listed as links, and never followed (SBX-014, ADR-0079).
+      x-requirements: [UX-019, SBX-014, TEN-006]
+      responses:
+        "200":
+          description: The folder's entries, folders first, then by name.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceFolder" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+    delete:
+      tags: [workspace]
+      operationId: deleteWorkspaceEntry
+      summary: Delete a file, a link, or a folder with everything in it.
+      x-requirements: [UX-019, CNV-017, SBX-014, TEN-006]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+
+  /conversations/{conversation_id}/workspace/file:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+      - $ref: "#/components/parameters/WorkspacePath"
+    get:
+      tags: [workspace]
+      operationId: readWorkspaceFile
+      summary: Download a file of the workspace, or read it for a preview.
+      description: |
+        Without `preview`, the file comes as an attachment, as
+        `application/octet-stream`. With `preview=true`, only a file whose
+        type is in the preview list comes, inline, with that type:
+        `text/plain` for text, code, JSON, logs and HTML; `text/markdown`;
+        `text/csv`; `image/png`, `image/jpeg`, `image/gif`, `image/webp`,
+        `image/svg+xml`; `application/pdf`; and the audio and video types
+        browsers play. Text previews stop at 1 MiB. Every answer carries
+        `X-Content-Type-Options: nosniff` (UX-020, ADR-0079). Links are not
+        followed.
+      x-requirements: [UX-019, UX-020, AGT-023, SBX-014, TEN-006]
+      parameters:
+        - name: preview
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: The file's content, as a download or with its preview type.
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+            text/plain: { schema: { type: string } }
+            text/markdown: { schema: { type: string } }
+            text/csv: { schema: { type: string } }
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/svg+xml: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+            audio/*: { schema: { type: string, format: binary } }
+            video/*: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "415": { $ref: "#/components/responses/NotPreviewable" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+    put:
+      tags: [workspace]
+      operationId: writeWorkspaceFile
+      summary: Upload a file to a path of the workspace that does not exist yet.
+      description: |
+        The body is streamed into the sandbox under a temporary name and
+        renamed when complete; an interrupted upload leaves nothing. Missing
+        folders are created. A path that exists is refused with
+        `resource.conflict`, a body larger than `MZM_UPLOAD_MAX_MB` with
+        `file.too_large`, and one that would take the workspace over its quota
+        with `workspace.quota_exceeded` (SBX-014, SBX-019, ADR-0079).
+      x-requirements: [UX-019, SBX-014, SBX-019, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: The file, uploaded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceEntry" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/FileTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+
+  /conversations/{conversation_id}/workspace/uploads:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: [workspace]
+      operationId: uploadAttachment
+      summary: Upload an attachment into `uploads/`, under a name no other file has.
+      description: |
+        `name` is the file's name on the user's device; a name already taken
+        in `uploads/` gets a number, as `budget (2).csv` (CNV-017,
+        ADR-0079). Limits as for `writeWorkspaceFile`.
+      x-requirements: [CNV-017, SBX-014, SBX-019, TEN-006]
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 255 }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: The attachment, uploaded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceEntry" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/FileTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+
+  /conversations/{conversation_id}/workspace/archive:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+      - $ref: "#/components/parameters/WorkspacePath"
+    get:
+      tags: [workspace]
+      operationId: downloadWorkspaceFolder
+      summary: Download a folder of the workspace as a `.zip` attachment, links left out.
+      x-requirements: [UX-019, SBX-014, TEN-006]
+      responses:
+        "200":
+          description: The folder, zipped.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+
+  /conversations/{conversation_id}/workspace/folders:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: [workspace]
+      operationId: createWorkspaceFolder
+      summary: Create a folder, and the folders above it that are missing.
+      x-requirements: [UX-019, SBX-014, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspacePathRequest" }
+      responses:
+        "201":
+          description: The folder.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceEntry" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+
+  /conversations/{conversation_id}/workspace/move:
+    parameters:
+      - $ref: "#/components/parameters/ConversationId"
+    post:
+      tags: [workspace]
+      operationId: moveWorkspaceEntry
+      summary: Rename or move a file or folder; a destination that exists is refused.
+      x-requirements: [UX-019, SBX-014, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspaceMoveRequest" }
+      responses:
+        "200":
+          description: The entry at its new path.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceEntry" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503": { $ref: "#/components/responses/SandboxUnavailable" }
+
   /conversations/{conversation_id}/fork:
     parameters:
       - $ref: "#/components/parameters/ConversationId"
@@ -853,6 +1093,16 @@ components:
         value; without it the request is unauthenticated (AUTH-005).
 
   parameters:
+    WorkspacePath:
+      name: path
+      in: query
+      required: true
+      description: |
+        A path relative to the workspace's root, `/workspace`; empty for the
+        root itself where a folder is meant. Absolute paths, `..` segments
+        and paths through a link are refused with `request.validation_failed`
+        (SBX-014, T-34).
+      schema: { type: string, maxLength: 4096 }
     SessionId:
       name: session_id
       in: path
@@ -889,6 +1139,19 @@ components:
       schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
 
   responses:
+    FileTooLarge:
+      description: |
+        The upload is larger than `MZM_UPLOAD_MAX_MB` (`file.too_large`), or
+        would take the workspace over its quota (`workspace.quota_exceeded`,
+        SBX-019); nothing was written.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotPreviewable:
+      description: The file's type has no preview; download it instead (`file.not_previewable`, UX-020).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     SandboxUnavailable:
       description: The sandbox driver could not delete or copy the conversation's workspace; nothing was changed (`sandbox.unavailable`, SBX-010).
       content:
@@ -991,6 +1254,9 @@ components:
         - model.unavailable
         - model.request_failed
         - model.refused
+        - file.too_large
+        - file.not_previewable
+        - workspace.quota_exceeded
         - connection.test_failed
         - sandbox.unavailable
         - sandbox.command_failed
@@ -1426,7 +1692,10 @@ components:
       description: |
         A message in the AG-UI 1.0 format (roles such as `user`, `assistant`,
         `tool`, `reasoning`), projected from the stored Pydantic AI messages.
-        See https://docs.ag-ui.com/ for the full definition.
+        See https://docs.ag-ui.com/ for the full definition. In history, a
+        `user` message with attachments carries them as `attachments`, an
+        array of `{path, size}` (CNV-017), and its `content` is the user's own
+        text alone.
       required: [id, role]
       additionalProperties: true
       properties:
@@ -1440,6 +1709,47 @@ components:
             clients reload history after a run.
         role: { type: string }
         content: {}
+
+    WorkspaceSummary:
+      type: object
+      required: [size, quota]
+      properties:
+        size: { type: integer, minimum: 0, description: Bytes used by the workspace. }
+        quota: { type: integer, minimum: 1, description: The workspace's quota in bytes (SBX-019). }
+
+    WorkspaceEntry:
+      type: object
+      required: [name, path, type, size, modified]
+      properties:
+        name: { type: string }
+        path: { type: string, description: Relative to the workspace's root. }
+        type: { type: string, enum: [file, folder, link] }
+        size: { type: integer, minimum: 0, description: "Bytes; 0 for folders and links." }
+        modified: { $ref: "#/components/schemas/Timestamp" }
+
+    WorkspaceFolder:
+      type: object
+      required: [path, entries]
+      properties:
+        path: { type: string }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/WorkspaceEntry" }
+
+    WorkspacePathRequest:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string, minLength: 1, maxLength: 4096 }
+
+    WorkspaceMoveRequest:
+      type: object
+      required: [from, to]
+      additionalProperties: false
+      properties:
+        from: { type: string, minLength: 1, maxLength: 4096 }
+        to: { type: string, minLength: 1, maxLength: 4096 }
 
     MessagePage:
       type: object
@@ -1524,6 +1834,16 @@ components:
               status: { type: string, enum: [resolved, cancelled] }
               payload:
                 description: 'For approvals, `{"approved": true|false}`.'
+        attachments:
+          type: array
+          maxItems: 20
+          description: |
+            A Mazzamurello extension: the paths of files the user attached to
+            the message, already uploaded with `uploadAttachment`. Each must
+            be a file of the workspace's `uploads/`, or the run is refused with
+            `request.validation_failed`. The model reads them, with their sizes,
+            as part of the user's message (CNV-017, ADR-0079).
+          items: { type: string, maxLength: 4096 }
 
     ModelRef:
       type: object

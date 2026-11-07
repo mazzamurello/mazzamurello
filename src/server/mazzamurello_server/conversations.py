@@ -448,6 +448,31 @@ def run_error(run: Any, messages: Sequence[Any]) -> schemas.RunError | None:
     return schemas.RunError(code=run.error_code or "internal.error", reason=reason)
 
 
+# The label of the part of a user's message that lists its attachments, as the worker writes it.
+ATTACHMENTS_ORIGIN = "mazzamurello.attachments"
+
+
+def _attached(messages: Sequence[Any]) -> tuple[str, list[dict[str, Any]]] | None:
+    """The user's own text and their attachments, when the run's message has any (CNV-017)."""
+    for raw in messages:
+        message = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
+        if message.get("kind") != "request":
+            continue
+        for part in cast(list[dict[str, Any]], message.get("parts") or []):
+            content = part.get("content")
+            if part.get("part_kind") != "user-prompt" or not isinstance(content, list):
+                continue
+            items = cast(list[Any], content)
+            texts = [item for item in items if isinstance(item, str)]
+            for item in items:
+                found = cast(dict[str, Any], item).get("metadata") if isinstance(item, dict) else None
+                metadata = cast(dict[str, Any], found) if isinstance(found, dict) else {}
+                if metadata.get("origin") == ATTACHMENTS_ORIGIN:
+                    files = cast(list[dict[str, Any]], metadata.get("attachments") or [])
+                    return "".join(texts), [{"path": f["path"], "size": f["size"]} for f in files]
+    return None
+
+
 def message_id(run_id: uuid.UUID, position: int) -> uuid.UUID:
     """The ID of a run's message in history, from the run and its position in it (API-003)."""
     return uuid.uuid5(run_id, f"message-{position}")
@@ -477,8 +502,13 @@ async def list_messages(
     flattened: list[tuple[Any, dict[str, Any]]] = []
     for run in path:
         model_messages = ModelMessagesTypeAdapter.validate_python(stored[run.id])
+        attached = _attached(stored[run.id])
         for position, message in enumerate(AGUIAdapter.dump_messages(model_messages)):
             dumped = message.model_dump(mode="json", by_alias=True, exclude_none=True)
+            if attached is not None and dumped.get("role") == "user":
+                # What the user wrote, and the files attached to it, apart (CNV-017).
+                dumped["content"], dumped["attachments"] = attached
+                attached = None
             # The same ID on every read.
             dumped["id"] = str(message_id(run.id, position))
             flattened.append((run, dumped))

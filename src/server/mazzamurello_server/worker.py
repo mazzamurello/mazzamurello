@@ -26,7 +26,10 @@ from pydantic_ai.messages import (
     ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
+    TextContent,
+    UserContent,
     UserPromptPart,
+    repair_messages,
 )
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.ui.ag_ui import AGUIEventStream
@@ -56,6 +59,7 @@ from mazzamurello_server.gateway import (
     record_usage,
     store_messages,
 )
+from mazzamurello_server.offers import TOOLS as OFFER_TOOLS
 from mazzamurello_server.sandbox import SandboxWorkspace, sandbox_ref, stop_sandbox
 from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
@@ -79,7 +83,8 @@ INSTRUCTIONS = (
     " Work in /scratch. Put in /workspace only what the user will want again: scripts, results and notes,"
     " each piece of work in a folder of its own with a README.md that says what it is and how to make it"
     " again. Do not keep data there that can be fetched again: write down where it comes from instead."
-    " Look in /workspace for earlier work before starting again."
+    " Look in /workspace for earlier work before starting again. Files the user attaches are in"
+    " /workspace/uploads/. To give the user a file, offer it with offer_download."
 )
 
 
@@ -138,7 +143,8 @@ agent = Agent(
     deps_type=RunDeps,
     instructions=INSTRUCTIONS,
     # Web search through the instance's search service, page reading in the sandbox (ADR-0075).
-    tools=WEB_TOOLS,
+    # And offering a file of the workspace to download (AGT-023, ADR-0079).
+    tools=(*WEB_TOOLS, *OFFER_TOOLS),
     capabilities=[
         Gateway(),
         # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
@@ -193,7 +199,10 @@ async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.
     if start is not None:
         history = list(ModelMessagesTypeAdapter.validate_python(checkpoints[path[start].id]))
         path = path[start:]
-    return history + [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
+    history += [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
+    # A run that failed or was stopped while a tool worked left its call without a result: the
+    # model reads it as interrupted, and the conversation goes on (CNV-018).
+    return repair_messages(history)
 
 
 def _error_code(error: BaseException) -> str:
@@ -266,6 +275,22 @@ async def run_workflow(serialized_input: str) -> None:
     await DBOS.close_stream_async(EVENTS_STREAM)
 
 
+# Labels the part of a user's message that lists its attachments, apart from what they wrote (CNV-017).
+ATTACHMENTS_ORIGIN = "mazzamurello.attachments"
+
+
+def _user_prompt(run: RunWorkflowInput) -> str | list[UserContent]:
+    """The user's message, with the files attached to it, which the model reads with their paths and sizes."""
+    if not run.attachments:
+        return run.user_text
+    lines = "\n".join(f"- /workspace/{item['path']} ({item['size']} bytes)" for item in run.attachments)
+    listing = TextContent(
+        f"Files the user attached to this message, in the conversation's workspace:\n{lines}",
+        metadata={"origin": ATTACHMENTS_ORIGIN, "attachments": run.attachments},
+    )
+    return [run.user_text, listing]
+
+
 async def _end_sandbox(deps: RunDeps) -> None:
     try:
         await stop_sandbox(deps)
@@ -289,7 +314,7 @@ async def _execute(
         _TITLES[run.run_id] = asyncio.create_task(_title(run, replace(deps, emit=None)))
     try:
         result = await agent.run(
-            run.user_text,
+            _user_prompt(run),
             message_history=history,
             model=model_reference(run.connection_id, run.model),
             deps=deps,
