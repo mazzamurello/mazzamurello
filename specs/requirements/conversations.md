@@ -255,3 +255,19 @@ MUST list its attachments: the model reads their paths and sizes as part of
 the user's message, and the history shows them (ADR-0079).
 
 Rationale: journey J5.
+
+## CNV-018: A failed run leaves a conversation that continues
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+Every message of a run MUST be kept, whatever characters the model's text or
+a tool's result holds; characters the database cannot store, such as NUL, are
+kept as U+FFFD. After a run fails or is stopped, even while a tool was
+working, the next message in the conversation MUST be answered: a tool call
+the run left without a result reaches the model as interrupted (ADR-0041).
+
+Rationale: a command that printed a binary file, or a run stopped mid-tool,
+must not leave the user with a conversation that can only fail.
