@@ -1,5 +1,5 @@
 """A persistent workspace in an ephemeral sandbox, one per conversation (SBX-010, SBX-018, SBX-019, SBX-020,
-AGT-022, ADR-0076, ADR-0077, ADR-0078).
+SBX-021, AGT-022, ADR-0076, ADR-0077, ADR-0078).
 
 The driver's tests use its API directly; the agent's, runs with the model the
 tests serve (tests/support/model.py).
@@ -243,6 +243,19 @@ def test_the_agent_is_told_what_the_workspace_keeps(server: Server, token: str, 
     system = " ".join(str(message.get("content", "")) for message in messages if message.get("role") == "system")
     for phrase in ("/scratch", "/workspace", "README.md"):
         assert phrase in system, f"the instructions do not mention {phrase}"
+
+
+@pytest.mark.spec("SBX-021")
+def test_the_agent_is_told_which_tools_the_sandbox_has(server: Server, token: str, default_model: HarnessModel) -> None:
+    conversation = create_conversation(server, token)
+    text = f"instructions {uuid7()}"
+    run_id, _ = start_run(server, token, conversation["id"], text)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    (request,) = default_model.endpoint.requests_with(text)[:1]
+    messages = request.body.get("messages", [])
+    system = " ".join(str(message.get("content", "")) for message in messages if message.get("role") == "system")
+    for tool in ("pdftotext", "markitdown", "pandoc", "ffmpeg", "ImageMagick", "pandas", "openpyxl", "node"):
+        assert tool in system, f"the instructions do not mention {tool}"
 
 
 @pytest.mark.spec("SBX-018")
