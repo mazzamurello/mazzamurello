@@ -29,6 +29,7 @@ UP_TIMEOUT_SECONDS = 1800
 # CI builds the deployment's images with its build cache; `up` then uses them (ADR-0059).
 BUILD = [] if os.environ.get("TEST_DEPLOYMENT_IMAGES") == "built" else ["--build"]
 SANDBOX_LABEL = "dev.mazzamurello.sandbox"
+SANDBOX_NETWORK = "mazzamurello-sandboxes"
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,8 @@ class Deployment:
     base_url: str
     admin_username: str
     admin_password: str
+    # The operator's own sandboxes, volumes and bridge, there before the deployment: never removed.
+    others: frozenset[str] = frozenset()
 
     @property
     def env_file(self) -> Path:
@@ -80,15 +83,29 @@ def docker_cli(*args: str) -> str:
     ).stdout
 
 
-def remove_sandboxes() -> None:
-    """Sandboxes are created by the driver, not by Compose: remove them, their volumes and their bridge."""
-    containers = docker_cli("ps", "-aq", "--filter", f"label={SANDBOX_LABEL}").split()
+def sandbox_resources() -> frozenset[str]:
+    """The sandbox containers, workspace volumes and sandbox bridge on this host, whoever made them."""
+    containers = docker_cli("ps", "-aq", "--no-trunc", "--filter", f"label={SANDBOX_LABEL}").split()
+    volumes = docker_cli("volume", "ls", "-q", "--filter", f"label={SANDBOX_LABEL}").split()
+    networks = docker_cli("network", "ls", "-q", "--filter", f"name=^{SANDBOX_NETWORK}$").split()
+    return frozenset([*containers, *volumes, *(SANDBOX_NETWORK for _ in networks)])
+
+
+def remove_sandboxes(deployment: Deployment) -> None:
+    """Sandboxes are created by the driver, not by Compose: remove the deployment's, their volumes and their bridge.
+
+    Those of the operator's own installation on the same host stay.
+    """
+    containers = docker_cli("ps", "-aq", "--no-trunc", "--filter", f"label={SANDBOX_LABEL}").split()
+    containers = [container for container in containers if container not in deployment.others]
     if containers:
         docker_cli("rm", "-f", *containers)
     volumes = docker_cli("volume", "ls", "-q", "--filter", f"label={SANDBOX_LABEL}").split()
+    volumes = [volume for volume in volumes if volume not in deployment.others]
     if volumes:
         docker_cli("volume", "rm", "-f", *volumes)
-    docker_cli("network", "rm", "mazzamurello-sandboxes")
+    if SANDBOX_NETWORK not in deployment.others:
+        docker_cli("network", "rm", SANDBOX_NETWORK)
 
 
 def configure(deployment: Deployment, port: int) -> None:
@@ -141,7 +158,9 @@ def installed(config_dir: Path) -> Generator[Deployment]:
     project = f"mzm-e2e-{secrets.token_hex(3)}"
     port = free_port()
     username, password = f"admin-{secrets.token_hex(3)}", secrets.token_urlsafe(18)
-    deployment = Deployment(project, config_dir, f"http://127.0.0.1:{port}/v1", username, password)
+    deployment = Deployment(
+        project, config_dir, f"http://127.0.0.1:{port}/v1", username, password, others=sandbox_resources()
+    )
     try:
         # The README's steps: generate the secrets, start, create the first admin.
         deployment.compose("run", "--rm", "--no-deps", "init")
@@ -153,7 +172,7 @@ def installed(config_dir: Path) -> Generator[Deployment]:
     finally:
         # The driver's sandboxes first, so that nothing holds the deployment's images.
         compose(project, config_dir, "stop", "sandboxd", check=False)
-        remove_sandboxes()
+        remove_sandboxes(deployment)
         compose(project, config_dir, "down", "--volumes", "--rmi", "all", "--timeout", "20", check=False, timeout=600)
 
 
