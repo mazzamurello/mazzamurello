@@ -29,6 +29,7 @@ from pydantic_ai.messages import (
     TextContent,
     UserContent,
     UserPromptPart,
+    repair_messages,
 )
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.ui.ag_ui import AGUIEventStream
@@ -198,7 +199,10 @@ async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.
     if start is not None:
         history = list(ModelMessagesTypeAdapter.validate_python(checkpoints[path[start].id]))
         path = path[start:]
-    return history + [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
+    history += [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
+    # A run that failed or was stopped while a tool worked left its call without a result: the
+    # model reads it as interrupted, and the conversation goes on (CNV-018).
+    return repair_messages(history)
 
 
 def _error_code(error: BaseException) -> str:
