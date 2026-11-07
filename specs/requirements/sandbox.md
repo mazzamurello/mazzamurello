@@ -249,7 +249,7 @@ absolute paths, `..` segments, links and device files.
 
 ## SBX-021: Tools in the sandbox
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
