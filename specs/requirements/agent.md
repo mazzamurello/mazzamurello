@@ -172,15 +172,20 @@ call.
 
 ## AGT-015: Questions to the user
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** integration
 
-The agent SHOULD be able to ask the user structured questions with choices
-during a run. A question MUST end the run with an interrupt, like an approval,
-and the answer MUST start a new run (ADR-0033, ADR-0043). Answers are user
-input, not tool output.
+The agent SHOULD be able to ask the user structured questions during a run,
+each with choices, one or several of which the user picks; the user MAY
+answer in their own words instead, or decline. A question MUST end the run
+with an interrupt, like an approval, and the answer MUST start a new run that
+continues it (ADR-0033, ADR-0043, ADR-0083). The server MUST build what the
+model receives from its own stored question and the user's choice, and MUST
+refuse answers to questions that are not pending. While a question is
+pending, the conversation MUST NOT take a new message. Answers are user
+input, not tool output: they carry the user's provenance (AGT-003).
 
 Rationale: journey J7.
 

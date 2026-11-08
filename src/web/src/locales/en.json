@@ -49,6 +49,27 @@
     "noFolder": "Out of the folder",
     "noFolders": "No folders yet."
   },
+  "questions": {
+    "title": "The assistant asks",
+    "ownWords": "Or answer in your own words",
+    "answer": "Answer",
+    "skip": "Skip",
+    "counter": "{{number}} of {{total}}",
+    "previous": "Previous question",
+    "next": "Next question",
+    "nextButton": "Next"
+  },
+  "tasks": {
+    "title": "Task list",
+    "progress": "Tasks: {{done}} of {{total}} done",
+    "status": {
+      "completed": "Done",
+      "in_progress": "In progress",
+      "pending": "To do",
+      "cancelled": "Cancelled",
+      "blocked": "Waiting"
+    }
+  },
   "temporary": {
     "toggle": "Temporary chat",
     "hint": "This chat won't be in your list or your search, and it's deleted when you leave it.",
@@ -166,7 +187,12 @@
     "searched": "Searched the web",
     "read": "Read",
     "wrote": "Wrote a file",
-    "ran": "Ran a command",
+    "ran": "Sandbox command",
+    "commandFor": "Sandbox command: {{purpose}}",
+    "callRunning": "Running",
+    "callDone": "Done",
+    "asked": "Asked you",
+    "planned": "Updated the task list",
     "used": "Used {{name}}"
   },
   "rewind": {

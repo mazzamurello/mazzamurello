@@ -9,6 +9,7 @@ they are produced.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import signal
 import uuid
@@ -17,11 +18,12 @@ from dataclasses import replace
 from typing import Any, cast
 
 from dbos import DBOS, DBOSConfig
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, RunContext
 from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
     AgentStreamEvent,
+    FunctionToolResultEvent,
     ModelMessage,
     ModelMessagesTypeAdapter,
     ModelRequest,
@@ -35,7 +37,9 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.ui.ag_ui import AGUIEventStream
+from pydantic_ai_harness.ask_user import AskUser
 from pydantic_ai_harness.filesystem import FileSystem
+from pydantic_ai_harness.planning import Planning
 from pydantic_ai_harness.shell import Shell
 from pydantic_ai_harness.tool_output_limits import ToolOutputLimits
 from sqlalchemy import text
@@ -62,7 +66,9 @@ from mazzamurello_server.gateway import (
     store_messages,
 )
 from mazzamurello_server.offers import TOOLS as OFFER_TOOLS
-from mazzamurello_server.sandbox import SandboxDriver, SandboxWorkspace, sandbox_ref, stop_sandbox
+from mazzamurello_server.plans import ConversationPlanStore, plan_steps
+from mazzamurello_server.questions import REQUESTS, asks_user, interrupts
+from mazzamurello_server.sandbox import CommandPurposes, SandboxDriver, SandboxWorkspace, sandbox_ref, stop_sandbox
 from mazzamurello_server.settings import BUILT_IN_BASE_INSTRUCTIONS
 from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
@@ -179,6 +185,10 @@ async def _handle_events(ctx: RunContext[RunDeps], events: AsyncIterable[AgentSt
             if encoded.type == "REASONING_ENCRYPTED_VALUE":
                 continue
             await _write(run_id, _encoded(encoded))
+        # The task list, as it changes (UX-009, ADR-0083).
+        if isinstance(event, FunctionToolResultEvent) and event.part.tool_name in PLANNING_TOOLS:
+            steps = plan_steps([item.model_dump(mode="json") for item in await _plan_store(ctx).get_items()])
+            await _write(run_id, {"type": "CUSTOM", "name": "mzm.plan", "value": {"steps": steps}})
         title = _TITLES.get(run_id)
         if title is not None and title.done():
             await _announce_title(run_id)
@@ -191,10 +201,23 @@ async def _announce_title(run_id: str) -> None:
         await _write(run_id, {"type": "CUSTOM", "name": "mzm.title", "value": {"title": title}})
 
 
-agent = Agent(
+def _plan_store(ctx: RunContext[RunDeps]) -> ConversationPlanStore:
+    """The conversation's task list, which lasts from run to run (UX-009, ADR-0083)."""
+    return ConversationPlanStore(ctx.deps.engine, ctx.deps.identity, ctx.deps.conversation_id)
+
+
+# The tools of `Planning` that change or read the task list.
+PLANNING_TOOLS = frozenset(
+    {"write_plan", "read_plan", "add_task", "update_task_status", "update_task_statuses", "remove_task"}
+)
+
+# A run ends with the answer, or with the questions it asks the user (ADR-0083).
+agent = Agent[RunDeps, str | DeferredToolRequests](
     model_reference(str(uuid.UUID(int=0)), "unset"),
     name="mazzamurello",
     deps_type=RunDeps,
+    # A run may end to ask the user (AGT-015, ADR-0083).
+    output_type=[str, DeferredToolRequests],
     instructions=instructions,
     # Web search through the instance's search service, page reading in the sandbox (ADR-0075).
     # And offering a file of the workspace to download (AGT-023, ADR-0079).
@@ -203,10 +226,16 @@ agent = Agent(
         Gateway(),
         # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
         SandboxWorkspace(),
+        # Each sandbox command says what it is for (UX-003, ADR-0085).
+        CommandPurposes(),
         SHELL,
         FILE_SYSTEM,
         # Large results reach the model bounded; the rest stays in the workspace (AGT-014).
         ToolOutputLimits(),
+        # Questions to the user end the run, and the answer starts the next one; the task list lasts
+        # from run to run (AGT-015, UX-009, ADR-0083).
+        AskUser(answerer=None),
+        Planning(store_resolver=_plan_store),
         DBOSDurability(event_stream_handler=_handle_events),
     ],
 )
@@ -221,7 +250,7 @@ def _engine() -> AsyncEngine:
 async def _set_status(identity: Identity, run_id: uuid.UUID, status: str, error_code: str | None = None) -> None:
     """Move a run that is still queued or running; a cancelled run stays cancelled."""
     started = "started_at = coalesce(started_at, now())," if status == "running" else ""
-    finished = "finished_at = now()," if status in ("completed", "failed") else ""
+    finished = "finished_at = now()," if status in ("completed", "failed", "interrupted") else ""
     async with transaction(_engine(), identity) as connection:
         await connection.execute(
             text(
@@ -232,7 +261,9 @@ async def _set_status(identity: Identity, run_id: uuid.UUID, status: str, error_
         )
 
 
-async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.UUID | None) -> list[ModelMessage]:
+async def _history(
+    identity: Identity, conversation_id: uuid.UUID, parent: uuid.UUID | None, *, answering: bool = False
+) -> list[ModelMessage]:
     """The messages of the path that the run continues, and nothing else (CNV-002)."""
     if parent is None:
         return []
@@ -254,8 +285,9 @@ async def _history(identity: Identity, conversation_id: uuid.UUID, parent: uuid.
         path = path[start:]
     history += [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
     # A run that failed or was stopped while a tool worked left its call without a result: the
-    # model reads it as interrupted, and the conversation goes on (CNV-018).
-    return repair_messages(history)
+    # model reads it as interrupted, and the conversation goes on (CNV-018). The questions a run
+    # that answers them continues are left to their answers (ADR-0083).
+    return repair_messages(history, repair_last_response=not answering)
 
 
 def _error_code(error: BaseException) -> str:
@@ -283,7 +315,10 @@ async def run_workflow(serialized_input: str) -> None:
     run_id, conversation_id = uuid.UUID(run.run_id), uuid.UUID(run.conversation_id)
     await _set_status(identity, run_id, "running")
     history = await _history(
-        identity, conversation_id, None if run.parent_run_id is None else uuid.UUID(run.parent_run_id)
+        identity,
+        conversation_id,
+        None if run.parent_run_id is None else uuid.UUID(run.parent_run_id),
+        answering=run.answers is not None,
     )
     async with transaction(_engine(), identity) as connection:
         attribution = (
@@ -337,8 +372,11 @@ async def run_workflow(serialized_input: str) -> None:
 ATTACHMENTS_ORIGIN = "mazzamurello.attachments"
 
 
-def _user_prompt(run: RunWorkflowInput) -> str | list[UserContent]:
+def _user_prompt(run: RunWorkflowInput) -> str | list[UserContent] | None:
     """The user's message, with the files attached to it, which the model reads with their paths and sizes."""
+    if run.answers is not None:
+        # The answers to the questions are the user's input (ADR-0083).
+        return None
     if not run.attachments:
         return run.user_text
     lines = "\n".join(f"- /workspace/{item['path']} ({item['size']} bytes)" for item in run.attachments)
@@ -380,6 +418,7 @@ async def _execute(
             conversation_id=run.conversation_id,
             # The conversation's own sandbox, whatever an earlier reference in its history names (ADR-0078).
             workspace=sandbox_ref(str(identity.tenant_id), str(identity.user_id), run.conversation_id),
+            deferred_tool_results=None if run.answers is None else DeferredToolResults(calls=run.answers),
         )
     except (ModelUnavailableError, ModelAPIError, ContentFilterError) as error:
         code = _error_code(error)
@@ -396,9 +435,23 @@ async def _execute(
     await store_messages(deps, result.new_messages())
     if run.run_id in _TITLES:
         await _announce_title(run.run_id)
+    output = result.output
+    pending = REQUESTS.dump_python(output, mode="json") if isinstance(output, DeferredToolRequests) else None
+    if isinstance(output, DeferredToolRequests) and not asks_user(output):
+        raise RuntimeError("the run left calls that are not questions to the user")
+    if pending is not None:
+        # The run waits for the user's answer, which the next run brings (ADR-0033, ADR-0083).
+        async with transaction(_engine(), identity) as connection:
+            await connection.execute(
+                text("UPDATE conversations SET pending_interrupts = CAST(:pending AS jsonb) WHERE id = :id"),
+                {"pending": json.dumps(pending), "id": deps.conversation_id},
+            )
     async for event in encoder.after_stream():
-        await _write(run.run_id, _encoded(event))
-    await _set_status(identity, deps.run_id, "completed")
+        encoded = _encoded(event)
+        if pending is not None and encoded["type"] == "RUN_FINISHED":
+            encoded["outcome"] = {"type": "interrupt", "interrupts": interrupts(pending)}
+        await _write(run.run_id, encoded)
+    await _set_status(identity, deps.run_id, "completed" if pending is None else "interrupted")
 
 
 TITLE_PROMPT = (

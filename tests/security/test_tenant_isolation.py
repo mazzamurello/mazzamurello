@@ -92,6 +92,13 @@ def _new_row(table: str, owner: User) -> tuple[LiteralString, tuple[Any, ...]]:
                 " VALUES (%s, %s, %s, 'intruder', now(), now(), now())",
                 (uuid7(), tenant, user),
             )
+        case "conversation_plans":
+            # Row-level security refuses it before the victim's existing plan would conflict.
+            return (
+                "INSERT INTO conversation_plans (conversation_id, tenant_id, owner_id, items, updated_at)"
+                " VALUES (%s, %s, %s, '[]', now())",
+                (owner.conversation_id, tenant, user),
+            )
         case "compaction_checkpoints":
             # Row-level security refuses it before the victim's existing checkpoint would conflict.
             return (

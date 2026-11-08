@@ -30,6 +30,7 @@ CONTRACT_TABLES = (
     "folders",
     "user_settings",
     "conversations",
+    "conversation_plans",
     "runs",
     "conversation_messages",
     "compaction_checkpoints",
@@ -41,6 +42,7 @@ PRIVATE_TABLES = (
     "folders",
     "user_settings",
     "conversations",
+    "conversation_plans",
     "runs",
     "conversation_messages",
     "compaction_checkpoints",
@@ -223,7 +225,7 @@ TABLES = [
       title text NOT NULL,
       active_run_id uuid,
       usage jsonb,
-      pending_approvals jsonb,
+      pending_interrupts jsonb,
       approvals_expire_at timestamptz,
       temporary boolean NOT NULL DEFAULT false,
       archived_at timestamptz,
@@ -251,6 +253,18 @@ TABLES = [
       FOREIGN KEY (tenant_id, owner_id, forked_from_conversation_id)
         REFERENCES conversations (tenant_id, owner_id, id) ON DELETE SET NULL (forked_from_conversation_id),
       FOREIGN KEY (tenant_id, connection_id) REFERENCES connections (tenant_id, id) ON DELETE SET NULL (connection_id)
+    )
+    """,
+    # The task list of a conversation (UX-009, ADR-0083).
+    """
+    CREATE TABLE conversation_plans (
+      conversation_id uuid PRIMARY KEY,
+      tenant_id uuid NOT NULL,
+      owner_id uuid NOT NULL,
+      items jsonb NOT NULL,
+      updated_at timestamptz NOT NULL,
+      FOREIGN KEY (tenant_id, owner_id, conversation_id)
+        REFERENCES conversations (tenant_id, owner_id, id) ON DELETE CASCADE
     )
     """,
     """
@@ -704,6 +718,7 @@ PRIVILEGES = [
     "GRANT UPDATE (revoked_at) ON device_sessions TO mzm_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON folders TO mzm_app",
     "GRANT SELECT, INSERT, UPDATE ON user_settings TO mzm_app",
+    "GRANT SELECT, INSERT, UPDATE ON conversation_plans TO mzm_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON conversations TO mzm_app",
     "GRANT SELECT, INSERT ON compaction_checkpoints TO mzm_app",
     "GRANT SELECT, INSERT ON conversation_messages TO mzm_app",

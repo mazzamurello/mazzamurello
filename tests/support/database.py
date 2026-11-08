@@ -33,6 +33,7 @@ PRIVATE_TABLES = (
     "folders",
     "user_settings",
     "conversations",
+    "conversation_plans",
     "conversation_messages",
     "compaction_checkpoints",
     "runs",

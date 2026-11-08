@@ -54,6 +54,11 @@ def conflict() -> ApiError:
     return ApiError(409, "resource.conflict", "Conflict")
 
 
+def interrupt_pending() -> ApiError:
+    """The conversation waits for the user's answer (AGT-015, ADR-0033)."""
+    return ApiError(409, "run.interrupt_pending", "An answer is pending")
+
+
 def temporary() -> ApiError:
     """What a temporary conversation cannot do (CNV-011, ADR-0082)."""
     return ApiError(409, "conversation.temporary", "Temporary conversation")

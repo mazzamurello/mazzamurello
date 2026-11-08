@@ -34,7 +34,11 @@ MUST NOT execute scripts or load remote resources contained in messages.
 - **Verification:** review
 
 Clients SHOULD show tool activity, reasoning and sandbox output as compact
-summaries that the user can expand to see full details. Approval prompts MUST
+summaries that the user can expand to see full details. Tool activity MUST
+appear where it happened among the answer's text, also while the answer
+streams, and MUST show whether each call is still running or done. A command
+the agent runs in the sandbox MUST say in a few words what it is for, which
+clients show above the command (ADR-0085). Approval prompts MUST
 nevertheless always show the tool, its arguments and destination in full
 (ADR-0033).
 
@@ -112,14 +116,19 @@ Rationale: journey J12.
 
 ## UX-009: Progress and questions during long tasks
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
 
-During a run, clients SHOULD show the assistant's task list as it updates,
-and MUST show the questions the assistant asks the user (AGT-015) as choices
-the user can answer.
+The assistant SHOULD keep a task list for long tasks, one per conversation,
+which lasts from one run to the next. During a run, clients SHOULD show the
+task list as it updates, and its latest state when the conversation is
+opened. Clients MUST show the questions the assistant asks the user
+(AGT-015) as choices the user can answer, in their own words or by skipping
+the question, in place of the message box, also when the conversation is
+opened later; several questions are shown one at a time, and the controls to
+answer stay in view on any screen (ADR-0083).
 
 Rationale: journey J7.
 
