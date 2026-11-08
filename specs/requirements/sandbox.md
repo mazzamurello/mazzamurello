@@ -246,3 +246,21 @@ archive, and to replace the workspace of a stopped sandbox with one, for
 backups (ADR-0077). The import MUST NOT run anything from the archive, and
 MUST refuse entries that would be written outside the workspace, such as
 absolute paths, `..` segments, links and device files.
+
+## SBX-021: Tools in the sandbox
+
+- **Status:** implemented
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+The sandbox image MUST include, ready to run without the network, tools to
+read, make and convert the files of a household: PDF text and pages, Word,
+Excel and PowerPoint files read and written from Python, conversion of these
+and of HTML to Markdown, documents with pandoc and common fonts, images,
+audio and video, tables and charts in Python, JSON, SQLite, archives, and
+Node.js. The agent's instructions MUST name these tools (ADR-0080).
+
+Rationale: files attached to a message are read and made in the sandbox,
+which keeps nothing installed after an answer (ADR-0076).
+
