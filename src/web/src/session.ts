@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 
 import { ApiError, api, unwrap, type User } from "./api/client";
+import { discardOpenTemporary } from "./temporary";
 
 export const ME = ["me"] as const;
 
@@ -26,6 +27,8 @@ export function useSignOut(): () => Promise<void> {
   const queries = useQueryClient();
   const navigate = useNavigate();
   return async () => {
+    // A temporary conversation goes with the session that had it open (CNV-011).
+    await discardOpenTemporary();
     await api.POST("/auth/logout");
     // Clearing the cache would detach the app from the user it shows:
     // forget the user first, which shows the sign-in page, then the rest.

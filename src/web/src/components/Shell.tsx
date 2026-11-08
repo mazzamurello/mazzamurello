@@ -6,6 +6,7 @@ import { Link, Outlet, useLocation } from "react-router";
 import type { User } from "../api/client";
 import { formatMoney, useUsage } from "../costs";
 import { useSignOut } from "../session";
+import { useLeavingTemporary } from "../temporary";
 import { ConversationList } from "./ConversationList";
 import { Sprite } from "./Sprite";
 
@@ -15,6 +16,7 @@ export function Shell({ me }: { me: User }) {
   const [open, setOpen] = useState(false);
   const signOut = useSignOut();
   const location = useLocation();
+  useLeavingTemporary();
   // Close the list on phones after choosing a conversation.
   const [shownFor, setShownFor] = useState(location.pathname);
   if (shownFor !== location.pathname) {

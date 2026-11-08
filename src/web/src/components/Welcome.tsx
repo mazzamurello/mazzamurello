@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Ghost, RefreshCw } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -24,6 +24,8 @@ export function Welcome({ me }: { me: User }) {
   const refresh = useRefreshConversations();
   const models = useModels();
   const [chosen, setChosen] = useState<ModelChoice | null>(null);
+  // Not listed, and deleted when left (CNV-011).
+  const [temporary, setTemporary] = useState(false);
   const quotes = t("quotes", { returnObjects: true }) as Quote[];
   const [index, setIndex] = useState(() => Math.floor(Math.random() * quotes.length));
   const quote = quotes[index % quotes.length];
@@ -35,9 +37,9 @@ export function Welcome({ me }: { me: User }) {
   // The conversation is created with the first attachment, whose workspace receives it, or else with the first message.
   const created = useRef<Promise<string> | null>(null);
   const conversation = useCallback(() => {
-    created.current ??= createConversation(chosen ?? undefined).then((made) => made.id);
+    created.current ??= createConversation(chosen ?? undefined, temporary).then((made) => made.id);
     return created.current;
-  }, [chosen]);
+  }, [chosen, temporary]);
   const attachments = useAttachments(conversation);
 
   async function start(text: string, files: AttachedFile[]) {
@@ -55,12 +57,24 @@ export function Welcome({ me }: { me: User }) {
 
   return (
     <div className="relative flex flex-1 overflow-y-auto">
-      <div className="m-auto flex w-full max-w-[760px] flex-col gap-7 px-4 pt-4 pb-12">
+      <button
+        type="button"
+        onClick={() => setTemporary(!temporary)}
+        // Chosen before the chat exists: an attachment creates it.
+        disabled={attachments.items.length > 0}
+        aria-pressed={temporary}
+        className="absolute top-3 right-3 flex items-center gap-1.5 rounded-[10px] border border-line-strong px-3 py-1.5 text-sm font-semibold text-muted hover:bg-hover hover:text-fg disabled:opacity-50 aria-pressed:border-fg aria-pressed:bg-fg aria-pressed:text-bg"
+      >
+        <Ghost className="size-4" aria-hidden="true" />
+        {t("temporary.toggle")}
+      </button>
+      <div className="m-auto flex w-full max-w-[760px] flex-col gap-7 px-4 pt-14 pb-12">
         <div className="flex flex-col items-center justify-center gap-3.5 sm:flex-row sm:gap-2">
           <Sprite pose="greeting" className="h-[124px] w-[108px] flex-none sm:h-[152px] sm:w-[132px]" />
           {quote && (
             <figure className="relative m-0 max-w-[460px] rounded-[22px] border border-line bg-surface px-[22px] pt-[18px] pb-4 shadow-soft">
               <p className="mb-2 text-xl font-bold tracking-tight text-balance">{greeting}</p>
+              {temporary && <p className="mb-2 text-sm text-muted">{t("temporary.hint")}</p>}
               <blockquote className="m-0 font-serif text-[19px] leading-[1.45] italic text-pretty">“{quote.text}”</blockquote>
               <figcaption className="mt-2 flex items-center gap-1.5 text-[13.5px] text-muted">
                 <span className="flex-1">

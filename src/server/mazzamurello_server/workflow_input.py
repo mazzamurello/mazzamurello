@@ -33,6 +33,8 @@ class RunWorkflowInput:
     disabled_tools: list[str] = field(default_factory=list[str])
     base_instructions: str | None = None
     additional_instructions: str | None = None
+    # A temporary conversation gets no title (CNV-011, ADR-0082).
+    temporary: bool = False
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
