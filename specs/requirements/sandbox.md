@@ -257,9 +257,10 @@ absolute paths, `..` segments, links and device files.
 The sandbox image MUST include, ready to run without the network, tools to
 read, make and convert the files of a household: PDF text and pages, Word,
 Excel and PowerPoint files read and written from Python, conversion of these
-and of HTML to Markdown, documents with pandoc and common fonts, images,
+and of HTML to Markdown, documents with pandoc and common fonts, typeset to
+PDF without further options, images,
 audio and video, tables and charts in Python, JSON, SQLite, archives, and
-Node.js. The agent's instructions MUST name these tools (ADR-0080).
+Node.js. The agent's instructions MUST name these tools (ADR-0080, ADR-0084).
 
 Rationale: files attached to a message are read and made in the sandbox,
 which keeps nothing installed after an answer (ADR-0076).

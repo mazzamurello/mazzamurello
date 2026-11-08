@@ -274,6 +274,11 @@ def test_the_sandbox_reads_and_makes_documents(sandboxes: Driver) -> None:
         printf '# Shopping\\n\\n- basil\\n' | pandoc -f markdown -t html
         printf '# Shopping\\n' | pandoc -o list.docx && test -s list.docx && echo pandoc-docx-ok
 
+        printf -- '---\\ntitle: Dinner plan\\n---\\n\\n# Monday\\n\\n' > plan.md
+        printf '| Dish | Cost |\\n|---|---|\\n| Pasta | 3 |\\n' >> plan.md
+        pandoc plan.md -o plan.pdf --pdf-engine=typst && pdftotext plan.pdf - | tr -s ' \\n' ' '; echo
+        pdffonts plan.pdf | grep -o 'Libertinus[A-Za-z]*' | head -1
+
         fc-list : family | sort -u
         """,
     )
@@ -281,6 +286,9 @@ def test_the_sandbox_reads_and_makes_documents(sandboxes: Driver) -> None:
     assert "qpdf-ok" in output
     assert "<li>basil</li>" in output
     assert "pandoc-docx-ok" in output
+    # Typeset to PDF by Typst, with a plain command and its own font (ADR-0084).
+    assert "Dinner plan Monday Dish Cost Pasta 3" in output
+    assert "LibertinusSerif" in output
     for family in ("DejaVu Sans", "Liberation Sans", "Liberation Serif", "Noto Sans"):
         assert family in output, f"no {family} font"
 
