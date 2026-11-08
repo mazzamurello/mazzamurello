@@ -112,14 +112,18 @@ Rationale: journey J12.
 
 ## UX-009: Progress and questions during long tasks
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
 
-During a run, clients SHOULD show the assistant's task list as it updates,
-and MUST show the questions the assistant asks the user (AGT-015) as choices
-the user can answer.
+The assistant SHOULD keep a task list for long tasks, one per conversation,
+which lasts from one run to the next. During a run, clients SHOULD show the
+task list as it updates, and its latest state when the conversation is
+opened. Clients MUST show the questions the assistant asks the user
+(AGT-015) as choices the user can answer, in their own words or by skipping
+the question, in place of the message box, also when the conversation is
+opened later (ADR-0083).
 
 Rationale: journey J7.
 

@@ -232,7 +232,7 @@ A user's groups of conversations (CNV-007, ADR-0073).
 | `title` | text | not null; empty while untitled (ADR-0052), then named by its user or by its model (CNV-006); searched through a GIN index on its `simple` tsvector (CNV-009) |
 | `active_run_id` | uuid | the last run of the active path (ADR-0037); null before the first run; (`tenant_id`, `owner_id`, `active_run_id`) references `runs` on delete set null (`active_run_id`) |
 | `usage` | jsonb | Pydantic AI conversation usage |
-| `pending_approvals` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending (ADR-0033), else null |
+| `pending_interrupts` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending: questions to the user, and approvals (ADR-0033, ADR-0083), else null |
 | `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
 | `folder_id` | uuid | its folder, or null; (`tenant_id`, `owner_id`, `folder_id`) references `folders` on delete set null (`folder_id`) |
 | `pinned_at` | timestamptz | when it was pinned; null when not pinned (CNV-008) |
@@ -246,6 +246,18 @@ A user's groups of conversations (CNV-007, ADR-0073).
 | `archived_at` | timestamptz | null when active |
 | `created_at` | timestamptz | not null |
 | `updated_at` | timestamptz | not null; updated when a run adds messages |
+
+### `conversation_plans` (private)
+
+The task list of a conversation (UX-009, ADR-0083); at most one row per
+conversation, and none until the assistant writes one.
+
+| Column | Type | Notes |
+|---|---|---|
+| `conversation_id` | uuid | primary key; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete cascade |
+| `tenant_id`, `owner_id` | uuid | not null |
+| `items` | jsonb | not null; the steps, in order, each `{id, content, status, active_form}` as `Planning` writes them |
+| `updated_at` | timestamptz | not null |
 
 ### `user_settings` (private)
 
@@ -395,7 +407,7 @@ listing the models again replaces the rows of the connection.
 ### Policies for private tables
 
 `device_sessions`, `folders`, `user_settings`, `conversations`,
-`conversation_messages`, `compaction_checkpoints`, `runs` and `usage_ledger`
+`conversation_plans`, `conversation_messages`, `compaction_checkpoints`, `runs` and `usage_ledger`
 use the same policy for every operation:
 
 ```sql
@@ -420,6 +432,7 @@ keys, not by privileges of `mzm_app`.
 | `folders` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `user_settings` | `SELECT`, `INSERT`, `UPDATE` |
 | `conversations` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `conversation_plans` | `SELECT`, `INSERT`, `UPDATE` |
 | `compaction_checkpoints` | `SELECT`, `INSERT`: checkpoints never change (ADR-0041) |
 | `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |
 | `runs` | `SELECT`, `INSERT`, `UPDATE`, `DELETE`: rewinding deletes runs (ADR-0068) |

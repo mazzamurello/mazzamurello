@@ -804,8 +804,10 @@ paths:
         title and model; it records where it came from. Its workspace starts
         as a copy of this conversation's (SBX-010, ADR-0078). Ledger entries
         are not copied (CNV-005, ADR-0073). Refused with `run.in_progress`
-        while a run of the conversation is queued or running, and with
-        `conversation.temporary` for a temporary conversation (CNV-011).
+        while a run of the conversation is queued or running,
+        `run.interrupt_pending` while an interrupt is pending, and
+        `conversation.temporary` for a temporary conversation (CNV-011). The
+        fork gets a copy of the task list (ADR-0083).
       x-requirements: [CNV-005, CNV-011, TEN-006]
       requestBody:
         required: true
@@ -990,8 +992,12 @@ paths:
         second run. Errors detected before the run starts are returned as
         HTTP problems; errors after it starts arrive as `RUN_ERROR`. A run
         whose workflow cannot be queued fails at once with `internal.error`,
-        so the conversation accepts new runs.
-      x-requirements: [AGT-009, AGT-010, API-003, API-004, CNV-002, TEN-006]
+        so the conversation accepts new runs. A run with `resume` answers
+        every pending interrupt of the conversation, continues the
+        interrupted run and has kind `resume`; answers to interrupts that are
+        not pending, a missing answer, or one that does not fit its question
+        are refused with `approval.invalid` (AGT-015, ADR-0083).
+      x-requirements: [AGT-009, AGT-010, AGT-015, API-003, API-004, CNV-002, TEN-006]
       requestBody:
         required: true
         content:
@@ -1265,9 +1271,9 @@ components:
           example: { type: "about:blank", title: "Run in progress", status: 409, code: "run.in_progress" }
     TemporaryConversation:
       description: |
-        A run is in progress in this conversation (`run.in_progress`), or the
-        conversation is temporary and cannot do this (`conversation.temporary`,
-        CNV-011).
+        A run is in progress in this conversation (`run.in_progress`), an
+        interrupt is pending (`run.interrupt_pending`), or the conversation is
+        temporary and cannot do this (`conversation.temporary`, CNV-011).
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -1645,7 +1651,7 @@ components:
 
     Conversation:
       type: object
-      required: [id, title, archived, temporary, active_run_id, model, reasoning, disabled_tools, base_instructions, additional_instructions, folder_id, pinned, forked_from, cost, last_message_at, created_at, updated_at]
+      required: [id, title, archived, temporary, active_run_id, model, reasoning, disabled_tools, base_instructions, additional_instructions, folder_id, pinned, forked_from, interrupts, plan, cost, last_message_at, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         temporary:
@@ -1680,6 +1686,17 @@ components:
           description: Its own additional instructions; `null` to use its user's default ones as they are at each run (CNV-014).
         folder_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
         pinned: { type: boolean }
+        interrupts:
+          type: array
+          description: |
+            The pending interrupts of its last run, as its `RUN_FINISHED`
+            carried them; empty when none is pending. While one is, the
+            conversation takes no new message (AGT-015, ADR-0083).
+          items: { $ref: "#/components/schemas/Interrupt" }
+        plan:
+          type: array
+          description: The assistant's task list for this conversation, empty until it writes one (UX-009, ADR-0083).
+          items: { $ref: "#/components/schemas/PlanStep" }
         forked_from:
           description: The conversation and run this one was forked from; the conversation is `null` once deleted, and the run is the original run's identifier even then (CNV-005).
           oneOf:
@@ -1705,6 +1722,55 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Conversation" }
         next_cursor: { type: [string, "null"] }
+
+    Interrupt:
+      type: object
+      description: |
+        An AG-UI interrupt, with AG-UI's field names. A question to the user
+        has `reason` `ask_user`, the ID `int-` followed by its `toolCallId`,
+        and `metadata.questions`; it is answered by a run whose `resume`
+        names it (AGT-015, ADR-0083).
+      required: [id, reason]
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        reason: { type: string, enum: [ask_user] }
+        toolCallId: { type: string }
+        metadata:
+          type: object
+          properties:
+            questions:
+              type: array
+              minItems: 1
+              items: { $ref: "#/components/schemas/Question" }
+
+    Question:
+      type: object
+      description: A question as the assistant asked it, which clients show as the assistant's (ADR-0083).
+      required: [header, question, options, multi_select]
+      properties:
+        header: { type: string, description: A short label, which the answer names. }
+        question: { type: string }
+        options:
+          type: array
+          minItems: 2
+          maxItems: 6
+          items:
+            type: object
+            required: [label]
+            properties:
+              label: { type: string }
+              description: { type: [string, "null"] }
+        multi_select: { type: boolean }
+
+    PlanStep:
+      type: object
+      required: [id, content, status]
+      properties:
+        id: { type: string }
+        content: { type: string, description: What the step does, in the imperative. }
+        active_form: { type: [string, "null"], description: The step said as it happens, shown while it is in progress. }
+        status: { type: string, enum: [pending, in_progress, completed, cancelled, blocked] }
 
     CreateConversationRequest:
       type: object
@@ -1991,7 +2057,13 @@ components:
               interruptId: { type: string }
               status: { type: string, enum: [resolved, cancelled] }
               payload:
-                description: 'For approvals, `{"approved": true|false}`.'
+                description: |
+                  For approvals, `{"approved": true|false}`. For a question
+                  (`ask_user`), with `status` `resolved`: `{"answers": [...]}`,
+                  one per question, each `{"header", "selected": [labels]}`
+                  or `{"header", "custom_answer"}` with the user's own words,
+                  at most 2000 characters; `cancelled` declines the question
+                  (AGT-015, ADR-0083).
         attachments:
           type: array
           maxItems: 20
@@ -2067,6 +2139,11 @@ components:
         `RUN_ERROR` carries the error's `code` and a `message`, which ends
         with the reason the model or its provider gave, when there is one;
         a request the model refuses fails with `model.refused` (MOD-015).
+        A run that asks the user a question ends with `RUN_FINISHED` whose
+        `outcome` is `{type: "interrupt", interrupts}`, each an `Interrupt`
+        (AGT-015, ADR-0083). After a planning tool changes the task list, a
+        `CUSTOM` event named `mzm.plan` carries as `value` `{steps}`, each a
+        `PlanStep` (UX-009).
       required: [type]
       additionalProperties: true
       properties:
