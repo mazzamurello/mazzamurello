@@ -180,7 +180,7 @@ Rationale: journey J5.
 
 ## CNV-013: Conversation settings
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -204,7 +204,7 @@ Rationale: journey J13.
 
 ## CNV-014: Custom instructions
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
