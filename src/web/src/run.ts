@@ -9,6 +9,8 @@ import type { Pose } from "./components/Sprite";
 
 export type LivePart =
   | { kind: "text"; id: string; text: string }
+  // What the model worked out before answering (CNV-013).
+  | { kind: "reasoning"; id: string; text: string }
   | { kind: "tool"; id: string; name: string; args: string; result?: string };
 
 export interface LiveRun {
@@ -43,6 +45,16 @@ export function apply(run: LiveRun, event: RunEvent): LiveRun {
       const part = parts[index];
       if (part?.kind === "text") parts[index] = { ...part, text: part.text + text("delta") };
       else parts.push({ kind: "text", id: text("messageId"), text: text("delta") });
+      break;
+    }
+    case "REASONING_MESSAGE_START":
+      parts.push({ kind: "reasoning", id: text("messageId"), text: "" });
+      break;
+    case "REASONING_MESSAGE_CONTENT": {
+      const index = parts.findIndex((part) => part.kind === "reasoning" && part.id === text("messageId"));
+      const part = parts[index];
+      if (part?.kind === "reasoning") parts[index] = { ...part, text: part.text + text("delta") };
+      else parts.push({ kind: "reasoning", id: text("messageId"), text: text("delta") });
       break;
     }
     case "TOOL_CALL_START":
@@ -151,5 +163,5 @@ export function poseOf(run: LiveRun | null): Pose {
   const last = run.parts.at(-1);
   if (last === undefined) return "thinking";
   if (last.kind === "tool") return last.result === undefined ? toolActivity(last.name) : "thinking";
-  return "answering";
+  return last.kind === "reasoning" ? "thinking" : "answering";
 }

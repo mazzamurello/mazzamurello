@@ -22,11 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from mazzamurello_server import errors, schemas
 from mazzamurello_server.auth import Authenticated, Engine
-from mazzamurello_server.connections import default_model
 from mazzamurello_server.conversations import Durable, find_conversation
 from mazzamurello_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
 from mazzamurello_server.durable import APPLICATION_VERSION, EVENTS_STREAM, RUN_QUEUE, RUN_WORKFLOW
 from mazzamurello_server.sandbox import SandboxDriver, stop_conversation_sandbox
+from mazzamurello_server.settings import new_conversation
 from mazzamurello_server.workflow_input import RunWorkflowInput
 from mazzamurello_server.workspace import attachment_entries
 
@@ -130,14 +130,28 @@ def _streaming(
     )
 
 
+async def _instructions(connection: AsyncConnection, conversation: Any) -> tuple[str | None, str | None]:
+    """The conversation's own instructions, or else its user's defaults as they are now (CNV-014, ADR-0081)."""
+    defaults = (
+        await connection.execute(text("SELECT base_instructions, additional_instructions FROM user_settings"))
+    ).one_or_none()
+    base = conversation.base_instructions
+    additional = conversation.additional_instructions
+    if defaults is not None:
+        base = defaults.base_instructions if base is None else base
+        additional = defaults.additional_instructions if additional is None else additional
+    return base, additional
+
+
 async def _run_model(connection: AsyncConnection, conversation: Any) -> Any:
     """The connection and model that answer the conversation's next run (MOD-012, ADR-0069).
 
-    A conversation created before its household had a default model takes the
-    default now. A model no longer offered is never replaced by another one.
+    A conversation created before there was a default model takes the user's
+    or the household's default now (CNV-013). A model no longer offered is
+    never replaced by another one.
     """
     if conversation.connection_id is None and conversation.model is None:
-        default = await default_model(connection)
+        default = (await new_conversation(connection)).model
         if default is None:
             raise errors.ApiError(409, "model.unavailable", "No default model")
         await connection.execute(
@@ -208,6 +222,7 @@ async def start_run(
             if body.parent_run_id is not None and body.parent_run_id != parent:
                 raise errors.conflict()
             model = await _run_model(connection, conversation)
+            base, additional = await _instructions(connection, conversation)
             await connection.execute(
                 text(
                     "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status,"
@@ -250,6 +265,10 @@ async def start_run(
         connection_id=str(model.id),
         model=model.model,
         attachments=attachments,
+        reasoning=conversation.reasoning,
+        disabled_tools=list(conversation.disabled_tools),
+        base_instructions=base,
+        additional_instructions=additional,
     )
     try:
         await durable.enqueue_async(

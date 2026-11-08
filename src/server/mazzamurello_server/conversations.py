@@ -1,4 +1,6 @@
-"""Conversations, their model and their history (API-003, CNV-004, MOD-012, ADR-0031, ADR-0037, ADR-0068).
+"""Conversations, their settings and their history.
+
+API-003, CNV-004, CNV-013, CNV-014, MOD-012, ADR-0031, ADR-0037, ADR-0068, ADR-0081.
 
 History is a projection of the stored Pydantic AI messages to AG-UI
 messages, along the chain of runs from the first run to the active one.
@@ -24,16 +26,18 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mazzamurello_server import errors, schemas
 from mazzamurello_server.auth import Authenticated, Engine
-from mazzamurello_server.connections import default_model, offered
+from mazzamurello_server.connections import offered
 from mazzamurello_server.costs import CONVERSATION_COST, money, run_costs
 from mazzamurello_server.credentials import uuid7
 from mazzamurello_server.database import transaction
 from mazzamurello_server.sandbox import SandboxDriver, workspace_request
+from mazzamurello_server.settings import new_conversation
 
 router = APIRouter()
 
 CONVERSATION_COLUMNS = (
-    "id, title, archived_at IS NOT NULL AS archived, active_run_id, connection_id, model, folder_id,"
+    "id, title, archived_at IS NOT NULL AS archived, active_run_id, connection_id, model, reasoning, disabled_tools,"
+    " base_instructions, additional_instructions, folder_id,"
     " pinned_at IS NOT NULL AS pinned, forked_from_conversation_id, forked_from_run_id, last_message_at,"
     f" created_at, updated_at, {CONVERSATION_COST}"
 )
@@ -64,6 +68,10 @@ def conversation_response(row: Any) -> schemas.Conversation:
         model=None
         if row.connection_id is None or row.model is None
         else schemas.ModelChoiceOut(connection_id=row.connection_id, model=row.model),
+        reasoning=row.reasoning,
+        disabled_tools=list(row.disabled_tools),
+        base_instructions=row.base_instructions,
+        additional_instructions=row.additional_instructions,
         folder_id=row.folder_id,
         pinned=row.pinned,
         forked_from=None
@@ -105,17 +113,20 @@ async def create_conversation(
     identity: Authenticated, engine: Engine, body: schemas.CreateConversationRequest | None = None
 ) -> schemas.Conversation:
     async with transaction(engine, identity) as connection:
-        # The chosen model, or else the household's default (MOD-012).
+        # What the request chose, or else a copy of the user's defaults (MOD-012, CNV-013).
         choice = body.model if body is not None else None
         if choice is not None and not await offered(connection, choice):
             raise errors.invalid("/model", "not_offered")
-        model = choice or await default_model(connection)
+        defaults = await new_conversation(connection)
+        model = choice or defaults.model
+        reasoning = body.reasoning if body is not None and body.reasoning is not None else defaults.reasoning
+        disabled = body.disabled_tools if body is not None and body.disabled_tools is not None else None
         row = (
             await connection.execute(
                 text(
-                    "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, last_message_at,"  # noqa: S608
-                    " created_at, updated_at) VALUES (:id, :tenant_id, :owner_id, :title, :connection_id, :model,"
-                    " now(), now(), now())"
+                    "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, reasoning,"  # noqa: S608
+                    " disabled_tools, last_message_at, created_at, updated_at) VALUES (:id, :tenant_id, :owner_id,"
+                    " :title, :connection_id, :model, :reasoning, :disabled_tools, now(), now(), now())"
                     f" RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 {
@@ -126,6 +137,8 @@ async def create_conversation(
                     "title": body.title if body is not None and body.title is not None else "",
                     "connection_id": None if model is None else model.connection_id,
                     "model": None if model is None else model.model,
+                    "reasoning": reasoning,
+                    "disabled_tools": defaults.disabled_tools if disabled is None else disabled,
                 },
             )
         ).one()
@@ -190,8 +203,9 @@ async def update_conversation(
             raise errors.invalid("/model", "not_offered")
         if body.folder_id is not None and not await _owns_folder(connection, body.folder_id):
             raise errors.invalid("/folder_id", "not_a_folder")
-        if "pinned" in present and body.pinned is None:
-            raise errors.invalid("/pinned", "null")
+        for name in ("pinned", "reasoning", "disabled_tools"):
+            if name in present and getattr(body, name) is None:
+                raise errors.invalid(f"/{name}", "null")
         changes = {
             "title": body.title if "title" in present else None,
             "archived": body.archived if "archived" in present else None,
@@ -200,6 +214,13 @@ async def update_conversation(
             "set_folder": "folder_id" in present,
             "folder_id": body.folder_id,
             "pinned": body.pinned,
+            "reasoning": body.reasoning,
+            "disabled_tools": body.disabled_tools,
+            # Present and null uses the user's defaults again (CNV-014).
+            "set_base": "base_instructions" in present,
+            "base_instructions": body.base_instructions,
+            "set_additional": "additional_instructions" in present,
+            "additional_instructions": body.additional_instructions,
         }
         row = (
             await connection.execute(
@@ -212,7 +233,13 @@ async def update_conversation(
                     " folder_id = CASE WHEN CAST(:set_folder AS boolean) THEN CAST(:folder_id AS uuid)"
                     " ELSE folder_id END,"
                     " pinned_at = CASE WHEN CAST(:pinned AS boolean) IS NULL THEN pinned_at"
-                    " WHEN CAST(:pinned AS boolean) THEN coalesce(pinned_at, now()) ELSE NULL END, updated_at = now()"
+                    " WHEN CAST(:pinned AS boolean) THEN coalesce(pinned_at, now()) ELSE NULL END,"
+                    " reasoning = coalesce(CAST(:reasoning AS text), reasoning),"
+                    " disabled_tools = coalesce(CAST(:disabled_tools AS text[]), disabled_tools),"
+                    " base_instructions = CASE WHEN CAST(:set_base AS boolean) THEN CAST(:base_instructions AS text)"
+                    " ELSE base_instructions END,"
+                    " additional_instructions = CASE WHEN CAST(:set_additional AS boolean)"
+                    " THEN CAST(:additional_instructions AS text) ELSE additional_instructions END, updated_at = now()"
                     f" WHERE id = :id RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 changes | {"id": conversation_id},
@@ -310,10 +337,12 @@ async def fork_conversation(
         new_ids = {run.id: uuid7() for run in path}
         await connection.execute(
             text(
-                "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, folder_id,"
-                " forked_from_conversation_id, forked_from_run_id, active_run_id, last_message_at, created_at,"
-                " updated_at) SELECT :fork, tenant_id, owner_id, title, connection_id, model, folder_id, id, :run,"
-                " NULL, now(), now(), now() FROM conversations WHERE id = :id"
+                "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, reasoning,"
+                " disabled_tools, base_instructions, additional_instructions, folder_id, forked_from_conversation_id,"
+                " forked_from_run_id, active_run_id, last_message_at, created_at, updated_at) SELECT :fork,"
+                " tenant_id, owner_id, title, connection_id, model, reasoning, disabled_tools, base_instructions,"
+                " additional_instructions, folder_id, id, :run, NULL, now(), now(), now() FROM conversations"
+                " WHERE id = :id"
             ),
             {"fork": fork_id, "run": body.run_id, "id": conversation_id},
         )

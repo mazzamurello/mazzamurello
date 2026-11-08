@@ -1,7 +1,7 @@
 // Conversations through the API (API-003, CNV-004, MOD-012).
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api, unwrap, type Conversation, type ListEntry, type ModelChoice } from "./api/client";
+import { api, unwrap, type Conversation, type ListEntry, type ModelChoice, type Schemas } from "./api/client";
 
 export const CONVERSATIONS = ["conversations"] as const;
 
@@ -47,7 +47,7 @@ export async function createConversation(model?: ModelChoice): Promise<Conversat
 
 export async function updateConversation(
   id: string,
-  body: { title?: string; archived?: boolean; model?: ModelChoice; folder_id?: string | null; pinned?: boolean },
+  body: Schemas["UpdateConversationRequest"],
 ): Promise<Conversation> {
   return unwrap(await api.PATCH("/conversations/{conversation_id}", { params: { path: { conversation_id: id } }, body }));
 }

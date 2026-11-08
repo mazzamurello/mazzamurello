@@ -147,7 +147,8 @@
     "toolResult": "Result",
     "image": "image",
     "fork": "Fork from here",
-    "forkedFrom": "Forked from another conversation"
+    "forkedFrom": "Forked from another conversation",
+    "reasoning": "Reasoning"
   },
   "activity": {
     "thinking": "Thinking…",
@@ -320,5 +321,42 @@
       "network": "The server can't be reached.",
       "internal_error": "It didn't work. Try again."
     }
+  },
+  "assistant": {
+    "title": "Assistant",
+    "hint": "How your new conversations start. Each conversation can change these in its own settings.",
+    "model": "Model for new chats",
+    "modelHint": "Until you choose one, new chats use the household's default model.",
+    "householdModel": "The household's default model",
+    "reasoning": "Reasoning",
+    "reasoningHint": "How much the model thinks before it answers. Deep is slower, and costs more on paid models.",
+    "levels": {
+      "off": "Off",
+      "on": "On",
+      "deep": "Deep"
+    },
+    "tools": "Tools",
+    "toolsHint": "What the assistant may use. A tool that is off is not offered to the model.",
+    "toolNames": {
+      "web_search": "Search the web",
+      "read_page": "Read web pages",
+      "shell": "Run commands",
+      "file_system": "Read and write files",
+      "offer_download": "Offer downloads"
+    },
+    "base": "Base instructions",
+    "baseHint": "Replace the assistant's own instructions with yours. What it needs to use its tools stays.",
+    "builtIn": "The assistant's own instructions",
+    "additional": "Additional instructions",
+    "additionalHint": "Added after the base instructions, for example how you like answers.",
+    "none": "None",
+    "restore": "Restore the default base instructions",
+    "restoreShort": "Restore",
+    "saveInstructions": "Save instructions",
+    "chat": "Chat settings",
+    "chatHint": "For this conversation, from its next answer.",
+    "myBase": "Your default base instructions",
+    "myAdditional": "Your default additional instructions",
+    "notSaved": "Not saved. Try again."
   }
 }
