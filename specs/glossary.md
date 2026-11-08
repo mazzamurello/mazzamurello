@@ -32,8 +32,8 @@ new entry here first (ADR-0005).
 | Pin | A mark that keeps a conversation or a folder at the top of the conversation list (CNV-008). |
 | Rewind | Making an earlier turn the end of a conversation, so it continues from there; what followed is deleted (CNV-004, ADR-0068). |
 | File library | The private collection of files a user has uploaded, usable from any of their conversations; shown as "Files" (CNV-012). |
-| Base instructions | The assistant's main instructions, which a user may replace and restore (CNV-014). |
-| Additional instructions | Instructions a user adds after the base instructions (CNV-014). |
+| Base instructions | The assistant's main instructions, which a user may replace and restore; shown as "System prompt" (CNV-014). |
+| Additional instructions | Instructions a user adds after the base instructions; shown as "Additional prompt" (CNV-014). |
 | Working instructions | The part of the assistant's instructions that tells it how to use its workspace and the tools enabled for a run; not part of the base instructions, and kept whatever the user writes (CNV-014, ADR-0081). |
 | Conversation settings | A conversation's model, reasoning and enabled tools, copied from the user's defaults when it starts, and its own instructions, if any (CNV-013, CNV-014). |
 | User defaults | The settings and instructions a user chooses for their conversations: new conversations copy the settings, and conversations without instructions of their own use the instructions (CNV-013, CNV-014, ADR-0081). |

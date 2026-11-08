@@ -54,14 +54,23 @@ choosing defaults for the others adds a screen nobody needs.
 6. **Reasoning:** `connection_models` records whether a model can reason:
    for OpenRouter, `reasoning` in its supported parameters; null for another
    server. A model known not to reason runs without the setting, and clients
-   hide it; an unknown one is given it, and a server that refuses fails the
+   show it disabled and say why; an unknown one is given it, and a server that refuses fails the
    run with its reason, as for tools (MOD-014). Reasoning parts are stored
    with the messages and reach clients as AG-UI reasoning events, shown
    folded above the answer.
 7. **API:** `GET` and `PUT /me/settings` for the user defaults;
    `UpdateConversationRequest` takes `reasoning`, `disabled_tools`,
    `base_instructions` and `additional_instructions`; `ModelOption` says
-   whether a model can reason.
+   whether a model can reason. The user defaults come back with
+   `built_in_base_instructions`, the text that applies when no one has
+   replaced it, so clients can show it.
+8. **Clients** call the base instructions the system prompt, the name model
+   APIs give it, and the additional instructions the additional prompt. The
+   additional prompt comes first; the system prompt comes last, in a danger
+   zone, since replacing it changes who the assistant is. Each field starts
+   with the text that applies: for the user defaults, theirs or the built-in
+   one; for a conversation, its own or the user's default. A text saved
+   unchanged from that is saved as null, so it keeps following the default.
 
 ## Consequences
 
@@ -88,5 +97,9 @@ choosing defaults for the others adds a screen nobody needs.
 - **A free effort level or token budget:** providers disagree on what they
   take; three levels map onto all of them.
 - **A list of enabled tools:** a tool added later would be off everywhere.
+- **Hiding reasoning for a model that cannot reason:** the setting would
+  vanish when the model changes, with nothing to say why.
+- **An empty field for the default system prompt:** users would replace a
+  text they cannot see.
 - **Working instructions inside the base instructions:** a user replacing
   them would break the workspace and the toolbox without knowing why.

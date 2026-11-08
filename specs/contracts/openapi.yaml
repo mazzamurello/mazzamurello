@@ -114,7 +114,7 @@ paths:
           description: The user's defaults.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UserSettings" }
+              schema: { $ref: "#/components/schemas/UserSettingsView" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
     put:
       tags: [auth]
@@ -135,7 +135,7 @@ paths:
           description: The user's defaults.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UserSettings" }
+              schema: { $ref: "#/components/schemas/UserSettingsView" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
@@ -1609,6 +1609,23 @@ components:
         additional_instructions:
           allOf: [{ $ref: "#/components/schemas/Instructions" }]
           description: Added after the assistant's instructions; `null` for none.
+
+    UserSettingsView:
+      type: object
+      description: A user's defaults, with the built-in base instructions that clients show (CNV-014, ADR-0081).
+      required: [model, reasoning, disabled_tools, base_instructions, additional_instructions, built_in_base_instructions]
+      additionalProperties: false
+      properties:
+        model:
+          oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+        reasoning:
+          oneOf: [{ $ref: "#/components/schemas/Reasoning" }, { type: "null" }]
+        disabled_tools: { $ref: "#/components/schemas/DisabledTools" }
+        base_instructions: { $ref: "#/components/schemas/Instructions" }
+        additional_instructions: { $ref: "#/components/schemas/Instructions" }
+        built_in_base_instructions:
+          type: string
+          description: The base instructions that apply when neither the user nor the conversation replaced them.
 
     Conversation:
       type: object
