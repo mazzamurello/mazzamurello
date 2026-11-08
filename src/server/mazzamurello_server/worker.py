@@ -210,7 +210,8 @@ PLANNING_TOOLS = frozenset(
     {"write_plan", "read_plan", "add_task", "update_task_status", "update_task_statuses", "remove_task"}
 )
 
-agent = Agent(
+# A run ends with the answer, or with the questions it asks the user (ADR-0083).
+agent = Agent[RunDeps, str | DeferredToolRequests](
     model_reference(str(uuid.UUID(int=0)), "unset"),
     name="mazzamurello",
     deps_type=RunDeps,
