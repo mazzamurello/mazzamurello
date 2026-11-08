@@ -25,6 +25,7 @@ from mazzamurello_server.auth import Authenticated, Engine
 from mazzamurello_server.conversations import Durable, find_conversation
 from mazzamurello_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
 from mazzamurello_server.durable import APPLICATION_VERSION, EVENTS_STREAM, RUN_QUEUE, RUN_WORKFLOW
+from mazzamurello_server.questions import answer
 from mazzamurello_server.sandbox import SandboxDriver, stop_conversation_sandbox
 from mazzamurello_server.settings import new_conversation
 from mazzamurello_server.workflow_input import RunWorkflowInput
@@ -72,6 +73,8 @@ async def find_run(connection: AsyncConnection, run_id: uuid.UUID) -> Any:
 
 def _user_text(run_input: schemas.RunInput) -> str:
     """The text of the last message, which must come from the user (ADR-0031)."""
+    if not run_input.messages:
+        raise errors.invalid("/messages", "empty")
     last = run_input.messages[-1]
     if last.role != "user":
         raise errors.invalid(f"/messages/{len(run_input.messages) - 1}/role", "must_be_user")
@@ -188,12 +191,11 @@ async def start_run(
 ) -> StreamingResponse:
     if body.thread_id != conversation_id:
         raise errors.invalid("/threadId", "must_match_conversation")
-    if body.resume:
-        # No interrupt can be pending yet: there are no tools that ask for approval.
-        raise errors.ApiError(422, "approval.invalid", "No interrupt to answer")
-    user_text = _user_text(body)
+    # A run that answers the pending questions continues the run that asked them (AGT-015, ADR-0083).
+    resuming = body.resume is not None
+    user_text = "" if resuming else _user_text(body)
     attachments: list[dict[str, Any]] = []
-    if body.attachments:
+    if body.attachments and not resuming:
         async with transaction(engine, identity) as connection:
             await find_conversation(connection, conversation_id)
         attachments = await attachment_entries(request, identity, conversation_id, body.attachments)
@@ -217,6 +219,11 @@ async def start_run(
             ).one_or_none()
             if active is not None:
                 raise errors.ApiError(409, "run.in_progress", "Run in progress")
+            answers: dict[str, Any] | None = None
+            if resuming:
+                answers = answer(conversation.pending_interrupts, body.resume or [])
+            elif conversation.pending_interrupts is not None:
+                raise errors.interrupt_pending()
             parent = conversation.active_run_id
             # A conversation never branches: a run continues the active run (ADR-0068).
             if body.parent_run_id is not None and body.parent_run_id != parent:
@@ -227,10 +234,11 @@ async def start_run(
                 text(
                     "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status,"
                     " connection_id, model_provider, model_name, last_event_seq, created_at)"
-                    " VALUES (:id, :tenant_id, :owner_id, :conversation, :parent, 'message', 'queued', :connection,"
+                    " VALUES (:id, :tenant_id, :owner_id, :conversation, :parent, :kind, 'queued', :connection,"
                     " :provider, :model, 0, now())"
                 ),
                 {
+                    "kind": "resume" if resuming else "message",
                     "id": body.run_id,
                     "tenant_id": identity.tenant_id,
                     "owner_id": identity.user_id,
@@ -243,8 +251,8 @@ async def start_run(
             )
             await connection.execute(
                 text(
-                    "UPDATE conversations SET active_run_id = :run, last_message_at = now(), updated_at = now()"
-                    " WHERE id = :id"
+                    "UPDATE conversations SET active_run_id = :run, pending_interrupts = NULL,"
+                    " last_message_at = now(), updated_at = now() WHERE id = :id"
                 ),
                 {"run": body.run_id, "id": conversation_id},
             )
@@ -270,6 +278,7 @@ async def start_run(
         base_instructions=base,
         additional_instructions=additional,
         temporary=conversation.temporary,
+        answers=answers,
     )
     try:
         await durable.enqueue_async(

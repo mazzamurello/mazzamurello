@@ -2,7 +2,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
-import { api } from "./api/client";
+import { api, type PlanStep } from "./api/client";
 import { followRun, startRun, type RunEvent, type StartRun } from "./api/stream";
 import { CONVERSATIONS } from "./conversations";
 import type { Pose } from "./components/Sprite";
@@ -24,6 +24,8 @@ export interface LiveRun {
   reason?: string;
   // The context in use and the run's cost so far, after each model response (MOD-007).
   usage?: RunUsage;
+  // The task list, as the run changes it (UX-009).
+  plan?: PlanStep[];
 }
 
 export interface RunUsage {
@@ -73,6 +75,9 @@ export function apply(run: LiveRun, event: RunEvent): LiveRun {
     case "CUSTOM":
       if (event.name === "mzm.usage" && typeof event.value === "object" && event.value !== null) {
         return { ...run, parts, usage: event.value as RunUsage };
+      }
+      if (event.name === "mzm.plan" && typeof event.value === "object" && event.value !== null) {
+        return { ...run, parts, plan: (event.value as { steps: PlanStep[] }).steps };
       }
       break;
     case "RUN_FINISHED":
@@ -137,7 +142,8 @@ export function useLiveRun(onEnd: () => Promise<void>) {
   const start = useCallback(
     (run: Omit<StartRun, "runId">) => {
       const id = crypto.randomUUID();
-      void consume({ runId: id, userText: run.text, attachments: run.attachments ?? [], parts: [], status: "running" }, startRun({ ...run, runId: id }), false);
+      const userText = run.resume ? null : run.text;
+      void consume({ runId: id, userText, attachments: run.attachments ?? [], parts: [], status: "running" }, startRun({ ...run, runId: id }), false);
     },
     [consume],
   );
@@ -160,8 +166,18 @@ export function useLiveRun(onEnd: () => Promise<void>) {
   return { live, start, follow, stop, running: live?.status === "running" };
 }
 
+// The tools of questions to the user and of the task list (AGT-015, UX-009, ADR-0083).
+export const ASK_USER = "ask_user_question";
+const PLANNING = new Set(["write_plan", "read_plan", "add_task", "update_task_status", "update_task_statuses", "remove_task"]);
+
+export function isPlanning(name: string): boolean {
+  return PLANNING.has(name);
+}
+
 /** What a tool does, from its name: the sprite's pose and the words for it (UX-013, ADR-0070). */
 export function toolActivity(name: string): Exclude<Pose, "greeting" | "answering" | "waiting" | "error"> {
+  // Planning and asking are the assistant thinking aloud, whatever their names say (ADR-0083).
+  if (isPlanning(name) || name === ASK_USER) return "thinking";
   const lower = name.toLowerCase();
   if (/search_web|web_search|fetch|browse|url/.test(lower)) return "searching";
   if (/run|shell|command|exec|bash/.test(lower)) return "running";
