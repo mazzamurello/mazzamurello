@@ -34,7 +34,11 @@ MUST NOT execute scripts or load remote resources contained in messages.
 - **Verification:** review
 
 Clients SHOULD show tool activity, reasoning and sandbox output as compact
-summaries that the user can expand to see full details. Approval prompts MUST
+summaries that the user can expand to see full details. Tool activity MUST
+appear where it happened among the answer's text, also while the answer
+streams, and MUST show whether each call is still running or done. A command
+the agent runs in the sandbox MUST say in a few words what it is for, which
+clients show above the command (ADR-0085). Approval prompts MUST
 nevertheless always show the tool, its arguments and destination in full
 (ADR-0033).
 
