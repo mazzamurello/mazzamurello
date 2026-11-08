@@ -100,6 +100,45 @@ paths:
               schema: { $ref: "#/components/schemas/User" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /me/settings:
+    get:
+      tags: [auth]
+      operationId: getMySettings
+      summary: The user's defaults for their conversations.
+      description: |
+        Every field is `null`, or empty for `disabled_tools`, until the user
+        sets it (ADR-0081).
+      x-requirements: [CNV-013, CNV-014, TEN-006]
+      responses:
+        "200":
+          description: The user's defaults.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserSettingsView" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    put:
+      tags: [auth]
+      operationId: setMySettings
+      summary: Replace the user's defaults for their conversations.
+      description: |
+        New conversations copy the model, reasoning and tools; conversations
+        without instructions of their own use the instructions from their
+        next run (ADR-0081).
+      x-requirements: [CNV-013, CNV-014, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserSettings" }
+      responses:
+        "200":
+          description: The user's defaults.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserSettingsView" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /me/sessions:
     get:
       tags: [auth]
@@ -394,7 +433,7 @@ paths:
       tags: [conversations]
       operationId: createConversation
       summary: Create a conversation.
-      x-requirements: [API-003]
+      x-requirements: [API-003, CNV-013]
       requestBody:
         required: false
         content:
@@ -446,8 +485,8 @@ paths:
     patch:
       tags: [conversations]
       operationId: updateConversation
-      summary: Rename, archive or unarchive a conversation.
-      x-requirements: [API-003, TEN-006]
+      summary: Rename, archive or unarchive a conversation, or change its settings.
+      x-requirements: [API-003, CNV-013, CNV-014, TEN-006]
       requestBody:
         required: true
         content:
@@ -1519,10 +1558,78 @@ components:
         tools:
           type: [boolean, "null"]
           description: Whether the model can call tools; `null` when the provider does not say. A model that cannot runs without tools (MOD-014).
+        reasoning:
+          type: [boolean, "null"]
+          description: Whether the model can reason; `null` when the provider does not say. A model that cannot runs without reasoning (CNV-013).
+
+    Reasoning:
+      type: string
+      description: |
+        How much the model reasons before it answers: not at all, as much as
+        its provider chooses, or at length (CNV-013, ADR-0081).
+      enum: ["off", "on", deep]
+
+    ToolName:
+      type: string
+      description: |
+        A tool a user can switch off (CNV-013, ADR-0081): searching the web,
+        reading web pages, running commands, reading and writing files, and
+        offering files to download.
+      enum: [web_search, read_page, shell, file_system, offer_download]
+
+    DisabledTools:
+      type: array
+      description: The tools that are off; every other tool is on.
+      uniqueItems: true
+      items: { $ref: "#/components/schemas/ToolName" }
+
+    Instructions:
+      type: [string, "null"]
+      maxLength: 20000
+
+    UserSettings:
+      type: object
+      description: A user's defaults for their conversations (CNV-013, CNV-014, ADR-0081).
+      required: [model, reasoning, disabled_tools, base_instructions, additional_instructions]
+      additionalProperties: false
+      properties:
+        model:
+          description: |
+            The model new conversations start with; `null` for the tenant's
+            default model, which is also used when this one is no longer
+            offered (MOD-012).
+          oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+        reasoning:
+          description: The reasoning new conversations start with; `null` for `on`.
+          oneOf: [{ $ref: "#/components/schemas/Reasoning" }, { type: "null" }]
+        disabled_tools: { $ref: "#/components/schemas/DisabledTools" }
+        base_instructions:
+          allOf: [{ $ref: "#/components/schemas/Instructions" }]
+          description: Replaces the assistant's base instructions; `null` for the built-in ones.
+        additional_instructions:
+          allOf: [{ $ref: "#/components/schemas/Instructions" }]
+          description: Added after the assistant's instructions; `null` for none.
+
+    UserSettingsView:
+      type: object
+      description: A user's defaults, with the built-in base instructions that clients show (CNV-014, ADR-0081).
+      required: [model, reasoning, disabled_tools, base_instructions, additional_instructions, built_in_base_instructions]
+      additionalProperties: false
+      properties:
+        model:
+          oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+        reasoning:
+          oneOf: [{ $ref: "#/components/schemas/Reasoning" }, { type: "null" }]
+        disabled_tools: { $ref: "#/components/schemas/DisabledTools" }
+        base_instructions: { $ref: "#/components/schemas/Instructions" }
+        additional_instructions: { $ref: "#/components/schemas/Instructions" }
+        built_in_base_instructions:
+          type: string
+          description: The base instructions that apply when neither the user nor the conversation replaced them.
 
     Conversation:
       type: object
-      required: [id, title, archived, active_run_id, model, folder_id, pinned, forked_from, cost, last_message_at, created_at, updated_at]
+      required: [id, title, archived, active_run_id, model, reasoning, disabled_tools, base_instructions, additional_instructions, folder_id, pinned, forked_from, cost, last_message_at, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         title:
@@ -1536,10 +1643,22 @@ components:
             - type: "null"
         model:
           description: |
-            The model its next run uses (MOD-012): the tenant's default model
-            when the conversation was created, or the one its user chose;
-            `null` when the tenant had no default model then.
+            The model its next run uses (MOD-012): its user's default model
+            when the conversation was created, else the tenant's, or the one
+            its user chose; `null` when there was no default model then.
           oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+        reasoning:
+          allOf: [{ $ref: "#/components/schemas/Reasoning" }]
+          description: Its next run's reasoning, copied from its user's defaults when it was created (CNV-013).
+        disabled_tools:
+          allOf: [{ $ref: "#/components/schemas/DisabledTools" }]
+          description: The tools its next run does without, copied from its user's defaults when it was created (CNV-013).
+        base_instructions:
+          allOf: [{ $ref: "#/components/schemas/Instructions" }]
+          description: Its own base instructions; `null` to use its user's default ones as they are at each run (CNV-014).
+        additional_instructions:
+          allOf: [{ $ref: "#/components/schemas/Instructions" }]
+          description: Its own additional instructions; `null` to use its user's default ones as they are at each run (CNV-014).
         folder_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
         pinned: { type: boolean }
         forked_from:
@@ -1570,11 +1689,15 @@ components:
 
     CreateConversationRequest:
       type: object
-      description: Without `model`, the conversation starts with the tenant's default model.
+      description: |
+        What is left out comes from the user's defaults; without a default
+        model, the tenant's default model (MOD-012, CNV-013).
       additionalProperties: false
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         model: { $ref: "#/components/schemas/ModelChoice" }
+        reasoning: { $ref: "#/components/schemas/Reasoning" }
+        disabled_tools: { $ref: "#/components/schemas/DisabledTools" }
 
     UpdateConversationRequest:
       type: object
@@ -1586,6 +1709,18 @@ components:
         model:
           allOf: [{ $ref: "#/components/schemas/ModelChoice" }]
           description: A model offered by a connection of the tenant; used from the next run (MOD-012).
+        reasoning:
+          allOf: [{ $ref: "#/components/schemas/Reasoning" }]
+          description: Used from the next run (CNV-013).
+        disabled_tools:
+          allOf: [{ $ref: "#/components/schemas/DisabledTools" }]
+          description: Used from the next run (CNV-013).
+        base_instructions:
+          allOf: [{ $ref: "#/components/schemas/Instructions" }]
+          description: Its own base instructions, or `null` to restore its user's defaults (CNV-014).
+        additional_instructions:
+          allOf: [{ $ref: "#/components/schemas/Instructions" }]
+          description: Its own additional instructions, or `null` to use its user's defaults (CNV-014).
         folder_id:
           description: A folder of the user, or `null` to move the conversation out of its folder (CNV-007).
           oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }]

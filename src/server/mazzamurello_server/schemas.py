@@ -6,7 +6,7 @@ import datetime
 import uuid
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PlainSerializer, UrlConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl, PlainSerializer, UrlConstraints
 
 type Role = Literal["member", "tenant_admin"]
 
@@ -212,6 +212,7 @@ class ModelOption(Response):
     prices: ModelPricesOut | None
     context_window: int | None
     tools: bool | None
+    reasoning: bool | None
 
 
 class ModelList(Response):
@@ -219,9 +220,46 @@ class ModelList(Response):
     default: ModelChoiceOut | None
 
 
+# How much a model reasons before it answers, and the tools a user can switch off (CNV-013, ADR-0081).
+type Reasoning = Literal["off", "on", "deep"]
+type ToolName = Literal["web_search", "read_page", "shell", "file_system", "offer_download"]
+
+
+def _unique(tools: list[ToolName]) -> list[ToolName]:
+    if len(set(tools)) != len(tools):
+        raise ValueError("a tool is listed twice")
+    return tools
+
+
+type DisabledTools = Annotated[list[ToolName], AfterValidator(_unique)]
+# Postgres text holds no NUL character.
+type Instructions = Annotated[str, Field(max_length=20000, pattern=r"^[^\x00]*$")]
+
+
+class UserSettings(Request):
+    """A user's defaults for their conversations (CNV-013, CNV-014)."""
+
+    model: ModelChoice | None
+    reasoning: Reasoning | None
+    disabled_tools: DisabledTools
+    base_instructions: Instructions | None
+    additional_instructions: Instructions | None
+
+
+class UserSettingsOut(Response):
+    model: ModelChoiceOut | None
+    reasoning: Reasoning | None
+    disabled_tools: list[ToolName]
+    base_instructions: str | None
+    additional_instructions: str | None
+    built_in_base_instructions: str
+
+
 class CreateConversationRequest(Request):
     title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     model: ModelChoice | None = None
+    reasoning: Reasoning | None = None
+    disabled_tools: DisabledTools | None = None
 
 
 class UpdateConversationRequest(Request):
@@ -231,6 +269,11 @@ class UpdateConversationRequest(Request):
     # Present and null moves the conversation out of its folder (CNV-007).
     folder_id: uuid.UUID | None = None
     pinned: bool | None = None
+    reasoning: Reasoning | None = None
+    disabled_tools: DisabledTools | None = None
+    # Present and null uses the user's defaults again (CNV-014).
+    base_instructions: Instructions | None = None
+    additional_instructions: Instructions | None = None
 
 
 class ForkRequest(Request):
@@ -293,6 +336,10 @@ class Conversation(Response):
     archived: bool
     active_run_id: uuid.UUID | None
     model: ModelChoiceOut | None
+    reasoning: Reasoning
+    disabled_tools: list[ToolName]
+    base_instructions: str | None
+    additional_instructions: str | None
     folder_id: uuid.UUID | None
     pinned: bool
     forked_from: ForkedFrom | None

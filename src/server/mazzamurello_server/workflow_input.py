@@ -27,6 +27,12 @@ class RunWorkflowInput:
     model: str
     # The files attached to the message, as `{path, size}` (CNV-017).
     attachments: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    # The conversation's settings, and its instructions or else its user's, as the run starts (CNV-013,
+    # CNV-014, ADR-0081): null base instructions are the built-in ones.
+    reasoning: str = "on"
+    disabled_tools: list[str] = field(default_factory=list[str])
+    base_instructions: str | None = None
+    additional_instructions: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))

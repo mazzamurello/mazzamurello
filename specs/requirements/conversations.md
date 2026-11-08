@@ -180,23 +180,31 @@ Rationale: journey J5.
 
 ## CNV-013: Conversation settings
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
 A user MUST be able to change, for a conversation and at any turn, the model
-among those offered to them, whether the model may reason at length, and
-which of their permitted tools are enabled (AGT-002). The change applies from
-the next run. New conversations MUST start from the user's defaults, which
-start from defaults set by the instance admin, so that a user who changes
-nothing gets a well-configured assistant.
+among those offered to them (MOD-012), whether the model reasons before it
+answers, at one of three levels: off, on or deep, and which of their
+permitted tools are enabled (AGT-002), each tool on its own. The change
+applies from the next run. A user MUST be able to set their own defaults for
+these settings, and a new conversation MUST start with a copy of them. The
+defaults belong to the user alone: until they set one, a new conversation
+starts with the tenant's default model, reasoning on, and every permitted
+tool enabled, so that a user who changes nothing gets a well-configured
+assistant (ADR-0081).
+
+A model known not to reason MUST run without reasoning, and clients MUST
+show the setting disabled for it and say why. Clients MUST show the model's
+reasoning, folded, above its answer.
 
 Rationale: journey J13.
 
 ## CNV-014: Custom instructions
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -208,8 +216,17 @@ conversation:
   the default at any time;
 - to add instructions of their own, kept separate from the base instructions.
 
-Clients MUST present the two as separate settings. Instructions MUST NOT
-affect security controls, which never rely on prompts (ADR-0044).
+A conversation without instructions of its own MUST use the user's default
+instructions as they are when each run starts, so that changing a default
+changes every such conversation. Clients MUST present the two as separate
+settings, the additional instructions first, and the replacement of the base
+instructions set apart as a risky change. Clients MUST show the base
+instructions that apply, built-in or default, as the text the user changes.
+
+What the assistant needs to use its workspace and its enabled tools MUST
+stay in its instructions whatever the user writes, and MUST describe only the
+tools enabled for the run. Instructions MUST NOT affect security controls,
+which never rely on prompts (ADR-0044, ADR-0081).
 
 Rationale: journey J13.
 

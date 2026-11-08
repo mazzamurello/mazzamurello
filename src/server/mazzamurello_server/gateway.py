@@ -32,8 +32,10 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import Model, ModelRequestContext, ModelRequestParameters, ModelResolutionContext
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
+from pydantic_ai.settings import ModelSettings, ThinkingLevel
 from pydantic_ai.tools import ToolDefinition
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -83,6 +85,15 @@ class RunDeps:
     model: str = ""
     # Whether the model may be given tools (MOD-014), and where it runs (MOD-010).
     tools: bool = True
+    # Whether the model can reason, `None` when unknown, and how much it should (CNV-013, ADR-0081).
+    reasons: bool | None = None
+    reasoning: str = "on"
+    # The tools the user switched off, and the names the model knows them by (CNV-013).
+    disabled_tools: frozenset[str] = frozenset()
+    withheld_tools: frozenset[str] = frozenset()
+    # The instructions of the run: null base instructions are the built-in ones (CNV-014).
+    base_instructions: str | None = None
+    additional_instructions: str | None = None
     location: str = "remote"
     prices: dict[str, Any] = field(default_factory=dict[str, Any])
     # The model's context window, and what the run used so far (MOD-007, ADR-0073).
@@ -115,6 +126,7 @@ async def connection_model(deps: RunDeps, connection_id: uuid.UUID, model: str) 
             await connection.execute(
                 text(
                     "SELECT c.id, c.kind, c.base_url, c.location, c.api_key_ciphertext, c.private_network, m.tools,"
+                    " m.reasoning,"
                     " coalesce(c.context_window, m.context_window) AS context_window"
                     " FROM connections c JOIN connection_models m ON m.connection_id = c.id"
                     " WHERE c.id = :id AND m.model = :model"
@@ -131,6 +143,7 @@ async def connection_model(deps: RunDeps, connection_id: uuid.UUID, model: str) 
         api_key = decrypt(deps.secret_key, row.id, bytes(row.api_key_ciphertext))
     # A model known not to call tools runs without them; an unknown one is given them (MOD-014).
     deps.tools = row.tools is not False
+    deps.reasons = row.reasoning
     deps.location = row.location
     deps.context_window = row.context_window or DEFAULT_CONTEXT_WINDOW
     # Addresses not set by the instance admin connect only to checked public addresses,
@@ -143,7 +156,25 @@ async def connection_model(deps: RunDeps, connection_id: uuid.UUID, model: str) 
         client = AsyncOpenAI(base_url=row.base_url, api_key=api_key, http_client=legacy_client)
         return OpenRouterModel(model, provider=OpenRouterProvider(openai_client=client))
     provider = OpenAIProvider(base_url=row.base_url, api_key=api_key, http_client=http_client)
-    return OpenAIChatModel(model, provider=provider)
+    # Such servers, Ollama and vLLM among them, take OpenAI's `reasoning_effort`, `none` included (ADR-0081).
+    profile: OpenAIModelProfile = {
+        **(provider.model_profile(model) or {}),
+        "supports_thinking": True,
+        "openai_supports_reasoning": True,
+        "openai_supports_reasoning_effort_none": True,
+    }
+    return OpenAIChatModel(model, provider=provider, profile=profile)
+
+
+# Pydantic AI's unified setting for each reasoning level (CNV-013, ADR-0081).
+THINKING: dict[str, ThinkingLevel] = {"off": False, "on": True, "deep": "high"}
+
+
+def model_settings(ctx: RunContext[RunDeps]) -> ModelSettings:
+    """The run's reasoning level, unless its model is known not to reason."""
+    if ctx.deps.reasons is False:
+        return ModelSettings()
+    return ModelSettings(thinking=THINKING.get(ctx.deps.reasoning, True))
 
 
 def readable_text(message: ModelMessage) -> str:
@@ -186,8 +217,13 @@ class Gateway(AbstractCapability[RunDeps]):
         connection_id, _, model = rest.partition(":")
         return await connection_model(ctx.deps, uuid.UUID(connection_id), model)
 
+    def get_model_settings(self) -> Callable[[RunContext[RunDeps]], ModelSettings]:
+        return model_settings
+
     async def prepare_tools(self, ctx: RunContext[RunDeps], tool_defs: list[ToolDefinition]) -> list[ToolDefinition]:
-        return tool_defs if ctx.deps.tools else []
+        if not ctx.deps.tools:
+            return []
+        return [tool for tool in tool_defs if tool.name not in ctx.deps.withheld_tools]
 
     async def before_model_request(
         self, ctx: RunContext[RunDeps], request_context: ModelRequestContext

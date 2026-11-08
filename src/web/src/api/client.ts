@@ -18,6 +18,10 @@ export type ListEntry = Schemas["ConversationListEntry"];
 export type Money = Schemas["Money"];
 export type SearchResult = Schemas["SearchResult"];
 export type Problem = Schemas["Problem"];
+export type UserSettings = Schemas["UserSettings"];
+export type UserSettingsView = Schemas["UserSettingsView"];
+export type Reasoning = Schemas["Reasoning"];
+export type ToolName = Schemas["ToolName"];
 
 export const API_BASE = "/v1";
 

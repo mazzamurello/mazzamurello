@@ -16,6 +16,8 @@ last user message:
 - `tool:<name> <arguments>` calls the tool named `<name>` with the JSON
   `<arguments>`, then answers `Tool said: <result>`, or `No tool <name>` when
   the request does not offer it;
+- `think:<text>` streams `Thinking: <text>` as the model's reasoning, then
+  `Echo: <message>` (CNV-013);
 - anything else streams `Echo: <message>`.
 
 The command tool is found among the tools the request offers, by its name or
@@ -68,16 +70,17 @@ REFUSAL = "Safeguards flagged this message."
 # The key OpenRouter's key check refuses.
 REJECTED_KEY = "sk-or-rejected"
 # OpenRouter's models, most used in the past week first: (id, name, dollars per
-# token in, out, context window, whether it can call tools). A router, whose
-# price depends on the model it picks, lists `-1`, as OpenRouter's own does.
+# token in, out, context window, whether it can call tools, whether it can
+# reason). A router, whose price depends on the model it picks, lists `-1`, as
+# OpenRouter's own does.
 OPENROUTER_MODELS = (
-    ("test/popular", "Test: Popular", "0.00000027", "0.00000041", 131072, True),
-    ("test/second", "Test: Second", "0.0000003", "0.0000025", 1048576, True),
-    ("test/chat-only", "Test: Chat only", "0.0000001", "0.0000002", 32768, False),
-    ("test/free-chat", "Test: Free chat", "0", "0", 32768, False),
-    ("test/free", "Test: Free", "0", "0", 131072, True),
-    ("test/another", "Test: Another", "0.00000015", "0.0000006", 65536, True),
-    ("test/router", "Test: Router", "-1", "-1", 2000000, False),
+    ("test/popular", "Test: Popular", "0.00000027", "0.00000041", 131072, True, True),
+    ("test/second", "Test: Second", "0.0000003", "0.0000025", 1048576, True, False),
+    ("test/chat-only", "Test: Chat only", "0.0000001", "0.0000002", 32768, False, False),
+    ("test/free-chat", "Test: Free chat", "0", "0", 32768, False, False),
+    ("test/free", "Test: Free", "0", "0", 131072, True, True),
+    ("test/another", "Test: Another", "0.00000015", "0.0000006", 65536, True, False),
+    ("test/router", "Test: Router", "-1", "-1", 2000000, False, True),
 )
 
 
@@ -104,6 +107,24 @@ class ModelRequest:
                 parts = cast(list[dict[str, Any]], content)
                 texts.append("".join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
         return texts
+
+    def system_text(self) -> str:
+        """The instructions the model received: its system messages, joined."""
+        messages = cast(list[dict[str, Any]], self.body.get("messages", []))
+        return "\n\n".join(str(m.get("content", "")) for m in messages if m.get("role") in ("system", "developer"))
+
+    def tool_names(self) -> set[str]:
+        """The names of the tools the request offers."""
+        tools = cast(list[dict[str, Any]], self.body.get("tools", []))
+        return {str(cast(dict[str, Any], tool.get("function", {})).get("name")) for tool in tools}
+
+    def reasoning_effort(self) -> str | None:
+        """The reasoning effort the request asks for, as OpenRouter or an OpenAI-compatible server reads it."""
+        if self.openrouter:
+            reasoning = cast(dict[str, Any] | None, self.body.get("reasoning"))
+            return None if reasoning is None else str(reasoning.get("effort"))
+        effort = self.body.get("reasoning_effort")
+        return None if effort is None else str(effort)
 
 
 @dataclass
@@ -238,6 +259,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if last == "refuse":
                 self._refuse(body)
                 return
+            if last.startswith("think:"):
+                self._think(body, f"Thinking: {last.removeprefix('think:')}", f"Echo: {last}")
+                return
             if body.get("stream"):
                 self._stream(body, _pieces(last))
             else:
@@ -323,6 +347,20 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             delta = {"role": "assistant", "tool_calls": [call | {"index": 0}]}
             self._event(base | {"choices": [self._choice(delta, None)]})
             self._finish(base, "tool_calls")
+
+        def _think(self, body: dict[str, Any], reasoning: str, text: str) -> None:
+            # OpenRouter names the reasoning `reasoning`; servers such as vLLM, `reasoning_content`.
+            field = "reasoning" if self.openrouter else "reasoning_content"
+            if not body.get("stream"):
+                completion = self._completion(body, text)
+                completion["choices"][0]["message"][field] = reasoning
+                self._json(200, completion)
+                return
+            self._start_stream()
+            base = self._chunk_base(body)
+            self._event(base | {"choices": [self._choice({"role": "assistant", field: reasoning}, None)]})
+            self._event(base | {"choices": [self._choice({"content": text}, None)]})
+            self._finish(base, "stop")
 
         def _refuse(self, body: dict[str, Any]) -> None:
             if not body.get("stream"):
@@ -434,10 +472,15 @@ def _openrouter_models(most_used_first: bool) -> list[dict[str, Any]]:
             "context_length": context,
             "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
             "pricing": {"prompt": prompt, "completion": completion, "request": "0", "image": "0"},
-            "supported_parameters": ["max_tokens", "temperature", *(["tools", "tool_choice"] if tools else [])],
+            "supported_parameters": [
+                "max_tokens",
+                "temperature",
+                *(["tools", "tool_choice"] if tools else []),
+                *(["reasoning", "include_reasoning"] if reasoning else []),
+            ],
             "top_provider": {"context_length": context, "is_moderated": False},
         }
-        for model_id, name, prompt, completion, context, tools in models
+        for model_id, name, prompt, completion, context, tools, reasoning in models
     ]
 
 
