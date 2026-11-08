@@ -54,6 +54,11 @@ def conflict() -> ApiError:
     return ApiError(409, "resource.conflict", "Conflict")
 
 
+def temporary() -> ApiError:
+    """What a temporary conversation cannot do (CNV-011, ADR-0082)."""
+    return ApiError(409, "conversation.temporary", "Temporary conversation")
+
+
 def invalid(location: str, code: str) -> ApiError:
     """A request rejected for one field, as `request.validation_failed`."""
     return ApiError(

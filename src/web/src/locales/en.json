@@ -49,6 +49,11 @@
     "noFolder": "Out of the folder",
     "noFolders": "No folders yet."
   },
+  "temporary": {
+    "toggle": "Temporary chat",
+    "hint": "This chat won't be in your list or your search, and it's deleted when you leave it.",
+    "notice": "Temporary chat: not in your list, and deleted when you leave it."
+  },
   "welcome": {
     "morning": "Good morning, {{name}}.",
     "afternoon": "Good afternoon, {{name}}.",

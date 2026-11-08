@@ -52,6 +52,7 @@ WORKER_VARIABLES = frozenset(
         "MZM_SANDBOXD_URL",
         "MZM_SANDBOXD_TOKEN",
         "MZM_SEARCH_URL",
+        "MZM_TEMPORARY_SWEEP_SECONDS",
     }
 )
 MINIMUM_DRIVER_TOKEN_LENGTH = 32
@@ -90,6 +91,8 @@ class WorkerConfiguration:
     sandboxd_token: str
     # Empty when the instance has no search service (AGT-020).
     search_url: str = ""
+    # Between two sweeps for temporary conversations to delete (CNV-011, ADR-0082).
+    temporary_sweep_seconds: int = 600
 
 
 def _database_url(environment: Mapping[str, str]) -> str:
@@ -159,6 +162,9 @@ def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfigura
     days = environment.get("MZM_RUN_RETENTION_DAYS", "30")
     if not days.isdigit() or not 1 <= int(days) <= 3650:
         raise ConfigurationError("MZM_RUN_RETENTION_DAYS must be a number of days from 1 to 3650")
+    sweep = environment.get("MZM_TEMPORARY_SWEEP_SECONDS", "600")
+    if not sweep.isdigit() or not 1 <= int(sweep) <= 86400:
+        raise ConfigurationError("MZM_TEMPORARY_SWEEP_SECONDS must be a number of seconds from 1 to 86400")
     url, token = _sandbox_driver(environment)
     search_url = environment.get("MZM_SEARCH_URL", "")
     if search_url and not search_url.startswith(("http://", "https://")):
@@ -170,6 +176,7 @@ def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfigura
         sandboxd_url=url,
         sandboxd_token=token,
         search_url=search_url.rstrip("/"),
+        temporary_sweep_seconds=int(sweep),
     )
 
 

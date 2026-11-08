@@ -124,7 +124,7 @@ async def conversation_list(
                     " WHERE c.folder_id = f.id AND c.archived_at IS NULL), f.created_at) AS at FROM folders f"
                     " UNION ALL"
                     " SELECT 'conversation', c.id, c.pinned_at IS NOT NULL, c.last_message_at FROM conversations c"
-                    " WHERE c.folder_id IS NULL AND c.archived_at IS NULL"
+                    " WHERE c.folder_id IS NULL AND c.archived_at IS NULL AND NOT c.temporary"
                     ") entries"
                     " WHERE CAST(:after_at AS timestamptz) IS NULL"
                     " OR (pinned, at, id) < (CAST(:after_pinned AS boolean), CAST(:after_at AS timestamptz),"
@@ -201,6 +201,7 @@ async def search(
         rows = (
             await connection.execute(
                 text(
+                    # Temporary conversations are not searched (CNV-011).
                     "WITH query AS (SELECT plainto_tsquery('simple', :q) AS q),"
                     " matches AS ("
                     " SELECT m.conversation_id, ts_rank(m.search, query.q) AS rank, m.text AS content"
@@ -212,7 +213,7 @@ async def search(
                     " SELECT DISTINCT ON (conversation_id) conversation_id, rank, content FROM matches"
                     " ORDER BY conversation_id, rank DESC"
                     ") SELECT c.id, c.title, c.last_message_at, best.rank, best.content"
-                    " FROM best JOIN conversations c ON c.id = best.conversation_id"
+                    " FROM best JOIN conversations c ON c.id = best.conversation_id WHERE NOT c.temporary"
                     " ORDER BY best.rank DESC, c.last_message_at DESC LIMIT :limit"
                 ),
                 {"q": q, "limit": limit},

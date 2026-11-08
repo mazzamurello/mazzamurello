@@ -59,6 +59,7 @@ EXECUTABLE_FUNCTIONS = {
     "auth_touch_session(uuid)",
     "auth_record_login_attempt(text, inet, boolean)",
     "retention_expired_runs(integer)",
+    "expired_temporary_conversations(integer)",
     "default_model_configured()",
 }
 
@@ -70,6 +71,7 @@ OWNER_POLICIES = {
     "login_attempts": {"SELECT", "INSERT", "DELETE"},
     "runs": {"SELECT"},
     "connections": {"SELECT"},
+    "conversations": {"SELECT"},
 }
 
 

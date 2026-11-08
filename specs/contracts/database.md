@@ -81,6 +81,7 @@ minimum needed and nothing else.
 | `auth_touch_session(session_id uuid)` | — | Sets `last_used_at` to now and `expires_at` to 90 days later, for a session that is neither revoked nor expired (ADR-0049) |
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006), by the rules below |
 | `default_model_configured()` | `boolean` | Whether any tenant has a default model, for `/health` before any sign-in (OPS-002, ADR-0054, ADR-0069) |
+| `expired_temporary_conversations(hours integer)` | `conversation_id, tenant_id, owner_id` for every temporary conversation whose `updated_at` is more than `hours` hours ago and that has no `queued` or `running` run | Deletion of temporary conversations (CNV-011, ADR-0082): only identifiers, so the worker can delete each one under its owner's request context |
 | `retention_expired_runs(days integer)` | `run_id` for every run whose `finished_at` is more than `days` days ago | Retention of durable workflows (TEN-009, ADR-0052): only identifiers, so the worker can delete their workflows across tenants |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
 
@@ -105,7 +106,8 @@ these are the only policies for that role:
 | `users` | `SELECT`, `INSERT` | `auth_find_login`, `auth_find_session`, `bootstrap_instance` |
 | `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session`, `revoke_sessions_of_disabled_user` |
 | `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
-| `runs` | `SELECT` | `retention_expired_runs` |
+| `runs` | `SELECT` | `retention_expired_runs`, `expired_temporary_conversations` |
+| `conversations` | `SELECT` | `expired_temporary_conversations` |
 | `connections` | `SELECT` | `default_model_configured` |
 
 Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
@@ -240,6 +242,7 @@ A user's groups of conversations (CNV-007, ADR-0073).
 | `reasoning` | text | not null, default `on`; `off`, `on` or `deep` (CNV-013, ADR-0081) |
 | `disabled_tools` | text[] | not null, default empty; the tools that are off, each one of `web_search`, `read_page`, `shell`, `file_system` and `offer_download` (CNV-013) |
 | `base_instructions`, `additional_instructions` | text | the conversation's own instructions; null to use the user's defaults (CNV-014) |
+| `temporary` | boolean | not null, default false; set on creation and never changed (CNV-011, ADR-0082) |
 | `archived_at` | timestamptz | null when active |
 | `created_at` | timestamptz | not null |
 | `updated_at` | timestamptz | not null; updated when a run adds messages |
@@ -445,6 +448,9 @@ run events) **without row-level security**, which DBOS cannot apply. Rules
 - Workflows of runs whose `finished_at` is more than `MZM_RUN_RETENTION_DAYS`
   days ago (default 30) are deleted by the worker, when it starts and then
   every hour (ADR-0052).
+- Temporary conversations whose last activity is more than 24 hours ago
+  are deleted by the worker, with their workflows, every
+  `MZM_TEMPORARY_SWEEP_SECONDS` (CNV-011, ADR-0082).
 - Workflow inputs carry the tenant and user IDs of the run; the worker sets
   the request context from them.
 
