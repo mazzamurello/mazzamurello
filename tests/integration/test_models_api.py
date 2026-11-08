@@ -1,8 +1,10 @@
-"""The models of a household and the model of a conversation (MOD-010, MOD-011, MOD-012, MOD-014, MOD-015, ADR-0069).
+"""The models of a household and the settings of a conversation.
 
-Each household reaches the model the tests serve through two connections: a
-server with an OpenAI-compatible API, whose models say nothing about tools,
-and OpenRouter, as its documentation describes it (tests/support/model.py).
+MOD-010, MOD-011, MOD-012, MOD-014, MOD-015, CNV-013, CNV-014, ADR-0069 and
+ADR-0081. Each household reaches the model the tests serve through two
+connections: a server with an OpenAI-compatible API, whose models say nothing
+about tools or reasoning, and OpenRouter, as its documentation describes it
+(tests/support/model.py).
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import pytest
 from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
 from tests.support.database import Database
 from tests.support.fixtures import HarnessModel, HouseholdModel
-from tests.support.model import OPENROUTER_MODELS, REFUSAL, SERVER_MODELS
+from tests.support.model import OPENROUTER_MODELS, REFUSAL, SERVER_MODELS, ModelRequest
 from tests.support.runs import create_conversation, messages, run_input, start_run, text_of, wait_for_run
 from tests.support.server import Server
 
@@ -78,6 +80,8 @@ def test_every_member_sees_every_model_of_the_household(server: Server, househol
     assert [m["model"] for m in remote] == [model[0] for model in OPENROUTER_MODELS]
     assert {m["location"] for m in remote} == {"remote"}
     assert [m["tools"] for m in remote] == [model[5] for model in OPENROUTER_MODELS]
+    assert [m["reasoning"] for m in remote] == [model[6] for model in OPENROUTER_MODELS]
+    assert {m["reasoning"] for m in local} == {None}
     popular = remote[0]
     assert (popular["name"], popular["context_window"]) == ("Test: Popular", 131072)
     prices = popular["prices"]
@@ -267,3 +271,230 @@ def test_a_server_brings_its_first_model_as_default(
             "connection_id": body(response)["id"],
             "model": SERVER_MODELS[0],
         }
+
+
+# The tools a user can switch off, and the names the model knows them by (ADR-0081).
+TOOLS = {
+    "web_search": {"web_search"},
+    "read_page": {"read_page"},
+    "shell": {"run_command", "start_command", "check_command", "stop_command"},
+    "file_system": {"read_file", "write_file", "edit_file", "list_directory", "find_files", "search_files"},
+    "offer_download": {"offer_download"},
+}
+NO_DEFAULTS: dict[str, Any] = {
+    "model": None,
+    "reasoning": None,
+    "disabled_tools": [],
+    "base_instructions": None,
+    "additional_instructions": None,
+}
+
+
+def _settings(server: Server, token: str, **changes: Any) -> dict[str, Any]:
+    """Set the user's defaults: those given, and none of the others."""
+    with server.client(token) as client:
+        response = client.put("/me/settings", json=NO_DEFAULTS | changes)
+    assert response.status_code == 200, response.text
+    return body(response)
+
+
+def _change(server: Server, token: str, conversation_id: str, **changes: Any) -> dict[str, Any]:
+    with server.client(token) as client:
+        response = client.patch(f"/conversations/{conversation_id}", json=changes)
+    assert response.status_code == 200, response.text
+    return body(response)
+
+
+def _request(server: Server, household: Household, conversation_id: str, text: str) -> ModelRequest:
+    """Run `text` in the conversation, and the first request it made to the model."""
+    run_id, _ = start_run(server, household.token, conversation_id, text)
+    assert wait_for_run(server, household.token, run_id)["status"] == "completed"
+    return household.model.endpoint.requests_with(text)[0]
+
+
+@pytest.mark.spec("CNV-013", "CNV-014")
+def test_a_user_has_no_defaults_until_they_set_them(database: Database, server: Server, household: Household) -> None:
+    with server.client(household.token) as client:
+        response = client.get("/me/settings")
+    assert response.status_code == 200, response.text
+    assert body(response) == NO_DEFAULTS
+    chosen = {
+        "model": {"connection_id": household.openrouter_id, "model": "test/popular"},
+        "reasoning": "deep",
+        "disabled_tools": ["web_search", "shell"],
+        "base_instructions": "You are Ada, a patient helper.",
+        "additional_instructions": "Answer in French.",
+    }
+    assert _settings(server, household.token, **chosen) == chosen
+    with server.client(household.token) as client:
+        assert body(client.get("/me/settings")) == chosen
+    # Defaults are the user's alone, even within their household.
+    other = login(server, create_account(database, household.member.tenant_id))
+    with server.client(other) as client:
+        assert body(client.get("/me/settings")) == NO_DEFAULTS
+
+
+@pytest.mark.spec("CNV-013")
+def test_defaults_take_only_models_and_tools_that_exist(server: Server, household: Household) -> None:
+    with server.client(household.token) as client:
+        for invalid in (
+            {"model": {"connection_id": household.openrouter_id, "model": "test/unknown"}},
+            {"reasoning": "maximum"},
+            {"disabled_tools": ["teleport"]},
+        ):
+            assert_problem(client.put("/me/settings", json=NO_DEFAULTS | invalid), 422, "request.validation_failed")
+        conversation = create_conversation(server, household.token)
+        refused = client.patch(f"/conversations/{conversation['id']}", json={"disabled_tools": ["teleport"]})
+        assert_problem(refused, 422, "request.validation_failed")
+
+
+@pytest.mark.spec("CNV-013", "CNV-014")
+def test_without_defaults_a_conversation_starts_well_configured(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    assert conversation["model"] == {"connection_id": household.model.connection_id, "model": "test-model"}
+    assert (conversation["reasoning"], conversation["disabled_tools"]) == ("on", [])
+    assert (conversation["base_instructions"], conversation["additional_instructions"]) == (None, None)
+    request = _request(server, household, conversation["id"], f"configured {secrets.token_hex(4)}")
+    assert set[str]().union(*TOOLS.values()) <= request.tool_names()
+
+
+@pytest.mark.spec("CNV-013", "MOD-012")
+def test_a_new_conversation_copies_the_users_defaults(server: Server, household: Household) -> None:
+    popular = {"connection_id": household.openrouter_id, "model": "test/popular"}
+    _settings(server, household.token, model=popular, reasoning="deep", disabled_tools=["web_search"])
+    conversation = create_conversation(server, household.token)
+    assert (conversation["model"], conversation["reasoning"], conversation["disabled_tools"]) == (
+        popular,
+        "deep",
+        ["web_search"],
+    )
+    # A copy: changing the defaults later leaves the conversation as it is.
+    _settings(server, household.token, reasoning="off")
+    with server.client(household.token) as client:
+        kept = body(client.get(f"/conversations/{conversation['id']}"))
+        assert (kept["model"], kept["reasoning"], kept["disabled_tools"]) == (popular, "deep", ["web_search"])
+        # What the request gives wins over the defaults.
+        created = client.post("/conversations", json={"reasoning": "deep", "disabled_tools": ["shell"]})
+    assert created.status_code == 201, created.text
+    assert (body(created)["reasoning"], body(created)["disabled_tools"]) == ("deep", ["shell"])
+
+
+@pytest.mark.spec("CNV-013", "MOD-012")
+def test_a_default_model_no_longer_offered_gives_way_to_the_tenants(server: Server, household: Household) -> None:
+    _settings(server, household.token, model={"connection_id": household.openrouter_id, "model": "test/popular"})
+    with server.client(household.model.admin_token) as client:
+        assert client.delete(f"/tenant/connections/{household.openrouter_id}").status_code == 204
+    conversation = create_conversation(server, household.token)
+    assert conversation["model"] == {"connection_id": household.model.connection_id, "model": "test-model"}
+
+
+@pytest.mark.spec("CNV-013")
+@pytest.mark.parametrize("through", ["server", "openrouter"])
+def test_the_reasoning_level_reaches_the_model_from_the_next_run(
+    server: Server, household: Household, through: str
+) -> None:
+    conversation = create_conversation(server, household.token)
+    if through == "openrouter":
+        _choose(server, household.token, conversation["id"], household.openrouter_id, "test/popular")
+    efforts: dict[str, str | None] = {}
+    for level in ("off", "deep", "on"):
+        assert _change(server, household.token, conversation["id"], reasoning=level)["reasoning"] == level
+        efforts[level] = _request(
+            server, household, conversation["id"], f"{level} {secrets.token_hex(4)}"
+        ).reasoning_effort()
+    assert (efforts["off"], efforts["deep"]) == ("none", "high")
+    # The provider's own default effort, neither off nor deep.
+    assert efforts["on"] not in ("none", "high")
+
+
+@pytest.mark.spec("CNV-013")
+def test_a_model_known_not_to_reason_runs_without_reasoning(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    _choose(server, household.token, conversation["id"], household.openrouter_id, "test/second")
+    _change(server, household.token, conversation["id"], reasoning="deep")
+    request = _request(server, household, conversation["id"], f"no reasoning {secrets.token_hex(4)}")
+    assert "reasoning" not in request.body
+    assert "reasoning_effort" not in request.body
+
+
+@pytest.mark.spec("CNV-013")
+def test_the_models_reasoning_is_streamed_and_kept(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    _choose(server, household.token, conversation["id"], household.openrouter_id, "test/popular")
+    text = f"think:{secrets.token_hex(4)}"
+    run_id, events = start_run(server, household.token, conversation["id"], text)
+    assert wait_for_run(server, household.token, run_id)["status"] == "completed"
+    reasoning = "".join(str(e.data.get("delta", "")) for e in events if e.type == "REASONING_MESSAGE_CONTENT")
+    assert reasoning == f"Thinking: {text.removeprefix('think:')}"
+    assert text_of(events) == f"Echo: {text}"
+    kept = [m for m in messages(server, household.token, conversation["id"])["items"] if m["role"] == "reasoning"]
+    assert [m["content"] for m in kept] == [reasoning]
+
+
+@pytest.mark.spec("CNV-013")
+def test_tools_that_are_off_are_not_offered_to_the_model(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    for off in (["shell", "web_search"], ["file_system", "offer_download", "read_page"]):
+        assert _change(server, household.token, conversation["id"], disabled_tools=off)["disabled_tools"] == off
+        offered = _request(server, household, conversation["id"], f"tools {secrets.token_hex(4)}").tool_names()
+        for tool, names in TOOLS.items():
+            if tool in off:
+                assert not names & offered, f"{tool} is off but offered"
+            else:
+                assert names <= offered, f"{tool} is on but not offered"
+
+
+def _working_instructions_follow(system: str, base: str, additional: str) -> None:
+    """The base instructions come first, then the working instructions, then the additional ones."""
+    assert system.index(base) < system.index("/workspace") < system.index(additional)
+
+
+@pytest.mark.spec("CNV-014")
+def test_default_instructions_reach_every_conversation_from_its_next_run(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    default = _request(server, household, conversation["id"], f"built in {secrets.token_hex(4)}").system_text()
+    assert "Mazzamurello" in default
+    # Set after the conversation started, and used by it all the same.
+    base, additional = f"You are Ada {secrets.token_hex(4)}.", f"Sign as Ada {secrets.token_hex(4)}."
+    _settings(server, household.token, base_instructions=base, additional_instructions=additional)
+    system = _request(server, household, conversation["id"], f"tailored {secrets.token_hex(4)}").system_text()
+    assert "You are Mazzamurello" not in system
+    _working_instructions_follow(system, base, additional)
+    # Restoring the default brings back the built-in base instructions.
+    _settings(server, household.token, additional_instructions=additional)
+    system = _request(server, household, conversation["id"], f"restored {secrets.token_hex(4)}").system_text()
+    assert base not in system
+    _working_instructions_follow(system, "You are Mazzamurello", additional)
+
+
+@pytest.mark.spec("CNV-014")
+def test_a_conversations_own_instructions_win_until_restored(server: Server, household: Household) -> None:
+    default = f"Sign as Ada {secrets.token_hex(4)}."
+    _settings(server, household.token, additional_instructions=default)
+    conversation = create_conversation(server, household.token)
+    base, own = f"You are Bea {secrets.token_hex(4)}.", f"Sign as Bea {secrets.token_hex(4)}."
+    changed = _change(server, household.token, conversation["id"], base_instructions=base, additional_instructions=own)
+    assert (changed["base_instructions"], changed["additional_instructions"]) == (base, own)
+    system = _request(server, household, conversation["id"], f"own {secrets.token_hex(4)}").system_text()
+    assert default not in system
+    _working_instructions_follow(system, base, own)
+    # An empty text is a choice of nothing; the base instructions come back with null.
+    _change(server, household.token, conversation["id"], base_instructions=None, additional_instructions="")
+    system = _request(server, household, conversation["id"], f"none {secrets.token_hex(4)}").system_text()
+    assert base not in system
+    assert own not in system
+    assert default not in system
+    assert "You are Mazzamurello" in system
+
+
+@pytest.mark.spec("CNV-014")
+def test_the_working_instructions_describe_only_the_enabled_tools(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    _settings(server, household.token, base_instructions="Say nothing of tools.")
+    system = _request(server, household, conversation["id"], f"all tools {secrets.token_hex(4)}").system_text()
+    for phrase in ("/workspace", "pdftotext", "offer_download"):
+        assert phrase in system, f"the working instructions lost {phrase}"
+    _change(server, household.token, conversation["id"], disabled_tools=["shell", "offer_download"])
+    system = _request(server, household, conversation["id"], f"fewer tools {secrets.token_hex(4)}").system_text()
+    assert "pdftotext" not in system, "the toolbox is described without commands to run it"
+    assert "offer_download" not in system

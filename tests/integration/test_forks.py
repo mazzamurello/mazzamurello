@@ -92,3 +92,21 @@ def test_forking_needs_an_idle_conversation_its_own_run_and_its_owner(
     wait_for_run(server, member.token, running)
     stranger = new_member(database, server, harness_model)
     assert_problem(_fork(server, stranger.token, conversation["id"], first), 404, "resource.not_found")
+
+
+@pytest.mark.spec("CNV-005", "CNV-013", "CNV-014")
+def test_a_fork_keeps_the_settings_and_instructions_of_its_original(server: Server, member: Member) -> None:
+    original = create_conversation(server, member.token)
+    settings = {
+        "reasoning": "deep",
+        "disabled_tools": ["web_search"],
+        "base_instructions": "You are Ada.",
+        "additional_instructions": "",
+    }
+    with server.client(member.token) as client:
+        assert client.patch(f"/conversations/{original['id']}", json=settings).is_success
+    first, _ = start_run(server, member.token, original["id"], "fork settings")
+    response = _fork(server, member.token, original["id"], first)
+    assert response.status_code == 201, response.text
+    fork = body(response)
+    assert {name: fork[name] for name in settings} == settings
