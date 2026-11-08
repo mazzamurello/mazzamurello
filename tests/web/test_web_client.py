@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import re
 import socket
+import time
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, Page, Route, expect
 
 from tests.support.accounts import Account
 from tests.support.fixtures import HarnessModel, HouseholdModel
@@ -94,6 +95,23 @@ def test_a_run_can_be_stopped(page: Page, member: Account, default_model: Harnes
     page.get_by_role("button", name="Stop").click()
     expect(page.get_by_role("status")).to_contain_text("Stopped.", timeout=30_000)
     expect(page.get_by_role("button", name="Send")).to_be_visible()
+
+
+@pytest.mark.spec("CNV-003", "UX-001")
+def test_stopping_before_the_server_has_the_run(page: Page, member: Account, default_model: HarnessModel) -> None:
+    sign_in(page, member)
+
+    # The request that starts the run is slow to arrive, so Stop comes first.
+    def slow_start(route: Route) -> None:
+        if route.request.method == "POST" and route.request.url.endswith("/runs"):
+            time.sleep(1.5)
+        route.continue_()
+
+    page.route("**/v1/conversations/**", slow_start)
+    _send(page, "slow:20")
+    page.get_by_role("button", name="Stop").click()
+    expect(page.get_by_role("status")).to_contain_text("Stopped.", timeout=15_000)
+    expect(page.get_by_role("main")).not_to_contain_text("Echo: slow:20")
 
 
 @pytest.mark.spec("CNV-016", "UX-010", "UX-007")
