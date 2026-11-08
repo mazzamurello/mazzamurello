@@ -13,6 +13,7 @@ from tests.support.world import World
 PRE_AUTHENTICATION_FUNCTIONS = (
     *(name for name in SECURITY_DEFINER_FUNCTIONS if name.startswith("auth_")),
     "retention_expired_runs",
+    "expired_temporary_conversations",
     "default_model_configured",
 )
 
