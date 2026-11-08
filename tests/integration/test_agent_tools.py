@@ -332,3 +332,26 @@ def test_the_task_list_lasts_from_run_to_run(server: Server, token: str, default
     with server.client(token) as client:
         fork = body(client.post(f"/conversations/{conversation['id']}/fork", json={"run_id": run_id}))
     assert [step["status"] for step in fork["plan"]] == ["completed", "pending"]
+
+
+@pytest.mark.spec("UX-003")
+def test_sandbox_commands_say_what_they_are_for(server: Server, token: str, default_model: HarnessModel) -> None:
+    conversation = create_conversation(server, token)
+    marker = f"marker-{uuid7()}"
+    call = {"command": f"echo {marker}", "description": "Saying hello"}
+    text = f"tool:run_command {json.dumps(call)}"
+    run_id, events = start_run(server, token, conversation["id"], text)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    # The model is asked what each command is for.
+    request = default_model.endpoint.requests_with(text)[0]
+    tools = {tool["function"]["name"]: tool["function"]["parameters"] for tool in request.body.get("tools", [])}
+    for name in ("run_command", "start_command"):
+        assert "description" in tools[name]["properties"], name
+        assert "description" in tools[name]["required"], name
+    # The command runs as before, and its call keeps what it is for, live and in the history.
+    assert marker in text_of(events)
+    args = "".join(str(event.data.get("delta", "")) for event in events if event.type == "TOOL_CALL_ARGS")
+    assert json.loads(args)["description"] == "Saying hello"
+    history = messages(server, token, conversation["id"])["items"]
+    calls = [c for message in history for c in message.get("toolCalls", []) if c["function"]["name"] == "run_command"]
+    assert [json.loads(c["function"]["arguments"])["description"] for c in calls] == ["Saying hello"]

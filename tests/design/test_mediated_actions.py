@@ -20,6 +20,8 @@ ALLOWED_CAPABILITIES = {
     "pydantic_ai.durable_exec._workspace.WorkspaceEnsurer",
     "mazzamurello_server.gateway.Gateway",
     "mazzamurello_server.sandbox.SandboxWorkspace",
+    # Sandbox commands say what they are for; it changes their definitions and arguments only (ADR-0085).
+    "mazzamurello_server.sandbox.CommandPurposes",
     "pydantic_ai_harness.shell._capability.Shell",
     "pydantic_ai_harness.filesystem._capability.FileSystem",
     "pydantic_ai_harness.tool_output_limits._capability.ToolOutputLimits",
