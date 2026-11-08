@@ -42,7 +42,7 @@ new entry here first (ADR-0005).
 | Context window | The most tokens a model reads at once: listed by the provider, or set on a connection to the household's own server (ADR-0073). |
 | Compaction | Reducing the history sent to the model when it approaches the context window, without changing the stored conversation (ADR-0041). |
 | Compaction checkpoint | The stored result of a compaction for one path, attached to the run at which it happened (ADR-0041). |
-| Temporary conversation | A conversation that is not listed, does not use memory and is deleted when the user leaves it (CNV-011). |
+| Temporary conversation | A conversation that is not listed or searched, does not use memory, and is deleted when the user leaves it or a day after its last activity (CNV-011, ADR-0082). |
 | Attachment | A file of the file library referenced by a message; uploading an attachment adds it to the library (CNV-012). |
 | Parent run | The run whose messages a run continues; the runs of a conversation form one chain (ADR-0037, ADR-0068). |
 | Active path | The chain of runs, from the first to the active run: the history the user sees and that a new run continues (ADR-0037, ADR-0068). |
