@@ -203,7 +203,9 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
         )
         api = Process("api", api_environment, command="api")
         config.add_cleanup(api.close)
-        worker = Process("worker", base | shared | {"MZM_SEARCH_URL": search_url}, command="worker")
+        # Temporary conversations are swept every second, so that their tests need not wait (ADR-0082).
+        worker_environment = {"MZM_SEARCH_URL": search_url, "MZM_TEMPORARY_SWEEP_SECONDS": "1"}
+        worker = Process("worker", base | shared | worker_environment, command="worker")
         config.add_cleanup(worker.close)
         server = Server(
             base_url=f"http://127.0.0.1:{port}/v1",

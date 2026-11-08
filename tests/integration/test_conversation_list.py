@@ -1,8 +1,10 @@
-"""Folders, pins and the conversation list, and search (CNV-007, CNV-008, CNV-009, ADR-0073)."""
+"""Folders, pins and the conversation list, search, and temporary conversations (CNV-007, CNV-008, CNV-009,
+CNV-011, ADR-0073, ADR-0082)."""
 
 from __future__ import annotations
 
 import secrets
+import time
 from typing import Any
 
 import pytest
@@ -163,3 +165,82 @@ def test_search_finds_only_the_users_own(
     assert _search(server, other.token, word) == []
     with server.client(member.token) as client:
         assert_problem(client.get("/search", params={"q": ""}), 422, "request.validation_failed")
+
+
+def _temporary(server: Server, token: str, text: str) -> tuple[dict[str, Any], str]:
+    """A temporary conversation that answered `text`, and the ID of its run."""
+    with server.client(token) as client:
+        response = client.post("/conversations", json={"temporary": True})
+    assert response.status_code == 201, response.text
+    conversation = body(response)
+    assert conversation["temporary"] is True
+    run_id, _ = start_run(server, token, conversation["id"], text)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    return conversation, run_id
+
+
+@pytest.mark.spec("CNV-011")
+def test_a_temporary_conversation_is_neither_listed_nor_searched(server: Server, member: Member) -> None:
+    word = f"secret{secrets.token_hex(4)}"
+    conversation, _ = _temporary(server, member.token, f"about {word}")
+    kept = _talk(server, member.token, "Kept", f"also about {word}")
+    assert kept["temporary"] is False
+    listed = [entry["conversation"]["id"] for entry in _list(server, member.token)["items"]]
+    assert listed == [kept["id"]]
+    with server.client(member.token) as client:
+        page = body(client.get("/conversations"))
+        found = body(client.get("/search", params={"q": word}))
+        opened = client.get(f"/conversations/{conversation['id']}")
+    assert [c["id"] for c in page["items"]] == [kept["id"]]
+    assert [r["conversation_id"] for r in found["items"]] == [kept["id"]]
+    # Its owner still opens it by its ID.
+    assert opened.status_code == 200, opened.text
+    assert body(opened)["temporary"] is True
+
+
+@pytest.mark.spec("CNV-011")
+def test_a_temporary_conversation_stays_apart(database: Database, server: Server, member: Member) -> None:
+    conversation, run_id = _temporary(server, member.token, "hello")
+    path = f"/conversations/{conversation['id']}"
+    with server.client(member.token) as client:
+        folder = body(client.post("/folders", json={"name": "Home"}))
+        assert_problem(client.post(f"{path}/fork", json={"run_id": run_id}), 409, "conversation.temporary")
+        for change in ({"pinned": True}, {"archived": True}, {"folder_id": folder["id"]}):
+            assert_problem(client.patch(path, json=change), 409, "conversation.temporary")
+        # It stays temporary.
+        assert_problem(client.patch(path, json={"temporary": False}), 422, "request.validation_failed")
+    # Its settings change as in any conversation.
+    assert _patch(server, member.token, path, {"title": "Mine", "reasoning": "off"})["temporary"] is True
+    # No title is asked of its model, for a list it is not in.
+    with database.superuser() as conn:
+        purposes = [row[0] for row in conn.execute("SELECT purpose FROM usage_ledger WHERE run_id = %s", (run_id,))]
+    assert purposes == ["run"]
+
+
+@pytest.mark.spec("CNV-011")
+def test_a_temporary_conversation_is_deleted_a_day_after_its_last_activity(
+    database: Database, server: Server, member: Member
+) -> None:
+    old, old_run = _temporary(server, member.token, "old")
+    recent, _ = _temporary(server, member.token, "recent")
+    normal = _talk(server, member.token, "Normal")
+    with database.superuser() as conn:
+        (entry,) = conn.execute("SELECT id FROM usage_ledger WHERE run_id = %s", (old_run,)).fetchone() or (None,)
+        conn.execute(
+            "UPDATE conversations SET updated_at = now() - interval '25 hours' WHERE id = ANY(%s)",
+            ([old["id"], normal["id"]],),
+        )
+    deadline = time.monotonic() + 15
+    with server.client(member.token) as client:
+        while client.get(f"/conversations/{old['id']}").status_code != 404:
+            assert time.monotonic() < deadline, "the old temporary conversation was not deleted"
+            time.sleep(0.5)
+        # Only temporary conversations, and only after a day.
+        assert client.get(f"/conversations/{recent['id']}").status_code == 200
+        assert client.get(f"/conversations/{normal['id']}").status_code == 200
+    with database.superuser() as conn:
+        runs = conn.execute("SELECT count(*) FROM runs WHERE conversation_id = %s", (old["id"],)).fetchone()
+        ledger = conn.execute("SELECT conversation_id, run_id FROM usage_ledger WHERE id = %s", (entry,)).fetchall()
+    assert runs == (0,)
+    # Its costs stay, without the conversation (ADR-0042).
+    assert ledger == [(None, None)]
