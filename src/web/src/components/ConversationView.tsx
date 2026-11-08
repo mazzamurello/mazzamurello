@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, GitFork, Pencil } from "lucide-react";
+import { Brain, ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, GitFork, Pencil, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
@@ -11,6 +11,7 @@ import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
 import { type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
 import { type AttachedFile, download, downloadUrl, formatSize, listFolder, useAttachments } from "../workspace";
+import { ChatSettings } from "./AssistantSettings";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { Sprite } from "./Sprite";
@@ -43,6 +44,10 @@ function turnsOf(page: MessagePage): Turn[] {
       if (message.role === "user" && userText === null) {
         userText = textOf(message.content);
         attachments = message.attachments ?? [];
+      }
+      else if (message.role === "reasoning") {
+        const text = textOf(message.content);
+        if (text) parts.push({ kind: "reasoning", id: message.id, text });
       }
       else if (message.role === "assistant") {
         const text = textOf(message.content);
@@ -134,6 +139,7 @@ export function ConversationView() {
   const [editing, setEditing] = useState<number | null>(null);
   const thread = useRef<HTMLDivElement>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [reveal, setReveal] = useState<Reveal | null>(null);
   const [panelFor, setPanelFor] = useState(conversationId);
   if (panelFor !== conversationId) {
@@ -285,6 +291,16 @@ export function ConversationView() {
               {t("files.title")}
             </button>
             {conversation.data && (
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="-ml-1.5 flex items-center gap-1.5 rounded-lg px-1.5 py-1 font-semibold hover:bg-hover hover:text-fg"
+              >
+                <SlidersHorizontal className="size-4" aria-hidden="true" />
+                {t("assistant.chat")}
+              </button>
+            )}
+            {conversation.data && (
               <span className="flex items-center gap-1.5">
                 <span>{t("usage.conversation")}</span>
                 <span className="font-semibold text-fg">{formatMoney(conversation.data.cost)}</span>
@@ -305,6 +321,7 @@ export function ConversationView() {
       </div>
       </div>
       <WorkspacePanel conversationId={conversationId} open={panelOpen} onOpenChange={setPanelOpen} reveal={reveal} />
+      {conversation.data && <ChatSettings conversation={conversation.data} open={settingsOpen} onOpenChange={setSettingsOpen} />}
       <Dialog.Root open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
@@ -551,8 +568,10 @@ function Answer({ parts, conversationId, onShow }: { parts: LivePart[]; conversa
   const offers = parts.flatMap((part) => (part.kind === "tool" ? (offerOf(part) ?? []) : []));
   const tools = parts.flatMap((part) => (part.kind === "tool" && offerOf(part) === null ? [part] : []));
   const texts = parts.filter((part) => part.kind === "text");
+  const reasoning = parts.flatMap((part) => (part.kind === "reasoning" ? [part.text] : [])).join("\n\n");
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
+      {reasoning && <ReasoningView text={reasoning} />}
       {tools.length > 0 && (
         <div className="flex flex-col items-start gap-1.5">
           {tools.map((part) => (
@@ -571,6 +590,21 @@ function Answer({ parts, conversationId, onShow }: { parts: LivePart[]; conversa
         </div>
       )}
     </div>
+  );
+}
+
+/** The model's reasoning, folded above its answer (CNV-013). */
+function ReasoningView({ text }: { text: string }) {
+  const { t } = useTranslation();
+  return (
+    <details className="group/reasoning max-w-full">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg py-1 pr-2 text-[13.5px] font-semibold text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+        <Brain className="size-4" aria-hidden="true" />
+        {t("message.reasoning")}
+        <ChevronRight className="size-4 flex-none transition-transform group-open/reasoning:rotate-90" aria-hidden="true" />
+      </summary>
+      <p className="mt-1.5 mb-1 ml-2 border-l-2 border-line py-1 pl-3.5 text-[13.5px] whitespace-pre-wrap text-muted">{text}</p>
+    </details>
   );
 }
 

@@ -28,6 +28,7 @@ CONTRACT_TABLES = (
     "connections",
     "connection_models",
     "folders",
+    "user_settings",
     "conversations",
     "runs",
     "conversation_messages",
@@ -36,7 +37,17 @@ CONTRACT_TABLES = (
 )
 # Tables of a tenant that every user of it reads and its tenant admins change (ADR-0069).
 TENANT_TABLES = ("connections", "connection_models")
-PRIVATE_TABLES = ("folders", "conversations", "runs", "conversation_messages", "compaction_checkpoints", "usage_ledger")
+PRIVATE_TABLES = (
+    "folders",
+    "user_settings",
+    "conversations",
+    "runs",
+    "conversation_messages",
+    "compaction_checkpoints",
+    "usage_ledger",
+)
+# The tools a user can switch off (CNV-013, ADR-0081).
+TOOL_NAMES = "ARRAY['web_search', 'read_page', 'shell', 'file_system', 'offer_download']"
 
 HELPER_FUNCTIONS = [
     # Request context (TEN-005). A setting that was never set, or was reset at
@@ -161,6 +172,7 @@ TABLES = [
       position integer NOT NULL CHECK (position >= 1),
       context_window integer CHECK (context_window >= 1),
       tools boolean,
+      reasoning boolean,
       input_price numeric(20, 10) CHECK (input_price >= 0),
       cached_input_price numeric(20, 10) CHECK (cached_input_price >= 0),
       output_price numeric(20, 10) CHECK (output_price >= 0),
@@ -186,7 +198,24 @@ TABLES = [
       FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id)
     )
     """,
-    """
+    # A user's defaults for their conversations (CNV-013, CNV-014, ADR-0081).
+    f"""
+    CREATE TABLE user_settings (
+      tenant_id uuid NOT NULL,
+      owner_id uuid NOT NULL,
+      connection_id uuid,
+      model text CHECK (model <> ''),
+      reasoning text CHECK (reasoning IN ('off', 'on', 'deep')),
+      disabled_tools text[] NOT NULL DEFAULT '{{}}' CHECK (disabled_tools <@ {TOOL_NAMES}),
+      base_instructions text,
+      additional_instructions text,
+      updated_at timestamptz NOT NULL,
+      PRIMARY KEY (tenant_id, owner_id),
+      FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id),
+      FOREIGN KEY (tenant_id, connection_id) REFERENCES connections (tenant_id, id) ON DELETE SET NULL (connection_id)
+    )
+    """,
+    f"""
     CREATE TABLE conversations (
       id uuid PRIMARY KEY,
       tenant_id uuid NOT NULL,
@@ -200,6 +229,11 @@ TABLES = [
       -- The model of the conversation (MOD-012); a removed connection leaves the model without one.
       connection_id uuid,
       model text CHECK (model <> ''),
+      -- Its settings and its own instructions (CNV-013, CNV-014, ADR-0081).
+      reasoning text NOT NULL DEFAULT 'on' CHECK (reasoning IN ('off', 'on', 'deep')),
+      disabled_tools text[] NOT NULL DEFAULT '{{}}' CHECK (disabled_tools <@ {TOOL_NAMES}),
+      base_instructions text,
+      additional_instructions text,
       -- Folders, pins and forks (CNV-005, CNV-007, CNV-008, ADR-0073).
       folder_id uuid,
       pinned_at timestamptz,
@@ -652,6 +686,7 @@ PRIVILEGES = [
     "GRANT SELECT, INSERT, DELETE ON device_sessions TO mzm_app",
     "GRANT UPDATE (revoked_at) ON device_sessions TO mzm_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON folders TO mzm_app",
+    "GRANT SELECT, INSERT, UPDATE ON user_settings TO mzm_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON conversations TO mzm_app",
     "GRANT SELECT, INSERT ON compaction_checkpoints TO mzm_app",
     "GRANT SELECT, INSERT ON conversation_messages TO mzm_app",
