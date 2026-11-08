@@ -433,7 +433,7 @@ paths:
       tags: [conversations]
       operationId: createConversation
       summary: Create a conversation.
-      x-requirements: [API-003, CNV-013]
+      x-requirements: [API-003, CNV-011, CNV-013]
       requestBody:
         required: false
         content:
@@ -451,7 +451,8 @@ paths:
       tags: [conversations]
       operationId: listConversations
       summary: List the user's conversations, most recently updated first.
-      x-requirements: [API-003, TEN-006]
+      description: Temporary conversations are left out (CNV-011).
+      x-requirements: [API-003, CNV-011, TEN-006]
       parameters:
         - name: archived
           in: query
@@ -486,7 +487,10 @@ paths:
       tags: [conversations]
       operationId: updateConversation
       summary: Rename, archive or unarchive a conversation, or change its settings.
-      x-requirements: [API-003, CNV-013, CNV-014, TEN-006]
+      description: |
+        A temporary conversation cannot be archived, moved into a folder or
+        pinned (`conversation.temporary`, CNV-011).
+      x-requirements: [API-003, CNV-011, CNV-013, CNV-014, TEN-006]
       requestBody:
         required: true
         content:
@@ -500,6 +504,7 @@ paths:
               schema: { $ref: "#/components/schemas/Conversation" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/TemporaryConversation" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       tags: [conversations]
@@ -799,8 +804,9 @@ paths:
         title and model; it records where it came from. Its workspace starts
         as a copy of this conversation's (SBX-010, ADR-0078). Ledger entries
         are not copied (CNV-005, ADR-0073). Refused with `run.in_progress`
-        while a run of the conversation is queued or running.
-      x-requirements: [CNV-005, TEN-006]
+        while a run of the conversation is queued or running, and with
+        `conversation.temporary` for a temporary conversation (CNV-011).
+      x-requirements: [CNV-005, CNV-011, TEN-006]
       requestBody:
         required: true
         content:
@@ -814,7 +820,7 @@ paths:
               schema: { $ref: "#/components/schemas/Conversation" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/RunInProgress" }
+        "409": { $ref: "#/components/responses/TemporaryConversation" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "503": { $ref: "#/components/responses/SandboxUnavailable" }
 
@@ -827,9 +833,9 @@ paths:
         Pinned entries first, then the others; within each group, newest
         first by the most recent message, a folder by that of its
         conversations, or by its creation while it holds none. A folder entry
-        carries its conversations, in the same order. Archived conversations
-        are left out (CNV-007, CNV-008).
-      x-requirements: [CNV-007, CNV-008, TEN-006]
+        carries its conversations, in the same order. Archived and temporary
+        conversations are left out (CNV-007, CNV-008, CNV-011).
+      x-requirements: [CNV-007, CNV-008, CNV-011, TEN-006]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -901,8 +907,8 @@ paths:
       description: |
         Full-text search without regard to language (ADR-0073), ranked by
         relevance, then by recency. Tool calls and their results are not
-        searched (CNV-009).
-      x-requirements: [CNV-009, TEN-003, TEN-006]
+        searched (CNV-009), nor are temporary conversations (CNV-011).
+      x-requirements: [CNV-009, CNV-011, TEN-003, TEN-006]
       parameters:
         - name: q
           in: query
@@ -1257,6 +1263,15 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
           example: { type: "about:blank", title: "Run in progress", status: 409, code: "run.in_progress" }
+    TemporaryConversation:
+      description: |
+        A run is in progress in this conversation (`run.in_progress`), or the
+        conversation is temporary and cannot do this (`conversation.temporary`,
+        CNV-011).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { type: "about:blank", title: "Temporary conversation", status: 409, code: "conversation.temporary" }
     ValidationFailed:
       description: The request body or parameters are invalid.
       content:
@@ -1284,6 +1299,7 @@ components:
         - resource.not_found
         - resource.conflict
         - request.validation_failed
+        - conversation.temporary
         - run.in_progress
         - run.interrupt_pending
         - run.cancelled
@@ -1629,9 +1645,12 @@ components:
 
     Conversation:
       type: object
-      required: [id, title, archived, active_run_id, model, reasoning, disabled_tools, base_instructions, additional_instructions, folder_id, pinned, forked_from, cost, last_message_at, created_at, updated_at]
+      required: [id, title, archived, temporary, active_run_id, model, reasoning, disabled_tools, base_instructions, additional_instructions, folder_id, pinned, forked_from, cost, last_message_at, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
+        temporary:
+          type: boolean
+          description: Not listed or searched, and deleted when its user leaves it or a day after its last activity (CNV-011, ADR-0082).
         title:
           type: string
           description: Empty while the conversation is untitled; clients show their own placeholder (ADR-0052).
@@ -1698,6 +1717,10 @@ components:
         model: { $ref: "#/components/schemas/ModelChoice" }
         reasoning: { $ref: "#/components/schemas/Reasoning" }
         disabled_tools: { $ref: "#/components/schemas/DisabledTools" }
+        temporary:
+          type: boolean
+          default: false
+          description: Start a temporary conversation, which stays temporary (CNV-011, ADR-0082).
 
     UpdateConversationRequest:
       type: object

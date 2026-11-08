@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, GitFork, Pencil, SlidersHorizontal } from "lucide-react";
+import { Brain, ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, Ghost, GitFork, Pencil, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
@@ -10,6 +10,7 @@ import { forkConversation, rewindConversation, updateConversation, useRefreshCon
 import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
 import { type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
+import { openTemporary } from "../temporary";
 import { type AttachedFile, download, downloadUrl, formatSize, listFolder, useAttachments } from "../workspace";
 import { ChatSettings } from "./AssistantSettings";
 import { Composer } from "./Composer";
@@ -166,6 +167,12 @@ export function ConversationView() {
     }
   }, [firstMessage, firstAttachments, conversationId, start, navigate, location.pathname]);
 
+  // A temporary conversation goes when its user leaves it (CNV-011).
+  const temporary = conversation.data?.temporary === true;
+  useEffect(() => {
+    if (temporary) openTemporary(conversationId);
+  }, [temporary, conversationId]);
+
   // A run in progress, started on another device or before a reload: follow it (CNV-015).
   const activeRunId = conversation.data?.active_run_id;
   useEffect(() => {
@@ -236,6 +243,12 @@ export function ConversationView() {
       <div className="flex min-w-0 flex-1 flex-col">
       <div ref={thread} className="relative min-h-0 flex-1 overflow-y-auto" aria-busy={running}>
         <ol className="mx-auto w-full max-w-[740px] px-4 pt-2 pb-6">
+          {temporary && (
+            <li className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-muted">
+              <Ghost className="size-4 flex-none" aria-hidden="true" />
+              {t("temporary.notice")}
+            </li>
+          )}
           {conversation.data?.forked_from && (
             <li className="mt-3 flex items-center gap-2 text-[13px] text-muted">
               <GitFork className="size-4" aria-hidden="true" />
@@ -260,7 +273,7 @@ export function ConversationView() {
               onEdit={() => setEditing(index)}
               onCancelEdit={() => setEditing(null)}
               onSendEdit={(text) => askToEdit(index, turn, text)}
-              onFork={() => void fork(turn)}
+              onFork={temporary ? undefined : () => void fork(turn)}
               conversationId={conversationId}
               onShow={show}
             />
@@ -438,7 +451,8 @@ function TurnView(props: {
   onEdit: () => void;
   onCancelEdit: () => void;
   onSendEdit: (text: string) => void;
-  onFork: () => void;
+  /** Absent where the conversation cannot be forked, as a temporary one (CNV-011). */
+  onFork: (() => void) | undefined;
   conversationId: string;
   onShow: (path: string) => void;
 }) {
@@ -501,9 +515,11 @@ function TurnView(props: {
         <div className="flex items-center gap-0.5">
           <div className={`flex gap-0.5 transition-opacity group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100 ${props.last ? "opacity-100" : "opacity-0"}`}>
             <CopyButton text={answerText} />
-            <IconButton label={t("message.fork")} disabled={busy} onClick={props.onFork}>
-              <GitFork className="size-4" aria-hidden="true" />
-            </IconButton>
+            {props.onFork && (
+              <IconButton label={t("message.fork")} disabled={busy} onClick={props.onFork}>
+                <GitFork className="size-4" aria-hidden="true" />
+              </IconButton>
+            )}
           </div>
           {/* Each answer's cost, beside its actions and always in view; a local model's is nothing to show (UX-008). */}
           {isPaid(turn.run.cost) && <span className="pl-1.5 text-xs text-muted tabular-nums">{formatMoney(turn.run.cost)}</span>}

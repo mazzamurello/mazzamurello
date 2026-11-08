@@ -57,6 +57,7 @@ SECURITY_DEFINER_FUNCTIONS = (
     "bootstrap_instance",
     "revoke_sessions_of_disabled_user",
     "retention_expired_runs",
+    "expired_temporary_conversations",
     "default_model_configured",
 )
 

@@ -14,7 +14,7 @@ import binascii
 import datetime
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Annotated, Any, cast
 
 from dbos import DBOSClient
@@ -29,15 +29,15 @@ from mazzamurello_server.auth import Authenticated, Engine
 from mazzamurello_server.connections import offered
 from mazzamurello_server.costs import CONVERSATION_COST, money, run_costs
 from mazzamurello_server.credentials import uuid7
-from mazzamurello_server.database import transaction
+from mazzamurello_server.database import Identity, transaction
 from mazzamurello_server.sandbox import SandboxDriver, workspace_request
 from mazzamurello_server.settings import new_conversation
 
 router = APIRouter()
 
 CONVERSATION_COLUMNS = (
-    "id, title, archived_at IS NOT NULL AS archived, active_run_id, connection_id, model, reasoning, disabled_tools,"
-    " base_instructions, additional_instructions, folder_id,"
+    "id, title, archived_at IS NOT NULL AS archived, temporary, active_run_id, connection_id, model, reasoning,"
+    " disabled_tools, base_instructions, additional_instructions, folder_id,"
     " pinned_at IS NOT NULL AS pinned, forked_from_conversation_id, forked_from_run_id, last_message_at,"
     f" created_at, updated_at, {CONVERSATION_COST}"
 )
@@ -63,6 +63,7 @@ def conversation_response(row: Any) -> schemas.Conversation:
         id=row.id,
         title=row.title,
         archived=row.archived,
+        temporary=row.temporary,
         active_run_id=row.active_run_id,
         # A model whose connection was removed is no model the client can show or choose.
         model=None
@@ -125,8 +126,9 @@ async def create_conversation(
             await connection.execute(
                 text(
                     "INSERT INTO conversations (id, tenant_id, owner_id, title, connection_id, model, reasoning,"  # noqa: S608
-                    " disabled_tools, last_message_at, created_at, updated_at) VALUES (:id, :tenant_id, :owner_id,"
-                    " :title, :connection_id, :model, :reasoning, :disabled_tools, now(), now(), now())"
+                    " disabled_tools, temporary, last_message_at, created_at, updated_at) VALUES (:id, :tenant_id,"
+                    " :owner_id, :title, :connection_id, :model, :reasoning, :disabled_tools, :temporary, now(), now(),"
+                    " now())"
                     f" RETURNING {CONVERSATION_COLUMNS}"
                 ),
                 {
@@ -139,6 +141,7 @@ async def create_conversation(
                     "model": None if model is None else model.model,
                     "reasoning": reasoning,
                     "disabled_tools": defaults.disabled_tools if disabled is None else disabled,
+                    "temporary": body is not None and body.temporary,
                 },
             )
         ).one()
@@ -161,7 +164,7 @@ async def list_conversations(
             await connection.execute(
                 text(
                     f"SELECT {CONVERSATION_COLUMNS} FROM conversations"  # noqa: S608
-                    " WHERE (archived_at IS NOT NULL) = :archived"
+                    " WHERE (archived_at IS NOT NULL) = :archived AND NOT temporary"
                     " AND (CAST(:after_time AS timestamptz) IS NULL"
                     " OR (updated_at, id) < (CAST(:after_time AS timestamptz), CAST(:after_id AS uuid)))"
                     " ORDER BY updated_at DESC, id DESC LIMIT :limit"
@@ -198,7 +201,10 @@ async def update_conversation(
     if "model" in present and body.model is None:
         raise errors.invalid("/model", "null")
     async with transaction(engine, identity) as connection:
-        await find_conversation(connection, conversation_id, lock=True)
+        conversation = await find_conversation(connection, conversation_id, lock=True)
+        # A temporary conversation stays out of the list and its folders (CNV-011).
+        if conversation.temporary and present & {"archived", "folder_id", "pinned"}:
+            raise errors.temporary()
         if body.model is not None and not await offered(connection, body.model):
             raise errors.invalid("/model", "not_offered")
         if body.folder_id is not None and not await _owns_folder(connection, body.folder_id):
@@ -328,7 +334,8 @@ async def fork_conversation(
     Its workspace starts as a copy of this conversation's (SBX-010, ADR-0078); when the copy fails, there is no fork.
     """
     async with transaction(engine, identity) as connection:
-        await find_conversation(connection, conversation_id, lock=True)
+        if (await find_conversation(connection, conversation_id, lock=True)).temporary:
+            raise errors.temporary()
         await _refuse_while_active(connection, conversation_id)
         path = await path_runs(connection, conversation_id, body.run_id)
         if not path:
@@ -410,21 +417,28 @@ async def delete_conversation(
     async with transaction(engine, identity) as connection:
         await find_conversation(connection, conversation_id, lock=True)
         await _refuse_while_active(connection, conversation_id)
-        run_ids = [
-            str(row.id)
-            for row in await connection.execute(
-                text("SELECT id FROM runs WHERE conversation_id = :id"), {"id": conversation_id}
-            )
-        ]
-        # The workflows hold the runs' content without row-level security, so
-        # they go first; their IDs come from the row-level-secured runs (TEN-009).
-        if run_ids:
-            await durable.delete_workflows_async(run_ids)
-        # Its workspace goes with it; when it cannot, nothing is deleted (SBX-010, ADR-0078).
-        await workspace_request(_driver(request), identity, conversation_id, "DELETE")
-        # Messages and runs follow by cascade; ledger entries are detached (ADR-0042).
-        await connection.execute(text("DELETE FROM conversations WHERE id = :id"), {"id": conversation_id})
+        await delete_everything(connection, durable.delete_workflows_async, _driver(request), identity, conversation_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def delete_everything(
+    connection: AsyncConnection,
+    delete_workflows: Callable[[list[str]], Awaitable[None]],
+    driver: SandboxDriver,
+    identity: Identity,
+    conversation_id: uuid.UUID,
+) -> None:
+    """Delete a conversation the user owns, with its workflows and its workspace, in the caller's transaction."""
+    runs = await connection.execute(text("SELECT id FROM runs WHERE conversation_id = :id"), {"id": conversation_id})
+    run_ids = [str(row.id) for row in runs]
+    # The workflows hold the runs' content without row-level security, so
+    # they go first; their IDs come from the row-level-secured runs (TEN-009).
+    if run_ids:
+        await delete_workflows(run_ids)
+    # Its workspace goes with it; when it cannot, nothing is deleted (SBX-010, ADR-0078).
+    await workspace_request(driver, identity, conversation_id, "DELETE")
+    # Messages and runs follow by cascade; ledger entries are detached (ADR-0042).
+    await connection.execute(text("DELETE FROM conversations WHERE id = :id"), {"id": conversation_id})
 
 
 async def path_runs(connection: AsyncConnection, conversation_id: uuid.UUID, last_run_id: uuid.UUID) -> list[Any]:

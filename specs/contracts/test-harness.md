@@ -61,8 +61,9 @@ database procedure (ADR-0050):
    with its output in the failure.
 3. Start the worker, `python -m mazzamurello_server worker`, from the
    repository root, with `MZM_DATABASE_URL` and `MZM_SECRET_KEY` as for the
-   API (ADR-0052), and `MZM_SANDBOXD_URL` and `MZM_SANDBOXD_TOKEN` of the
-   sandbox driver below. The worker has no readiness signal: tests wait for the
+   API (ADR-0052), `MZM_SANDBOXD_URL` and `MZM_SANDBOXD_TOKEN` of the
+   sandbox driver below, and `MZM_TEMPORARY_SWEEP_SECONDS` set to `1`, so
+   that tests of temporary conversations need not wait (ADR-0082). The worker has no readiness signal: tests wait for the
    outcome of runs, with a timeout.
 4. Tests call the API over HTTP at `http://127.0.0.1:PORT/v1` and stop both
    processes at the end of the session. To check recovery (AGT-010), a test

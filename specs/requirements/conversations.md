@@ -146,16 +146,19 @@ Rationale: journey J4.
 
 ## CNV-011: Temporary conversations
 
-- **Status:** draft
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
-A user MUST be able to start a temporary conversation. A temporary
-conversation MUST NOT be listed with the others, MUST NOT create or use
-memory items, and MUST be physically deleted, with its runs, when the user
-leaves it or at the latest 24 hours after its last activity. Its entries in
-the cost ledger are kept, without content.
+A user MUST be able to start a temporary conversation, which stays temporary.
+A temporary conversation MUST NOT be listed with the others or found by
+search, MUST NOT be forked, moved into a folder, pinned or archived, and
+MUST NOT create or use memory items. It MUST be physically deleted, with its
+runs and its workspace, when the user leaves it in a client or signs out, and
+at the latest 24 hours after its last activity. Its entries in the cost
+ledger are kept, without content. Clients MUST show that a conversation is
+temporary while it is open (ADR-0082).
 
 Rationale: journey J10.
 
