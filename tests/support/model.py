@@ -16,6 +16,8 @@ last user message:
 - `tool:<name> <arguments>` calls the tool named `<name>` with the JSON
   `<arguments>`, then answers `Tool said: <result>`, or `No tool <name>` when
   the request does not offer it;
+- `say:<text> ||| tool:<name> <arguments>` says `<text>`, then calls the tool
+  in the same answer, as `tool:` does (UX-003);
 - `think:<text>` streams `Thinking: <text>` as the model's reasoning, then
   `Echo: <message>` (CNV-013);
 - anything else streams `Echo: <message>`.
@@ -252,6 +254,11 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if last.startswith("run:"):
                 self._tool_turn(body, last.removeprefix("run:"))
                 return
+            if last.startswith("say:") and " ||| tool:" in last:
+                said, _, call = last.removeprefix("say:").partition(" ||| tool:")
+                name, _, arguments = call.partition(" ")
+                self._named_tool_turn(body, name, arguments or "{}", said)
+                return
             if last.startswith("tool:"):
                 name, _, arguments = last.removeprefix("tool:").partition(" ")
                 self._named_tool_turn(body, name, arguments or "{}")
@@ -314,7 +321,7 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             name, argument = _command_tool(cast(list[dict[str, Any]], body.get("tools", [])))
             self._call(body, name, json.dumps({argument: commands[done]}))
 
-        def _named_tool_turn(self, body: dict[str, Any], name: str, arguments: str) -> None:
+        def _named_tool_turn(self, body: dict[str, Any], name: str, arguments: str, said: str = "") -> None:
             messages = cast(list[dict[str, Any]], body.get("messages", []))
             if messages and messages[-1].get("role") == "tool":
                 result = str(messages[-1].get("content", ""))
@@ -324,9 +331,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if name not in offered:
                 self._answer(body, [(f"No tool {name}", 0.0)])
                 return
-            self._call(body, name, arguments)
+            self._call(body, name, arguments, said)
 
-        def _call(self, body: dict[str, Any], name: str, arguments: str) -> None:
+        def _call(self, body: dict[str, Any], name: str, arguments: str, said: str = "") -> None:
             messages = cast(list[dict[str, Any]], body.get("messages", []))
             call = {
                 "id": f"call-{len(messages)}",
@@ -337,13 +344,15 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 completion = self._completion(body, "")
                 completion["choices"][0] = {
                     "index": 0,
-                    "message": {"role": "assistant", "content": None, "tool_calls": [call]},
+                    "message": {"role": "assistant", "content": said or None, "tool_calls": [call]},
                     "finish_reason": "tool_calls",
                 }
                 self._json(200, completion)
                 return
             self._start_stream()
             base = self._chunk_base(body)
+            if said:
+                self._event(base | {"choices": [self._choice({"role": "assistant", "content": said}, None)]})
             delta = {"role": "assistant", "tool_calls": [call | {"index": 0}]}
             self._event(base | {"choices": [self._choice(delta, None)]})
             self._finish(base, "tool_calls")
