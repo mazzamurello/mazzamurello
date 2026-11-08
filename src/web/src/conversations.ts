@@ -41,8 +41,8 @@ export async function forkConversation(id: string, runId: string): Promise<Conve
   return unwrap(await api.POST("/conversations/{conversation_id}/fork", { params: { path: { conversation_id: id } }, body: { run_id: runId } }));
 }
 
-export async function createConversation(model?: ModelChoice): Promise<Conversation> {
-  return unwrap(await api.POST("/conversations", { body: model === undefined ? {} : { model } }));
+export async function createConversation(model?: ModelChoice, temporary = false): Promise<Conversation> {
+  return unwrap(await api.POST("/conversations", { body: { ...(model === undefined ? {} : { model }), temporary } }));
 }
 
 export async function updateConversation(

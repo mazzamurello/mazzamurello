@@ -260,6 +260,7 @@ class CreateConversationRequest(Request):
     model: ModelChoice | None = None
     reasoning: Reasoning | None = None
     disabled_tools: DisabledTools | None = None
+    temporary: bool = False
 
 
 class UpdateConversationRequest(Request):
@@ -334,6 +335,7 @@ class Conversation(Response):
     id: uuid.UUID
     title: str
     archived: bool
+    temporary: bool
     active_run_id: uuid.UUID | None
     model: ModelChoiceOut | None
     reasoning: Reasoning

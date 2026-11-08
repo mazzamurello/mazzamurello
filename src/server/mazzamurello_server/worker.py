@@ -42,7 +42,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from mazzamurello_server.config import WorkerConfiguration
-from mazzamurello_server.conversations import path_runs, stored_messages
+from mazzamurello_server.conversations import delete_everything, path_runs, stored_messages
 from mazzamurello_server.database import Identity, create_engine, transaction
 from mazzamurello_server.durable import (
     APPLICATION_NAME,
@@ -62,7 +62,7 @@ from mazzamurello_server.gateway import (
     store_messages,
 )
 from mazzamurello_server.offers import TOOLS as OFFER_TOOLS
-from mazzamurello_server.sandbox import SandboxWorkspace, sandbox_ref, stop_sandbox
+from mazzamurello_server.sandbox import SandboxDriver, SandboxWorkspace, sandbox_ref, stop_sandbox
 from mazzamurello_server.settings import BUILT_IN_BASE_INSTRUCTIONS
 from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
@@ -365,7 +365,7 @@ async def _execute(
 ) -> None:
     async for event in encoder.before_stream():
         await _write(run.run_id, _encoded(event))
-    if run.parent_run_id is None:
+    if run.parent_run_id is None and not run.temporary:
         # The title is asked for alongside the answer, from the first message (CNV-006, ADR-0073);
         # the step's place in the workflow is taken here, before the agent's.
         _TITLES[run.run_id] = asyncio.create_task(_title(run, replace(deps, emit=None)))
@@ -498,6 +498,55 @@ async def _apply_retention(days: int) -> None:
         logger.info("deleted %d expired workflows", len(existing))
 
 
+# A temporary conversation is deleted a day after its last activity (CNV-011, ADR-0082).
+TEMPORARY_HOURS = 24
+
+
+async def _delete_expired_temporary_conversations() -> None:
+    """Delete each temporary conversation left a day ago, under its owner's request context (ADR-0082)."""
+    async with transaction(_engine(), None) as connection:
+        expired = (
+            await connection.execute(
+                text("SELECT * FROM expired_temporary_conversations(:hours)"), {"hours": TEMPORARY_HOURS}
+            )
+        ).all()
+    driver = SandboxDriver(_WORKER.sandboxd_url, _WORKER.sandboxd_token)
+    for row in expired:
+        owner = Identity(
+            session_id=uuid.UUID(int=0),
+            user_id=row.owner_id,
+            tenant_id=row.tenant_id,
+            role="member",
+            instance_admin=False,
+        )
+        try:
+            async with transaction(_engine(), owner) as connection:
+                # Still there, and still left: it may have been deleted or used since.
+                still = (
+                    await connection.execute(
+                        text(
+                            "SELECT 1 FROM conversations WHERE id = :id AND temporary"
+                            " AND updated_at < now() - make_interval(hours => :hours) FOR UPDATE"
+                        ),
+                        {"id": row.conversation_id, "hours": TEMPORARY_HOURS},
+                    )
+                ).one_or_none()
+                if still is not None:
+                    await delete_everything(connection, DBOS.delete_workflows_async, driver, owner, row.conversation_id)
+        except Exception:
+            # The next sweep tries again.
+            logger.exception("a temporary conversation could not be deleted")
+
+
+async def _temporary_loop(seconds: int) -> None:
+    while True:
+        try:
+            await _delete_expired_temporary_conversations()
+        except Exception:
+            logger.exception("the sweep for temporary conversations failed")
+        await asyncio.sleep(seconds)
+
+
 async def _retention_loop(days: int) -> None:
     while True:
         try:
@@ -515,8 +564,10 @@ async def _serve(configuration: WorkerConfiguration) -> None:
     for signum in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(signum, stop.set)
     retention = asyncio.create_task(_retention_loop(configuration.run_retention_days))
+    temporary = asyncio.create_task(_temporary_loop(configuration.temporary_sweep_seconds))
     await stop.wait()
     retention.cancel()
+    temporary.cancel()
 
 
 def run_worker(configuration: WorkerConfiguration) -> None:

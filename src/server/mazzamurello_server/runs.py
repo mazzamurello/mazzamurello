@@ -269,6 +269,7 @@ async def start_run(
         disabled_tools=list(conversation.disabled_tools),
         base_instructions=base,
         additional_instructions=additional,
+        temporary=conversation.temporary,
     )
     try:
         await durable.enqueue_async(

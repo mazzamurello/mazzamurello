@@ -225,6 +225,7 @@ TABLES = [
       usage jsonb,
       pending_approvals jsonb,
       approvals_expire_at timestamptz,
+      temporary boolean NOT NULL DEFAULT false,
       archived_at timestamptz,
       -- The model of the conversation (MOD-012); a removed connection leaves the model without one.
       connection_id uuid,
@@ -520,6 +521,21 @@ PRE_AUTHENTICATION_FUNCTIONS = [
     SET search_path = pg_catalog, pg_temp
     AS $$ SELECT r.id FROM public.runs r WHERE r.finished_at < now() - make_interval(days => $1) $$
     """,
+    # Temporary conversations to delete (CNV-011, ADR-0082): identifiers only,
+    # across tenants, so the worker deletes each under its owner's context.
+    """
+    CREATE FUNCTION expired_temporary_conversations(hours integer)
+    RETURNS TABLE (conversation_id uuid, tenant_id uuid, owner_id uuid)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+      SELECT c.id, c.tenant_id, c.owner_id FROM public.conversations c
+      WHERE c.temporary AND c.updated_at < now() - make_interval(hours => $1)
+        AND NOT EXISTS (
+          SELECT 1 FROM public.runs r WHERE r.conversation_id = c.id AND r.status IN ('queued', 'running')
+        )
+    $$
+    """,
     # Whether any household has a default model, for /health before any
     # sign-in (OPS-002, ADR-0054): only a yes or a no.
     """
@@ -668,6 +684,7 @@ OWNER_POLICIES = [
     "CREATE POLICY login_attempts_owner_insert ON login_attempts FOR INSERT TO mzm_owner WITH CHECK (true)",
     "CREATE POLICY login_attempts_owner_delete ON login_attempts FOR DELETE TO mzm_owner USING (true)",
     "CREATE POLICY runs_owner_select ON runs FOR SELECT TO mzm_owner USING (true)",
+    "CREATE POLICY conversations_owner_select ON conversations FOR SELECT TO mzm_owner USING (true)",
     "CREATE POLICY connections_owner_select ON connections FOR SELECT TO mzm_owner USING (true)",
 ]
 
@@ -700,7 +717,8 @@ PRIVILEGES = [
     """,
     """
     GRANT EXECUTE ON FUNCTION auth_find_login(text), auth_find_session(bytea), auth_touch_session(uuid),
-      auth_record_login_attempt(text, inet, boolean), retention_expired_runs(integer), default_model_configured()
+      auth_record_login_attempt(text, inet, boolean), retention_expired_runs(integer),
+      expired_temporary_conversations(integer), default_model_configured()
       TO mzm_app
     """,
 ]
@@ -736,6 +754,7 @@ def downgrade() -> None:
             *(f"DROP TABLE {table} CASCADE" for table in reversed(CONTRACT_TABLES)),
             "DROP FUNCTION default_model_configured()",
             "DROP FUNCTION retention_expired_runs(integer)",
+            "DROP FUNCTION expired_temporary_conversations(integer)",
             "DROP FUNCTION revoke_sessions_of_disabled_user()",
             "DROP FUNCTION connections_guard()",
             "DROP FUNCTION bootstrap_instance(text, text, text, text)",
