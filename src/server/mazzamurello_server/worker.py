@@ -112,7 +112,8 @@ DOWNLOAD_INSTRUCTIONS = "To give the user a file of /workspace, offer it with of
 TOOLBOX_INSTRUCTIONS = (
     "The sandbox has these tools, ready without installing anything: for PDFs, pdftotext, pdftoppm,"
     " pdfinfo and qpdf; markitdown, which turns PDF, Word, Excel, PowerPoint and HTML files into Markdown"
-    " for you to read; pandoc for documents, with the DejaVu, Liberation and Noto fonts; ImageMagick"
+    " for you to read; pandoc for documents, with the DejaVu, Liberation and Noto fonts, and Typst to make"
+    " PDFs: `pandoc in.md -o out.pdf --pdf-engine=typst`, or `typst compile` for Typst documents; ImageMagick"
     " (magick) for images, ffmpeg and ffprobe for audio and video; jq, sqlite3, file, zip and unzip; Node.js (node)"
     " with npm. python3 has pandas, numpy, matplotlib, Pillow, pypdf, python-docx, openpyxl and python-pptx."
     " There is no office suite and no text recognition. Use these tools before installing anything, and"

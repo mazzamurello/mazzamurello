@@ -254,7 +254,7 @@ def test_the_agent_is_told_which_tools_the_sandbox_has(server: Server, token: st
     (request,) = default_model.endpoint.requests_with(text)[:1]
     messages = request.body.get("messages", [])
     system = " ".join(str(message.get("content", "")) for message in messages if message.get("role") == "system")
-    for tool in ("pdftotext", "markitdown", "pandoc", "ffmpeg", "ImageMagick", "pandas", "openpyxl", "node"):
+    for tool in ("pdftotext", "markitdown", "pandoc", "typst", "ffmpeg", "ImageMagick", "pandas", "openpyxl", "node"):
         assert tool in system, f"the instructions do not mention {tool}"
 
 
