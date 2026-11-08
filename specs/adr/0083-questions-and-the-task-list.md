@@ -50,7 +50,12 @@ AI's AG-UI stream turns only approvals into interrupts, not deferred calls.
    `pending_interrupts` when it starts.
 3. **A pending question blocks** new messages, rewinds and forks
    (`run.interrupt_pending`); the client shows it in place of the message
-   box. `GET /conversations/{id}` returns the pending interrupts, so a
+   box, one question at a time, with a counter and arrows to move between
+   them, in a card no taller than the window, so that its buttons stay in
+   reach. Until the last question, the card offers Skip and Next, which
+   needs the question answered; on the last, Skip and Answer, which needs
+   every question answered. Picking a choice never moves on by itself: the
+   user moves with Next or the arrows. `GET /conversations/{id}` returns the pending interrupts, so a
    client opened later shows them too.
 4. **Answers carry the user's provenance**: what the model receives is
    built by the server from its stored question and the user's choice, so it
