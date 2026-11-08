@@ -344,19 +344,19 @@
       "file_system": "Read and write files",
       "offer_download": "Offer downloads"
     },
-    "base": "Base instructions",
-    "baseHint": "Replace the assistant's own instructions with yours. What it needs to use its tools stays.",
-    "builtIn": "The assistant's own instructions",
-    "additional": "Additional instructions",
-    "additionalHint": "Added after the base instructions, for example how you like answers.",
+    "cannotReason": "This model can't reason.",
+    "additional": "Additional prompt",
+    "additionalHint": "Added after the system prompt, for example how you like answers.",
     "none": "None",
-    "restore": "Restore the default base instructions",
+    "dangerZone": "Danger zone",
+    "dangerHint": "Replacing the system prompt changes who the assistant is, and can make its answers worse.",
+    "base": "System prompt",
+    "baseHint": "What the model is told before the conversation. What it needs to use its tools is added after it, whatever you write.",
+    "restore": "Restore the default system prompt",
     "restoreShort": "Restore",
-    "saveInstructions": "Save instructions",
+    "savePrompts": "Save prompts",
     "chat": "Chat settings",
     "chatHint": "For this conversation, from its next answer.",
-    "myBase": "Your default base instructions",
-    "myAdditional": "Your default additional instructions",
     "notSaved": "Not saved. Try again."
   }
 }

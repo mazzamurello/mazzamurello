@@ -23,6 +23,11 @@ from mazzamurello_server.database import transaction
 router = APIRouter()
 
 DEFAULT_REASONING: schemas.Reasoning = "on"
+# The built-in base instructions, which a user may replace (CNV-014, ADR-0044).
+BUILT_IN_BASE_INSTRUCTIONS = (
+    "You are Mazzamurello, an assistant for the people of a household. "
+    "Answer helpfully, clearly and briefly, in the language the user writes in."
+)
 SETTINGS_COLUMNS = "connection_id, model, reasoning, disabled_tools, base_instructions, additional_instructions"
 
 
@@ -43,7 +48,12 @@ async def _stored(connection: AsyncConnection) -> Any:
 def _response(row: Any) -> schemas.UserSettingsOut:
     if row is None:
         return schemas.UserSettingsOut(
-            model=None, reasoning=None, disabled_tools=[], base_instructions=None, additional_instructions=None
+            model=None,
+            reasoning=None,
+            disabled_tools=[],
+            base_instructions=None,
+            additional_instructions=None,
+            built_in_base_instructions=BUILT_IN_BASE_INSTRUCTIONS,
         )
     return schemas.UserSettingsOut(
         model=None
@@ -53,6 +63,7 @@ def _response(row: Any) -> schemas.UserSettingsOut:
         disabled_tools=list(row.disabled_tools),
         base_instructions=row.base_instructions,
         additional_instructions=row.additional_instructions,
+        built_in_base_instructions=BUILT_IN_BASE_INSTRUCTIONS,
     )
 
 
