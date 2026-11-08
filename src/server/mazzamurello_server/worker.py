@@ -84,7 +84,15 @@ INSTRUCTIONS = (
     " each piece of work in a folder of its own with a README.md that says what it is and how to make it"
     " again. Do not keep data there that can be fetched again: write down where it comes from instead."
     " Look in /workspace for earlier work before starting again. Files the user attaches are in"
-    " /workspace/uploads/. To give the user a file, offer it with offer_download."
+    " /workspace/uploads/. To give the user a file, offer it with offer_download.\n\n"
+    # The sandbox toolbox (SBX-021, ADR-0080).
+    "The sandbox has these tools, ready without installing anything: for PDFs, pdftotext, pdftoppm,"
+    " pdfinfo and qpdf; markitdown, which turns PDF, Word, Excel, PowerPoint and HTML files into Markdown"
+    " for you to read; pandoc for documents, with the DejaVu, Liberation and Noto fonts; ImageMagick"
+    " (magick) for images, ffmpeg and ffprobe for audio and video; jq, sqlite3, file, zip and unzip; Node.js (node)"
+    " with npm. python3 has pandas, numpy, matplotlib, Pillow, pypdf, python-docx, openpyxl and python-pptx."
+    " There is no office suite and no text recognition. Use these tools before installing anything, and"
+    " install only what is missing: it lasts for this answer only."
 )
 
 
