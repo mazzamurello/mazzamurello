@@ -123,7 +123,8 @@ task list as it updates, and its latest state when the conversation is
 opened. Clients MUST show the questions the assistant asks the user
 (AGT-015) as choices the user can answer, in their own words or by skipping
 the question, in place of the message box, also when the conversation is
-opened later (ADR-0083).
+opened later; several questions are shown one at a time, and the controls to
+answer stay in view on any screen (ADR-0083).
 
 Rationale: journey J7.
 
