@@ -68,7 +68,7 @@ from mazzamurello_server.gateway import (
 from mazzamurello_server.offers import TOOLS as OFFER_TOOLS
 from mazzamurello_server.plans import ConversationPlanStore, plan_steps
 from mazzamurello_server.questions import REQUESTS, asks_user, interrupts
-from mazzamurello_server.sandbox import SandboxDriver, SandboxWorkspace, sandbox_ref, stop_sandbox
+from mazzamurello_server.sandbox import CommandPurposes, SandboxDriver, SandboxWorkspace, sandbox_ref, stop_sandbox
 from mazzamurello_server.settings import BUILT_IN_BASE_INSTRUCTIONS
 from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
@@ -224,6 +224,8 @@ agent = Agent(
         Gateway(),
         # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
         SandboxWorkspace(),
+        # Each sandbox command says what it is for (UX-003, ADR-0085).
+        CommandPurposes(),
         SHELL,
         FILE_SYSTEM,
         # Large results reach the model bounded; the rest stays in the workspace (AGT-014).

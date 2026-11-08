@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, Ghost, GitFork, Pencil, SlidersHorizontal } from "lucide-react";
+import { Brain, Check, ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, Ghost, GitFork, LoaderCircle, Pencil, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
@@ -228,10 +228,14 @@ export function ConversationView() {
   }
 
   const turns = history.data ? turnsOf(history.data) : [];
-  const shown = live !== null && hideFrom !== null ? turns.slice(0, hideFrom) : turns;
+  // The run being answered shows live, even when the history was loaded meanwhile (ADR-0085).
+  const shown = (live !== null && hideFrom !== null ? turns.slice(0, hideFrom) : turns).filter(
+    (turn) => !(live?.status === "running" && turn.run.run_id === live.runId),
+  );
   // A failed run, once in the history, is shown there with its error (UX-014); a reason only the
   // stream gave stays with it until the next run.
-  const settled = live?.status === "failed" && shown.some((turn) => turn.run.run_id === live.runId);
+  // Once the history has the live run, it shows it: never both at once (ADR-0085).
+  const settled = live !== null && live.status !== "running" && shown.some((turn) => turn.run.run_id === live.runId);
   const liveReason = live?.status === "failed" ? { runId: live.runId, reason: live.reason } : null;
 
   function askToEdit(index: number, turn: Turn, text: string) {
@@ -284,7 +288,7 @@ export function ConversationView() {
           {live && !settled && (
             <li className="my-5 flex flex-col gap-1">
               {live.userText !== null && <UserBubble text={live.userText} attachments={live.attachments ?? []} onShow={show} />}
-              <Answer parts={live.parts} conversationId={conversationId} onShow={show} />
+              <Answer parts={live.parts} conversationId={conversationId} onShow={show} running={live.status === "running"} />
               {live.status === "failed" && live.errorCode !== "run.cancelled" ? (
                 <RunErrorView code={live.errorCode ?? "internal.error"} reason={live.reason ?? null} />
               ) : (
@@ -598,24 +602,33 @@ function UserBubble({ text, attachments, onShow }: { text: string; attachments: 
   );
 }
 
-function Answer({ parts, conversationId, onShow }: { parts: LivePart[]; conversationId: string; onShow: (path: string) => void }) {
+function Answer({ parts, conversationId, onShow, running = false }: { parts: LivePart[]; conversationId: string; onShow: (path: string) => void; running?: boolean }) {
   const offers = parts.flatMap((part) => (part.kind === "tool" ? (offerOf(part) ?? []) : []));
-  const tools = parts.flatMap((part) => (part.kind === "tool" && offerOf(part) === null ? [part] : []));
-  const texts = parts.filter((part) => part.kind === "text");
   const reasoning = parts.flatMap((part) => (part.kind === "reasoning" ? [part.text] : [])).join("\n\n");
+  // Text and tool calls in the order they came; consecutive calls form one group (UX-003, ADR-0085).
+  const blocks: ({ kind: "text"; part: Extract<LivePart, { kind: "text" }> } | { kind: "tools"; parts: Extract<LivePart, { kind: "tool" }>[] })[] = [];
+  for (const part of parts) {
+    if (part.kind === "text") blocks.push({ kind: "text", part });
+    else if (part.kind === "tool" && offerOf(part) === null) {
+      const last = blocks.at(-1);
+      if (last?.kind === "tools") last.parts.push(part);
+      else blocks.push({ kind: "tools", parts: [part] });
+    }
+  }
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       {reasoning && <ReasoningView text={reasoning} />}
-      {tools.length > 0 && (
-        <div className="flex flex-col items-start gap-1.5">
-          {tools.map((part) => (
-            <ToolCall key={part.id} part={part} />
-          ))}
-        </div>
+      {blocks.map((block) =>
+        block.kind === "text" ? (
+          <Markdown key={block.part.id} text={block.part.text} />
+        ) : (
+          <div key={block.parts[0]?.id} className="flex flex-col items-start gap-1.5">
+            {block.parts.map((part) => (
+              <ToolCall key={part.id} part={part} running={running} />
+            ))}
+          </div>
+        ),
       )}
-      {texts.map((part) => (
-        <Markdown key={part.id} text={part.text} />
-      ))}
       {offers.length > 0 && (
         <div className="flex flex-col items-start gap-1.5">
           {offers.map((offer) => (
@@ -652,27 +665,75 @@ function argumentPreview(args: string): string {
   }
 }
 
-/** Tool activity as a compact summary that expands to its full details (UX-003). */
-function ToolCall({ part }: { part: Extract<LivePart, { kind: "tool" }> }) {
+/** The arguments of a call, as far as they have streamed. */
+function argumentsOf(args: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(args);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Whether a call is running or done, shown and said (ADR-0085). */
+function CallState({ done, running }: { done: boolean; running: boolean }) {
+  const { t } = useTranslation();
+  if (done) {
+    return (
+      <>
+        <Check className="size-4 flex-none text-accent" aria-hidden="true" />
+        <span className="sr-only">{t("activity.callDone")}</span>
+      </>
+    );
+  }
+  if (!running) return null;
+  return (
+    <>
+      <LoaderCircle className="size-4 flex-none animate-spin" aria-hidden="true" />
+      <span className="sr-only">{t("activity.callRunning")}</span>
+    </>
+  );
+}
+
+/** Tool activity as a compact summary that expands to its full details, running or done (UX-003, ADR-0085). */
+function ToolCall({ part, running }: { part: Extract<LivePart, { kind: "tool" }>; running: boolean }) {
   const { t } = useTranslation();
   const activity = toolActivity(part.name);
+  const args = argumentsOf(part.args);
+  const command = activity === "running" && typeof args.command === "string" ? args.command : null;
+  const purpose = typeof args.description === "string" && args.description.trim() !== "" ? args.description.trim() : null;
   const label =
     part.name === ASK_USER
       ? t("activity.asked")
       : isPlanning(part.name)
         ? t("activity.planned")
-        : activity === "running" ? t("activity.ran") : activity === "writing" ? t("activity.wrote") : activity === "reading" ? t("activity.read") : activity === "searching" ? t("activity.searched") : t("activity.used", { name: part.name });
-  const preview = argumentPreview(part.args);
+        : activity === "running"
+          ? purpose
+            ? t("activity.commandFor", { purpose })
+            : t("activity.ran")
+          : activity === "writing"
+            ? t("activity.wrote")
+            : activity === "reading"
+              ? t("activity.read")
+              : activity === "searching"
+                ? t("activity.searched")
+                : t("activity.used", { name: part.name });
+  // A command's first line, under what it is for; other tools show their first argument beside the label.
+  const preview = command !== null ? (command.split("\n")[0] ?? "") : argumentPreview(part.args);
+  const done = part.result !== undefined;
   return (
     <details className="group/tool max-w-full">
-      <summary className="inline-flex max-w-full cursor-pointer list-none items-center gap-2 rounded-full border border-line py-[5px] pr-2.5 pl-[9px] text-[13.5px] text-muted hover:bg-hover hover:text-fg [&::-webkit-details-marker]:hidden">
-        <b className="font-semibold whitespace-nowrap text-fg">{label}</b>
-        {preview && <span className="min-w-0 truncate font-mono text-[12.5px]">{preview}</span>}
+      <summary className={`flex max-w-full cursor-pointer list-none items-center gap-2 border border-line py-[5px] pr-2.5 pl-[9px] text-[13.5px] text-muted hover:bg-hover hover:text-fg [&::-webkit-details-marker]:hidden ${command !== null ? "rounded-xl" : "w-fit rounded-full"}`}>
+        <CallState done={done} running={running} />
+        <span className={`flex min-w-0 ${command !== null ? "flex-col" : "items-center gap-2"}`}>
+          <b className="truncate font-semibold text-fg">{label}</b>
+          {preview && <span className="min-w-0 truncate font-mono text-[12.5px]">{preview}</span>}
+        </span>
         <ChevronRight className="size-4 flex-none transition-transform group-open/tool:rotate-90" aria-hidden="true" />
       </summary>
       <div className="mt-2 mb-1 ml-3.5 flex flex-col gap-2 border-l-2 border-line py-1 pl-3.5 text-[13.5px] text-muted">
         <p className="font-semibold">{t("message.toolArguments")}</p>
-        <pre className="overflow-x-auto rounded-lg bg-hover p-2 font-mono text-[12.5px] text-fg">{part.args}</pre>
+        <pre className="overflow-x-auto rounded-lg bg-hover p-2 font-mono text-[12.5px] text-fg">{command ?? part.args}</pre>
         {part.result !== undefined && (
           <>
             <p className="font-semibold">{t("message.toolResult")}</p>

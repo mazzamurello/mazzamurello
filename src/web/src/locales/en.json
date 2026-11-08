@@ -187,7 +187,10 @@
     "searched": "Searched the web",
     "read": "Read",
     "wrote": "Wrote a file",
-    "ran": "Ran a command",
+    "ran": "Sandbox command",
+    "commandFor": "Sandbox command: {{purpose}}",
+    "callRunning": "Running",
+    "callDone": "Done",
     "asked": "Asked you",
     "planned": "Updated the task list",
     "used": "Used {{name}}"
