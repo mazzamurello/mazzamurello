@@ -5,7 +5,7 @@ import { RotateCcw, X } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { api, unwrap, type Conversation, type ModelChoice, type Reasoning, type ToolName, type UserSettings } from "../api/client";
+import { api, unwrap, type Conversation, type ModelChoice, type Reasoning, type ToolName, type UserSettings, type UserSettingsView } from "../api/client";
 import { updateConversation } from "../conversations";
 import { findModel, useModels } from "../models";
 import { useNotify } from "../notices";
@@ -22,35 +22,55 @@ export function useSettings() {
   return useQuery({ queryKey: SETTINGS, queryFn: async () => unwrap(await api.GET("/me/settings")) });
 }
 
-/** Whether to offer reasoning for a model: not for one known not to reason. */
+/** Whether a model may reason: not one known not to. */
 function useReasons(choice: ModelChoice | null | undefined): boolean {
   const models = useModels();
   return findModel(models.data?.items, choice)?.reasoning !== false;
 }
 
-/** An empty text is no text: the default instructions apply. */
-function orNull(text: string): string | null {
-  return text.trim() === "" ? null : text;
+/** A text left as the one it inherits is no text of its own, so it keeps following its default (ADR-0081). */
+function own(text: string, inherited: string): string | null {
+  return text === inherited ? null : text;
 }
 
-function ReasoningField({ value, onChange }: { value: Reasoning; onChange: (value: Reasoning) => void }) {
+function ReasoningField({ value, onChange, reasons }: { value: Reasoning; onChange: (value: Reasoning) => void; reasons: boolean }) {
   const { t } = useTranslation();
   const label = useId();
   const name = useId();
+  const note = useId();
   return (
     <div>
       <h3 id={label} className="mb-1 text-sm font-bold">
         {t("assistant.reasoning")}
       </h3>
       <p className="mb-2.5 max-w-[62ch] text-sm text-muted">{t("assistant.reasoningHint")}</p>
-      <div role="radiogroup" aria-labelledby={label} className="inline-flex rounded-[10px] border border-line-strong p-0.5">
+      <div
+        role="radiogroup"
+        aria-labelledby={label}
+        aria-describedby={reasons ? undefined : note}
+        aria-disabled={!reasons || undefined}
+        className="inline-flex rounded-[10px] border border-line-strong p-0.5 aria-disabled:opacity-50"
+      >
         {REASONING.map((level) => (
-          <label key={level} className="relative cursor-pointer rounded-lg px-3.5 py-1.5 text-sm font-semibold text-muted has-checked:bg-hover has-checked:text-fg has-focus-visible:outline-2 has-focus-visible:outline-accent">
-            <input type="radio" name={name} value={level} checked={value === level} onChange={() => onChange(level)} className="absolute inset-0 cursor-pointer opacity-0" />
+          <label key={level} className="relative cursor-pointer rounded-lg px-3.5 py-1.5 text-sm font-semibold text-muted has-checked:bg-hover has-checked:text-fg has-disabled:cursor-not-allowed has-focus-visible:outline-2 has-focus-visible:outline-accent">
+            <input
+              type="radio"
+              name={name}
+              value={level}
+              checked={reasons ? value === level : level === "off"}
+              disabled={!reasons}
+              onChange={() => onChange(level)}
+              className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+            />
             {t(`assistant.levels.${level}`)}
           </label>
         ))}
       </div>
+      {!reasons && (
+        <p id={note} className="mt-2 text-sm text-muted">
+          {t("assistant.cannotReason")}
+        </p>
+      )}
     </div>
   );
 }
@@ -83,61 +103,65 @@ function ToolSwitches({ disabled, onChange }: { disabled: ToolName[]; onChange: 
   );
 }
 
-function InstructionsFields(props: {
-  base: string;
-  additional: string;
-  onBase: (text: string) => void;
-  onAdditional: (text: string) => void;
-  basePlaceholder: string;
-  additionalPlaceholder: string;
-}) {
+function AdditionalPrompt({ value, onChange, placeholder }: { value: string; onChange: (text: string) => void; placeholder: string }) {
   const { t } = useTranslation();
-  const base = useId();
-  const additional = useId();
+  const id = useId();
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <label htmlFor={base} className="text-sm font-bold">
-            {t("assistant.base")}
-          </label>
-          <button type="button" className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-semibold text-muted hover:bg-hover hover:text-fg disabled:opacity-50" disabled={props.base === ""} onClick={() => props.onBase("")}>
-            <RotateCcw className="size-3.5" aria-hidden="true" />
-            {/* Named in its content, so that the field's label stays the only one that names it. */}
-            <span aria-hidden="true">{t("assistant.restoreShort")}</span>
-            <span className="sr-only">{t("assistant.restore")}</span>
-          </button>
-        </div>
-        <p className="mb-2 max-w-[62ch] text-sm text-muted">{t("assistant.baseHint")}</p>
-        <textarea id={base} className={TEXTAREA} value={props.base} placeholder={props.basePlaceholder} onChange={(event) => props.onBase(event.target.value)} maxLength={20000} />
-      </div>
-      <div>
-        <label htmlFor={additional} className="mb-1 block text-sm font-bold">
-          {t("assistant.additional")}
-        </label>
-        <p className="mb-2 max-w-[62ch] text-sm text-muted">{t("assistant.additionalHint")}</p>
-        <textarea id={additional} className={TEXTAREA} value={props.additional} placeholder={props.additionalPlaceholder} onChange={(event) => props.onAdditional(event.target.value)} maxLength={20000} />
-      </div>
+    <div>
+      <label htmlFor={id} className="mb-1 block text-sm font-bold">
+        {t("assistant.additional")}
+      </label>
+      <p className="mb-2 max-w-[62ch] text-sm text-muted">{t("assistant.additionalHint")}</p>
+      <textarea id={id} className={TEXTAREA} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} maxLength={20000} />
     </div>
   );
 }
 
-/** The user's defaults, in the settings: settings save at once, instructions on request. */
+/** The system prompt, set apart: replacing it changes who the assistant is (CNV-014). */
+function DangerZone({ value, inherited, onChange }: { value: string; inherited: string; onChange: (text: string) => void }) {
+  const { t } = useTranslation();
+  const heading = useId();
+  const id = useId();
+  return (
+    <section aria-labelledby={heading} className="rounded-2xl border border-danger/45 p-4">
+      <h3 id={heading} className="mb-1 text-sm font-bold text-danger">
+        {t("assistant.dangerZone")}
+      </h3>
+      <p className="mb-3 max-w-[62ch] text-sm text-muted">{t("assistant.dangerHint")}</p>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <label htmlFor={id} className="text-sm font-bold">
+          {t("assistant.base")}
+        </label>
+        <button type="button" className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-semibold text-muted hover:bg-hover hover:text-fg disabled:opacity-50" disabled={value === inherited} onClick={() => onChange(inherited)}>
+          <RotateCcw className="size-3.5" aria-hidden="true" />
+          {/* Named in its content, so that the field's label stays the only one that names it. */}
+          <span aria-hidden="true">{t("assistant.restoreShort")}</span>
+          <span className="sr-only">{t("assistant.restore")}</span>
+        </button>
+      </div>
+      <p className="mb-2 max-w-[62ch] text-sm text-muted">{t("assistant.baseHint")}</p>
+      <textarea id={id} className={`${TEXTAREA} min-h-40`} value={value} onChange={(event) => onChange(event.target.value)} maxLength={20000} />
+    </section>
+  );
+}
+
+/** The user's defaults, in the settings: settings save at once, prompts on request. */
 export function AssistantSection() {
   const settings = useSettings();
   if (!settings.data) return null;
-  return <AssistantForm settings={settings.data} />;
+  return <AssistantForm view={settings.data} />;
 }
 
-function AssistantForm(props: { settings: UserSettings }) {
+function AssistantForm({ view }: { view: UserSettingsView }) {
   const { t } = useTranslation();
   const queries = useQueryClient();
   const heading = useId();
   const notify = useNotify();
+  const { built_in_base_instructions: builtIn, ...stored } = view;
   // The form's own copy, so that a choice shows at once.
-  const [settings, setSettings] = useState(props.settings);
+  const [settings, setSettings] = useState<UserSettings>(stored);
   const reasons = useReasons(settings.model);
-  const [base, setBase] = useState(settings.base_instructions ?? "");
+  const [base, setBase] = useState(settings.base_instructions ?? builtIn);
   const [additional, setAdditional] = useState(settings.additional_instructions ?? "");
   const [saved, setSaved] = useState(false);
 
@@ -145,8 +169,8 @@ function AssistantForm(props: { settings: UserSettings }) {
     const body = { ...settings, ...changes };
     setSettings(body);
     try {
-      const stored = unwrap(await api.PUT("/me/settings", { body }));
-      queries.setQueryData(SETTINGS, stored);
+      const updated = unwrap(await api.PUT("/me/settings", { body }));
+      queries.setQueryData(SETTINGS, updated);
       return true;
     } catch {
       setSettings(settings);
@@ -155,8 +179,8 @@ function AssistantForm(props: { settings: UserSettings }) {
     }
   }
 
-  async function saveInstructions() {
-    setSaved(await save({ base_instructions: orNull(base), additional_instructions: orNull(additional) }));
+  async function savePrompts() {
+    setSaved(await save({ base_instructions: own(base, builtIn), additional_instructions: own(additional, "") }));
   }
 
   return (
@@ -172,25 +196,27 @@ function AssistantForm(props: { settings: UserSettings }) {
         <p className="mb-2.5 max-w-[62ch] text-sm text-muted">{t("assistant.modelHint")}</p>
         <ModelSelect value={settings.model} onChange={(model) => void save({ model })} label={t("assistant.model")} placeholder={t("assistant.householdModel")} />
       </div>
-      {reasons && <ReasoningField value={settings.reasoning ?? "on"} onChange={(reasoning) => void save({ reasoning })} />}
+      <ReasoningField value={settings.reasoning ?? "on"} onChange={(reasoning) => void save({ reasoning })} reasons={reasons} />
       <ToolSwitches disabled={settings.disabled_tools} onChange={(disabled_tools) => void save({ disabled_tools })} />
-      <InstructionsFields
-        base={base}
-        additional={additional}
-        onBase={(text) => {
-          setBase(text);
-          setSaved(false);
-        }}
-        onAdditional={(text) => {
+      <AdditionalPrompt
+        value={additional}
+        onChange={(text) => {
           setAdditional(text);
           setSaved(false);
         }}
-        basePlaceholder={t("assistant.builtIn")}
-        additionalPlaceholder={t("assistant.none")}
+        placeholder={t("assistant.none")}
+      />
+      <DangerZone
+        value={base}
+        inherited={builtIn}
+        onChange={(text) => {
+          setBase(text);
+          setSaved(false);
+        }}
       />
       <div className="flex items-center gap-3">
-        <button type="button" className={PRIMARY} onClick={() => void saveInstructions()}>
-          {t("assistant.saveInstructions")}
+        <button type="button" className={PRIMARY} onClick={() => void savePrompts()}>
+          {t("assistant.savePrompts")}
         </button>
         <span role="status" className="text-sm text-muted">
           {saved ? t("settings.saved") : ""}
@@ -200,35 +226,44 @@ function AssistantForm(props: { settings: UserSettings }) {
   );
 }
 
-/** One conversation's settings and instructions, in a dialog; they apply from its next answer. */
+/** One conversation's settings and prompts, in a dialog; they apply from its next answer. */
 export function ChatSettings({ conversation, open, onOpenChange }: { conversation: Conversation; open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
-        {open && <ChatSettingsForm conversation={conversation} onDone={() => onOpenChange(false)} />}
+        {open && <ChatSettingsLoader conversation={conversation} onDone={() => onOpenChange(false)} />}
       </Dialog.Portal>
     </Dialog.Root>
   );
 }
 
-function ChatSettingsForm({ conversation, onDone }: { conversation: Conversation; onDone: () => void }) {
+/** The dialog's fields start from the user's defaults, so it waits for them. */
+function ChatSettingsLoader(props: { conversation: Conversation; onDone: () => void }) {
+  const settings = useSettings();
+  if (!settings.data) return null;
+  return <ChatSettingsForm {...props} defaults={settings.data} />;
+}
+
+function ChatSettingsForm({ conversation, defaults, onDone }: { conversation: Conversation; defaults: UserSettingsView; onDone: () => void }) {
   const { t } = useTranslation();
   const queries = useQueryClient();
   const notify = useNotify();
   const reasons = useReasons(conversation.model);
+  const inheritedBase = defaults.base_instructions ?? defaults.built_in_base_instructions;
+  const inheritedAdditional = defaults.additional_instructions ?? "";
   const [reasoning, setReasoning] = useState(conversation.reasoning);
   const [disabled, setDisabled] = useState(conversation.disabled_tools);
-  const [base, setBase] = useState(conversation.base_instructions ?? "");
-  const [additional, setAdditional] = useState(conversation.additional_instructions ?? "");
+  const [base, setBase] = useState(conversation.base_instructions ?? inheritedBase);
+  const [additional, setAdditional] = useState(conversation.additional_instructions ?? inheritedAdditional);
 
   async function save() {
     try {
       const updated = await updateConversation(conversation.id, {
         reasoning,
         disabled_tools: disabled,
-        base_instructions: orNull(base),
-        additional_instructions: orNull(additional),
+        base_instructions: own(base, inheritedBase),
+        additional_instructions: own(additional, inheritedAdditional),
       });
       queries.setQueryData(["conversation", conversation.id, "details"], updated);
       onDone();
@@ -249,16 +284,10 @@ function ChatSettingsForm({ conversation, onDone }: { conversation: Conversation
         </Dialog.Close>
       </div>
       <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-[22px] py-4">
-        {reasons && <ReasoningField value={reasoning} onChange={setReasoning} />}
+        <ReasoningField value={reasoning} onChange={setReasoning} reasons={reasons} />
         <ToolSwitches disabled={disabled} onChange={setDisabled} />
-        <InstructionsFields
-          base={base}
-          additional={additional}
-          onBase={setBase}
-          onAdditional={setAdditional}
-          basePlaceholder={t("assistant.myBase")}
-          additionalPlaceholder={t("assistant.myAdditional")}
-        />
+        <AdditionalPrompt value={additional} onChange={setAdditional} placeholder={t("assistant.none")} />
+        <DangerZone value={base} inherited={inheritedBase} onChange={setBase} />
       </div>
       <div className="flex justify-end gap-2 border-t border-line px-[22px] py-3.5">
         <Dialog.Close className={BUTTON}>{t("conversationMenu.cancel")}</Dialog.Close>

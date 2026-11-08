@@ -252,6 +252,7 @@ class UserSettingsOut(Response):
     disabled_tools: list[ToolName]
     base_instructions: str | None
     additional_instructions: str | None
+    built_in_base_instructions: str
 
 
 class CreateConversationRequest(Request):

@@ -63,6 +63,7 @@ from mazzamurello_server.gateway import (
 )
 from mazzamurello_server.offers import TOOLS as OFFER_TOOLS
 from mazzamurello_server.sandbox import SandboxWorkspace, sandbox_ref, stop_sandbox
+from mazzamurello_server.settings import BUILT_IN_BASE_INSTRUCTIONS
 from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
@@ -95,11 +96,6 @@ TOOL_NAMES: dict[str, frozenset[str]] = {
     "file_system": _tool_names(FILE_SYSTEM),
     "offer_download": frozenset({"offer_download"}),
 }
-# The built-in base instructions, which a user may replace (CNV-014, ADR-0044).
-BASE_INSTRUCTIONS = (
-    "You are Mazzamurello, an assistant for the people of a household. "
-    "Answer helpfully, clearly and briefly, in the language the user writes in."
-)
 # The working instructions, each about tools that must be on (CNV-014, ADR-0081).
 # What the workspace keeps (AGT-022, ADR-0076).
 WORKSPACE_INSTRUCTIONS = (
@@ -133,7 +129,7 @@ def instructions(ctx: RunContext[RunDeps]) -> str:
         DOWNLOAD_INSTRUCTIONS if "offer_download" not in off else "",
         TOOLBOX_INSTRUCTIONS if "shell" not in off else "",
     ]
-    base = BASE_INSTRUCTIONS if deps.base_instructions is None else deps.base_instructions
+    base = BUILT_IN_BASE_INSTRUCTIONS if deps.base_instructions is None else deps.base_instructions
     parts = [base, " ".join(part for part in working[:2] if part), working[2], deps.additional_instructions or ""]
     return "\n\n".join(part for part in parts if part.strip())
 
