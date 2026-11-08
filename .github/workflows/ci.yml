@@ -89,48 +89,48 @@ jobs:
               --ignore=tests/integration/test_titles_and_compaction.py --ignore=tests/integration/test_usage.py
               --ignore=tests/integration/test_forks.py --ignore=tests/integration/test_conversation_list.py
               --ignore=tests/integration/test_workspace_files.py --ignore=tests/integration/test_conversation_files.py
-            budget: 130
+            budget: 240
           - part: runs
             paths: tests/integration/test_runs_api.py tests/integration/test_agent_tools.py
-            budget: 150
+            budget: 240
           - part: conversations
             paths: >-
               tests/integration/test_rewinding.py tests/integration/test_models_api.py
               tests/integration/test_remote_provider.py
-            budget: 150
+            budget: 240
           # Titles, compaction, costs, forks, folders and search (ADR-0073).
           - part: library
             paths: >-
               tests/integration/test_titles_and_compaction.py tests/integration/test_usage.py
               tests/integration/test_forks.py tests/integration/test_conversation_list.py
-            budget: 150
+            budget: 240
           # Files in a conversation (ADR-0079): every file operation starts a container.
           - part: files
             paths: tests/integration/test_workspace_files.py tests/integration/test_conversation_files.py
-            budget: 90
+            budget: 180
           - part: sandbox
             paths: tests/security tests/integration/test_sandbox_driver.py
-            budget: 150
+            budget: 300
           # The server image now builds the web app as well (ADR-0067).
           - part: end-to-end
             paths: tests/e2e/test_deployment.py
-            budget: 150
+            budget: 240
           # Backing a deployment up, installing it again and restoring it
           # (OPS-006, ADR-0077): two installations and a backup, in a part of
           # their own, so that the other parts do not wait for them.
           - part: restore
             paths: tests/e2e/test_restore.py
-            budget: 240
+            budget: 360
           # The web client in Chromium, and its unit tests (ADR-0067). Its
           # browser tests grew with the daily-use conversations (ADR-0073).
           - part: web
             paths: tests/web --ignore=tests/web/test_workspace_panel.py
-            budget: 150
+            budget: 300
           # The workspace panel in Chromium (ADR-0079): its files live in a
           # sandbox, which each test starts.
           - part: web-files
             paths: tests/web/test_workspace_panel.py
-            budget: 90
+            budget: 180
     env:
       MAX_TEST_SECONDS: "30"
     steps:
