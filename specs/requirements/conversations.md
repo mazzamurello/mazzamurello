@@ -196,9 +196,9 @@ starts with the tenant's default model, reasoning on, and every permitted
 tool enabled, so that a user who changes nothing gets a well-configured
 assistant (ADR-0081).
 
-A model known not to reason MUST run without reasoning, and clients MUST NOT
-offer the setting for it. Clients MUST show the model's reasoning, folded,
-above its answer.
+A model known not to reason MUST run without reasoning, and clients MUST
+show the setting disabled for it and say why. Clients MUST show the model's
+reasoning, folded, above its answer.
 
 Rationale: journey J13.
 
@@ -219,7 +219,9 @@ conversation:
 A conversation without instructions of its own MUST use the user's default
 instructions as they are when each run starts, so that changing a default
 changes every such conversation. Clients MUST present the two as separate
-settings.
+settings, the additional instructions first, and the replacement of the base
+instructions set apart as a risky change. Clients MUST show the base
+instructions that apply, built-in or default, as the text the user changes.
 
 What the assistant needs to use its workspace and its enabled tools MUST
 stay in its instructions whatever the user writes, and MUST describe only the
