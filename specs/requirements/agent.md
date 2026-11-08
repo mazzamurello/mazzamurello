@@ -172,7 +172,7 @@ call.
 
 ## AGT-015: Questions to the user
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** integration

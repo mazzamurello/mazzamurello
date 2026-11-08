@@ -112,7 +112,7 @@ Rationale: journey J12.
 
 ## UX-009: Progress and questions during long tasks
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
