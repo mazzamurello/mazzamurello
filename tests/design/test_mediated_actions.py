@@ -23,6 +23,10 @@ ALLOWED_CAPABILITIES = {
     "pydantic_ai_harness.shell._capability.Shell",
     "pydantic_ai_harness.filesystem._capability.FileSystem",
     "pydantic_ai_harness.tool_output_limits._capability.ToolOutputLimits",
+    # Questions to the user and the task list, which only end the run or change the conversation's
+    # own state (AGT-015, UX-009, ADR-0083).
+    "pydantic_ai_harness.ask_user._capability.AskUser",
+    "pydantic_ai_harness.planning._capability.Planning",
     "pydantic_ai.durable_exec.dbos._durability.DBOSDurability",
 }
 # Tools the provider runs: only the search over the agent's own tools.

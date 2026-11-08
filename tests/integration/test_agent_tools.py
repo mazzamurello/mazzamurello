@@ -1,4 +1,5 @@
-"""The agent's workspace tools, through runs (AGT-011, AGT-014, CNV-018, SBX-001, ADR-0035, ADR-0053).
+"""The agent's tools, through runs: its workspace, questions to the user and its task list (AGT-011, AGT-014,
+AGT-015, CNV-018, SBX-001, UX-009, ADR-0035, ADR-0053, ADR-0083).
 
 The model the tests serve calls the agent's command tool when the user's
 message is `run:<command>` (tests/support/model.py).
@@ -6,13 +7,18 @@ message is `run:<command>` (tests/support/model.py).
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 import pytest
 
-from tests.support.accounts import Account, create_account, create_tenant, login
+from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
 from tests.support.database import Database, uuid7
 from tests.support.fixtures import HarnessModel
 from tests.support.runs import (
+    Event,
     create_conversation,
+    get_run,
     messages,
     parse_events,
     run_input,
@@ -178,3 +184,151 @@ def test_the_message_after_a_run_stopped_mid_tool_is_answered(
     # The call the stopped run left reaches the model with a result, as interrupted.
     (request,) = default_model.endpoint.requests_with("after the stop")
     assert any(message.get("role") == "tool" for message in request.body.get("messages", []))
+
+
+def _ask(header: str, *labels: str, multi_select: bool = False) -> str:
+    """A message on which the model asks the user one question, with `labels` as its choices."""
+    question = {
+        "header": header,
+        "question": f"Which {header.lower()}?",
+        "options": [{"label": label} for label in labels],
+        "multi_select": multi_select,
+    }
+    return f"tool:ask_user_question {json.dumps({'questions': [question]})}"
+
+
+def _interrupts(events: list[Event]) -> list[dict[str, Any]]:
+    """The interrupts the run finished with; none when it finished otherwise."""
+    (finished,) = [event for event in events if event.type == "RUN_FINISHED"]
+    outcome: dict[str, Any] = finished.data.get("outcome") or {}
+    interrupts: list[dict[str, Any]] = outcome.get("interrupts", [])
+    return interrupts if outcome.get("type") == "interrupt" else []
+
+
+def _answered(interrupt_id: str, header: str, **answer: Any) -> list[dict[str, Any]]:
+    """A `resume` that answers one question of the interrupt."""
+    return [{"interruptId": interrupt_id, "status": "resolved", "payload": {"answers": [{"header": header, **answer}]}}]
+
+
+def _resume(server: Server, token: str, conversation_id: str, entries: list[dict[str, Any]]) -> Any:
+    """Answer the pending interrupts: the response, streamed in full."""
+    payload = {"threadId": conversation_id, "runId": str(uuid7()), "messages": [], "resume": entries}
+    with server.client(token) as client:
+        return client.post(f"/conversations/{conversation_id}/runs", json=payload, timeout=60)
+
+
+def _conversation(server: Server, token: str, conversation_id: str) -> dict[str, Any]:
+    with server.client(token) as client:
+        return body(client.get(f"/conversations/{conversation_id}"))
+
+
+@pytest.mark.spec("AGT-015")
+def test_a_question_interrupts_the_run_until_the_user_answers(
+    server: Server, token: str, default_model: HarnessModel
+) -> None:
+    conversation = create_conversation(server, token)
+    header = f"Colour {uuid7().hex[:6]}"
+    asked = _ask(header, "Red", "Blue")
+    run_id, events = start_run(server, token, conversation["id"], asked)
+    (interrupt,) = _interrupts(events)
+    assert interrupt["reason"] == "ask_user"
+    assert interrupt["id"] == f"int-{interrupt['toolCallId']}"
+    (question,) = interrupt["metadata"]["questions"]
+    assert (question["header"], [o["label"] for o in question["options"]]) == (header, ["Red", "Blue"])
+    assert get_run(server, token, run_id)["status"] == "interrupted"
+    # The conversation keeps it, and takes nothing else until it is answered.
+    assert _conversation(server, token, conversation["id"])["interrupts"] == [interrupt]
+    with server.client(token) as client:
+        another = client.post(
+            f"/conversations/{conversation['id']}/runs", json=run_input(conversation["id"], "something else")
+        )
+        assert_problem(another, 409, "run.interrupt_pending")
+        fork = client.post(f"/conversations/{conversation['id']}/fork", json={"run_id": run_id})
+        assert_problem(fork, 409, "run.interrupt_pending")
+    # Only answers that fit the stored question are taken.
+    wrong_answers: list[list[dict[str, Any]]] = [
+        _answered("int-unknown", header, selected=["Red"]),
+        _answered(interrupt["id"], header, selected=["Green"]),
+        _answered(interrupt["id"], header, selected=["Red", "Blue"]),
+        _answered(interrupt["id"], header, custom_answer="x" * 2001),
+        [],
+    ]
+    for wrong in wrong_answers:
+        assert_problem(_resume(server, token, conversation["id"], wrong), 422, "approval.invalid")
+    answer = _answered(interrupt["id"], header, selected=["Blue"])
+    response = _resume(server, token, conversation["id"], answer)
+    assert response.status_code == 200, response.text
+    resumed_events = parse_events(response.text.splitlines())
+    resumed = resumed_events[0].data["runId"]
+    run = wait_for_run(server, token, resumed)
+    assert (run["kind"], run["parent_run_id"], run["status"]) == ("resume", run_id, "completed")
+    # The model gets the user's choice as the question's answer, and goes on.
+    results = [
+        str(message.get("content", ""))
+        for request in default_model.endpoint.requests_with(asked)
+        for message in request.body.get("messages", [])
+        if message.get("role") == "tool"
+    ]
+    assert any(header in result and "Blue" in result for result in results), results
+    assert "Tool said:" in text_of(resumed_events)
+    assert _conversation(server, token, conversation["id"])["interrupts"] == []
+
+
+@pytest.mark.spec("AGT-015")
+def test_a_question_is_answered_in_the_users_words_or_declined(
+    server: Server, token: str, default_model: HarnessModel
+) -> None:
+    conversation = create_conversation(server, token)
+    # In their own words, then declined.
+    for own_words, expected in (("Green, please", "Green, please"), (None, "declined")):
+        header = f"Colour {uuid7().hex[:6]}"
+        asked = _ask(header, "Red", "Blue")
+        _, events = start_run(server, token, conversation["id"], asked)
+        (interrupt,) = _interrupts(events)
+        entry: dict[str, Any] = {"interruptId": interrupt["id"], "status": "cancelled"}
+        if own_words is not None:
+            answers = [{"header": header, "custom_answer": own_words}]
+            entry = {"interruptId": interrupt["id"], "status": "resolved", "payload": {"answers": answers}}
+        response = _resume(server, token, conversation["id"], [entry])
+        assert response.status_code == 200, response.text
+        resumed = parse_events(response.text.splitlines())[0].data["runId"]
+        assert wait_for_run(server, token, resumed)["status"] == "completed"
+        results = [
+            str(message.get("content", ""))
+            for request in default_model.endpoint.requests_with(asked)
+            for message in request.body.get("messages", [])
+            if message.get("role") == "tool"
+        ]
+        assert any(expected in result for result in results), results
+
+
+@pytest.mark.spec("UX-009")
+def test_the_task_list_lasts_from_run_to_run(server: Server, token: str, default_model: HarnessModel) -> None:
+    conversation = create_conversation(server, token)
+    # Every run with tools can ask and plan.
+    first = f"plain {uuid7()}"
+    run_id, _ = start_run(server, token, conversation["id"], first)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    (request,) = default_model.endpoint.requests_with(first)
+    assert {"ask_user_question", "write_plan"} <= request.tool_names()
+    steps = [
+        {"id": "find", "content": "Find the file", "status": "in_progress"},
+        {"id": "sum", "content": "Summarize it", "status": "pending"},
+    ]
+    run_id, events = start_run(server, token, conversation["id"], f"tool:write_plan {json.dumps({'items': steps})}")
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    # It is streamed as it changes, and kept with the conversation.
+    (announced,) = [e for e in events if e.type == "CUSTOM" and e.data.get("name") == "mzm.plan"]
+    shown = [(step["id"], step["content"], step["status"]) for step in announced.data["value"]["steps"]]
+    assert shown == [("find", "Find the file", "in_progress"), ("sum", "Summarize it", "pending")]
+    kept = _conversation(server, token, conversation["id"])["plan"]
+    assert [(step["id"], step["content"], step["status"]) for step in kept] == shown
+    update = {"task_id": "find", "status": "completed"}
+    run_id, _ = start_run(server, token, conversation["id"], f"tool:update_task_status {json.dumps(update)}")
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    kept = _conversation(server, token, conversation["id"])["plan"]
+    assert [step["status"] for step in kept] == ["completed", "pending"]
+    # A fork takes it along.
+    with server.client(token) as client:
+        fork = body(client.post(f"/conversations/{conversation['id']}/fork", json={"run_id": run_id}))
+    assert [step["status"] for step in fork["plan"]] == ["completed", "pending"]
