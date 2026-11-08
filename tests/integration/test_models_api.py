@@ -290,12 +290,19 @@ NO_DEFAULTS: dict[str, Any] = {
 }
 
 
+def _defaults(response: Any) -> dict[str, Any]:
+    """The user's defaults in a response, without the built-in base instructions that come with them."""
+    defaults = body(response)
+    assert isinstance(defaults.pop("built_in_base_instructions"), str)
+    return defaults
+
+
 def _settings(server: Server, token: str, **changes: Any) -> dict[str, Any]:
     """Set the user's defaults: those given, and none of the others."""
     with server.client(token) as client:
         response = client.put("/me/settings", json=NO_DEFAULTS | changes)
     assert response.status_code == 200, response.text
-    return body(response)
+    return _defaults(response)
 
 
 def _change(server: Server, token: str, conversation_id: str, **changes: Any) -> dict[str, Any]:
@@ -317,7 +324,7 @@ def test_a_user_has_no_defaults_until_they_set_them(database: Database, server: 
     with server.client(household.token) as client:
         response = client.get("/me/settings")
     assert response.status_code == 200, response.text
-    assert body(response) == NO_DEFAULTS
+    assert _defaults(response) == NO_DEFAULTS
     chosen = {
         "model": {"connection_id": household.openrouter_id, "model": "test/popular"},
         "reasoning": "deep",
@@ -327,11 +334,11 @@ def test_a_user_has_no_defaults_until_they_set_them(database: Database, server: 
     }
     assert _settings(server, household.token, **chosen) == chosen
     with server.client(household.token) as client:
-        assert body(client.get("/me/settings")) == chosen
+        assert _defaults(client.get("/me/settings")) == chosen
     # Defaults are the user's alone, even within their household.
     other = login(server, create_account(database, household.member.tenant_id))
     with server.client(other) as client:
-        assert body(client.get("/me/settings")) == NO_DEFAULTS
+        assert _defaults(client.get("/me/settings")) == NO_DEFAULTS
 
 
 @pytest.mark.spec("CNV-013")
@@ -465,6 +472,20 @@ def test_default_instructions_reach_every_conversation_from_its_next_run(server:
     system = _request(server, household, conversation["id"], f"restored {secrets.token_hex(4)}").system_text()
     assert base not in system
     _working_instructions_follow(system, "You are Mazzamurello", additional)
+
+
+@pytest.mark.spec("CNV-014")
+def test_the_built_in_base_instructions_come_with_the_defaults(server: Server, household: Household) -> None:
+    with server.client(household.token) as client:
+        built_in = body(client.get("/me/settings"))["built_in_base_instructions"]
+    assert "Mazzamurello" in built_in
+    conversation = create_conversation(server, household.token)
+    assert built_in in _request(server, household, conversation["id"], f"shown {secrets.token_hex(4)}").system_text()
+    # The same when the user replaced them, so a client can show what restoring brings back.
+    with server.client(household.token) as client:
+        response = client.put("/me/settings", json=NO_DEFAULTS | {"base_instructions": "You are Ada."})
+    assert response.status_code == 200, response.text
+    assert body(response)["built_in_base_instructions"] == built_in
 
 
 @pytest.mark.spec("CNV-014")

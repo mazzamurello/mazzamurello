@@ -59,8 +59,17 @@ def test_my_defaults_shape_every_new_chat(page: Page, member: Account, default_m
     assistant.get_by_role("radio", name="Deep").check()
     assistant.get_by_role("switch", name="Search the web").uncheck()
     mark = uuid4().hex[:8]
-    assistant.get_by_label("Additional instructions").fill(f"Sign as Ada {mark}.")
-    assistant.get_by_role("button", name="Save instructions").click()
+    additional = assistant.get_by_label("Additional prompt")
+    additional.fill(f"Sign as Ada {mark}.")
+    # The system prompt comes last, set apart, and starts from the built-in one.
+    danger = assistant.get_by_role("region", name="Danger zone")
+    system_prompt = danger.get_by_label("System prompt")
+    expect(system_prompt).to_have_value(re.compile("^You are Mazzamurello"))
+    additional_box, danger_box = additional.bounding_box(), danger.bounding_box()
+    assert additional_box is not None
+    assert danger_box is not None
+    assert additional_box["y"] < danger_box["y"]
+    assistant.get_by_role("button", name="Save prompts").click()
     expect(assistant).to_contain_text("Saved")
     assert accessibility_violations(page) == []
     page.get_by_role("link", name="New chat").click()
@@ -80,7 +89,9 @@ def test_changing_the_settings_of_one_chat(page: Page, member: Account, default_
     expect(dialog).to_be_visible()
     dialog.get_by_role("radio", name="Off").check()
     dialog.get_by_role("switch", name="Run commands").uncheck()
-    dialog.get_by_label("Base instructions").fill(f"You are Bea {mark}.")
+    system_prompt = dialog.get_by_role("region", name="Danger zone").get_by_label("System prompt")
+    expect(system_prompt).to_have_value(re.compile("^You are Mazzamurello"))
+    system_prompt.fill(f"You are Bea {mark}.")
     assert accessibility_violations(page) == []
     dialog.get_by_role("button", name="Save").click()
     expect(dialog).to_have_count(0)
@@ -90,16 +101,17 @@ def test_changing_the_settings_of_one_chat(page: Page, member: Account, default_
     system = request.system_text()
     assert f"You are Bea {mark}." in system
     assert "You are Mazzamurello" not in system
-    # Restoring the default brings back the built-in base instructions.
+    # Restoring the default brings back the built-in system prompt.
     page.get_by_role("button", name="Chat settings").click()
-    expect(dialog.get_by_label("Base instructions")).to_have_value(f"You are Bea {mark}.")
-    dialog.get_by_role("button", name="Restore the default base instructions").click()
+    expect(system_prompt).to_have_value(f"You are Bea {mark}.")
+    dialog.get_by_role("button", name="Restore the default system prompt").click()
+    expect(system_prompt).to_have_value(re.compile("^You are Mazzamurello"))
     dialog.get_by_role("button", name="Save").click()
     assert "You are Mazzamurello" in _request(page, default_model, f"third {mark}").system_text()
 
 
 @pytest.mark.spec("CNV-013")
-def test_reasoning_is_offered_only_for_models_that_can_reason(
+def test_reasoning_is_disabled_for_models_that_cannot_reason(
     page: Page, server: Server, member: Account, default_model: HarnessModel
 ) -> None:
     _add_openrouter(server, default_model, member.tenant_id)
@@ -110,7 +122,12 @@ def test_reasoning_is_offered_only_for_models_that_can_reason(
     page.get_by_role("button", name="Chat settings").click()
     dialog = page.get_by_role("dialog", name="Chat settings")
     expect(dialog.get_by_role("switch", name="Run commands")).to_be_visible()
-    expect(dialog.get_by_role("radiogroup", name="Reasoning")).to_have_count(0)
+    reasoning = dialog.get_by_role("radiogroup", name="Reasoning")
+    expect(reasoning).to_be_visible()
+    for level in ("Off", "On", "Deep"):
+        expect(reasoning.get_by_role("radio", name=level)).to_be_disabled()
+    expect(dialog).to_contain_text("This model can't reason.")
+    assert accessibility_violations(page) == []
 
 
 @pytest.mark.spec("CNV-013", "UX-007")
