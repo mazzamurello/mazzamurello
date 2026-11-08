@@ -146,7 +146,7 @@ Rationale: journey J4.
 
 ## CNV-011: Temporary conversations
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
