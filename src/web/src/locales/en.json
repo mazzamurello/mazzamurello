@@ -53,7 +53,11 @@
     "title": "The assistant asks",
     "ownWords": "Or answer in your own words",
     "answer": "Answer",
-    "skip": "Skip"
+    "skip": "Skip",
+    "counter": "{{number}} of {{total}}",
+    "previous": "Previous question",
+    "next": "Next question",
+    "nextButton": "Next"
   },
   "tasks": {
     "title": "Task list",

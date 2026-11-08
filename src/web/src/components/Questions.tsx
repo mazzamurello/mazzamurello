@@ -1,5 +1,5 @@
 // The assistant's questions to the user, and its task list (AGT-015, UX-009, ADR-0083).
-import { Check, Circle, CircleDot, MessageCircleQuestion, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Circle, CircleDot, MessageCircleQuestion, X } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,6 +7,7 @@ import type { Interrupt, PlanStep, Question } from "../api/client";
 import type { ResumeEntry } from "../api/stream";
 
 const BUTTON = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] border border-line-strong bg-surface px-4 text-sm font-semibold hover:bg-hover disabled:opacity-50";
+const ARROW = "grid size-8 place-items-center rounded-lg hover:bg-hover hover:text-fg disabled:opacity-40";
 const PRIMARY = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] bg-fg px-4 text-sm font-semibold text-bg disabled:opacity-50";
 
 interface Choice {
@@ -31,7 +32,7 @@ function QuestionField({ question, choice, onChange }: { question: Question; cho
     <fieldset className="flex flex-col gap-1.5">
       <legend className="mb-1.5 text-[15px] font-semibold text-pretty">{question.question}</legend>
       {question.options.map((option) => (
-        <label key={option.label} className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-line px-3 py-2 hover:bg-hover has-checked:border-fg">
+        <label key={option.label} className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-line px-3 py-1.5 hover:bg-hover has-checked:border-fg">
           <input
             type={question.multi_select ? "checkbox" : "radio"}
             name={name}
@@ -60,19 +61,27 @@ function QuestionField({ question, choice, onChange }: { question: Question; cho
   );
 }
 
-/** The assistant's questions, in place of the message box until the user answers or skips them. */
+/** The assistant's questions, in place of the message box until the user answers or skips them: one at a time. */
 export function QuestionCard({ interrupts, onAnswer }: { interrupts: Interrupt[]; onAnswer: (resume: ResumeEntry[]) => void }) {
   const { t } = useTranslation();
   const heading = useId();
   const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const [index, setIndex] = useState(0);
   const key = (interrupt: Interrupt, question: Question) => `${interrupt.id}\u0000${question.header}`;
   const choiceOf = (interrupt: Interrupt, question: Question) => choices[key(interrupt, question)] ?? { selected: [], ownWords: "" };
-  const answered = interrupts.every((interrupt) =>
-    questionsOf(interrupt).every((question) => {
-      const choice = choiceOf(interrupt, question);
-      return choice.selected.length > 0 || choice.ownWords.trim() !== "";
-    }),
-  );
+  const all = interrupts.flatMap((interrupt) => questionsOf(interrupt).map((question) => ({ interrupt, question })));
+  const current = all[Math.min(index, all.length - 1)];
+  const isAnswered = (interrupt: Interrupt, question: Question) => {
+    const choice = choiceOf(interrupt, question);
+    return choice.selected.length > 0 || choice.ownWords.trim() !== "";
+  };
+  const answered = all.every(({ interrupt, question }) => isAnswered(interrupt, question));
+  const last = index >= all.length - 1;
+
+  // A choice stays on its question: the user moves on with Next or the arrows (ADR-0083).
+  function choose(interrupt: Interrupt, question: Question, choice: Choice) {
+    setChoices((chosen) => ({ ...chosen, [key(interrupt, question)]: choice }));
+  }
 
   function answer() {
     onAnswer(
@@ -90,28 +99,48 @@ export function QuestionCard({ interrupts, onAnswer }: { interrupts: Interrupt[]
   }
 
   return (
-    <section aria-labelledby={heading} className="flex flex-col gap-4 rounded-[20px] border border-line-strong bg-surface p-4 shadow-soft">
-      <h2 id={heading} className="flex items-center gap-2 text-sm font-bold text-muted">
-        <MessageCircleQuestion className="size-4" aria-hidden="true" />
-        {t("questions.title")}
-      </h2>
-      {interrupts.flatMap((interrupt) =>
-        questionsOf(interrupt).map((question) => (
+    <section aria-labelledby={heading} className="flex max-h-[min(60dvh,34rem)] flex-col rounded-[20px] border border-line-strong bg-surface shadow-soft">
+      <div className="flex flex-none items-center gap-2 px-4 pt-3.5 pb-2">
+        <h2 id={heading} className="flex flex-1 items-center gap-2 text-sm font-bold text-muted">
+          <MessageCircleQuestion className="size-4" aria-hidden="true" />
+          {t("questions.title")}
+        </h2>
+        {all.length > 1 && (
+          <div className="flex items-center gap-1 text-[13px] text-muted tabular-nums">
+            <button type="button" className={ARROW} disabled={index === 0} onClick={() => setIndex(index - 1)} aria-label={t("questions.previous")}>
+              <ChevronLeft className="size-4" aria-hidden="true" />
+            </button>
+            <span aria-live="polite">{t("questions.counter", { number: index + 1, total: all.length })}</span>
+            <button type="button" className={ARROW} disabled={index >= all.length - 1} onClick={() => setIndex(index + 1)} aria-label={t("questions.next")}>
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
+      {current && (
+        <div className="min-h-0 overflow-y-auto px-4 pb-2">
           <QuestionField
-            key={key(interrupt, question)}
-            question={question}
-            choice={choiceOf(interrupt, question)}
-            onChange={(choice) => setChoices((all) => ({ ...all, [key(interrupt, question)]: choice }))}
+            key={key(current.interrupt, current.question)}
+            question={current.question}
+            choice={choiceOf(current.interrupt, current.question)}
+            onChange={(choice) => choose(current.interrupt, current.question, choice)}
           />
-        )),
+        </div>
       )}
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-none justify-end gap-2 border-t border-line px-4 py-3">
         <button type="button" className={BUTTON} onClick={() => onAnswer(interrupts.map((interrupt) => ({ interruptId: interrupt.id, status: "cancelled" })))}>
           {t("questions.skip")}
         </button>
-        <button type="button" className={PRIMARY} disabled={!answered} onClick={answer}>
-          {t("questions.answer")}
-        </button>
+        {/* Next until the last question, then Answer (ADR-0083). */}
+        {last ? (
+          <button type="button" className={PRIMARY} disabled={!answered} onClick={answer}>
+            {t("questions.answer")}
+          </button>
+        ) : (
+          <button type="button" className={PRIMARY} disabled={!current || !isAnswered(current.interrupt, current.question)} onClick={() => setIndex(index + 1)}>
+            {t("questions.nextButton")}
+          </button>
+        )}
       </div>
     </section>
   );
