@@ -331,6 +331,13 @@ class RewindRequest(Request):
     run_id: uuid.UUID | None
 
 
+class PlanStep(Response):
+    id: str
+    content: str
+    active_form: str | None
+    status: Literal["pending", "in_progress", "completed", "cancelled", "blocked"]
+
+
 class Conversation(Response):
     id: uuid.UUID
     title: str
@@ -345,6 +352,9 @@ class Conversation(Response):
     folder_id: uuid.UUID | None
     pinned: bool
     forked_from: ForkedFrom | None
+    # Pending questions as AG-UI interrupts, and the task list (AGT-015, UX-009, ADR-0083).
+    interrupts: list[dict[str, Any]]
+    plan: list[PlanStep]
     cost: list[Money]
     last_message_at: Timestamp
     created_at: Timestamp
@@ -434,7 +444,8 @@ class RunInput(BaseModel):
     thread_id: uuid.UUID = Field(alias="threadId")
     run_id: uuid.UUID = Field(alias="runId")
     parent_run_id: uuid.UUID | None = Field(default=None, alias="parentRunId")
-    messages: Annotated[list[AgUiInputMessage], Field(min_length=1)]
+    # Empty when `resume` answers an interrupt (ADR-0083).
+    messages: list[AgUiInputMessage]
     resume: list[dict[str, Any]] | None = None
     # A Mazzamurello extension: the files attached to the message, already uploaded (CNV-017).
     attachments: Annotated[list[Annotated[str, Field(max_length=4096)]], Field(max_length=20)] = []

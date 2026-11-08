@@ -30,6 +30,8 @@ from mazzamurello_server.connections import offered
 from mazzamurello_server.costs import CONVERSATION_COST, money, run_costs
 from mazzamurello_server.credentials import uuid7
 from mazzamurello_server.database import Identity, transaction
+from mazzamurello_server.plans import CONVERSATION_PLAN, copy_plan, plan_steps
+from mazzamurello_server.questions import interrupts
 from mazzamurello_server.sandbox import SandboxDriver, workspace_request
 from mazzamurello_server.settings import new_conversation
 
@@ -39,7 +41,7 @@ CONVERSATION_COLUMNS = (
     "id, title, archived_at IS NOT NULL AS archived, temporary, active_run_id, connection_id, model, reasoning,"
     " disabled_tools, base_instructions, additional_instructions, folder_id,"
     " pinned_at IS NOT NULL AS pinned, forked_from_conversation_id, forked_from_run_id, last_message_at,"
-    f" created_at, updated_at, {CONVERSATION_COST}"
+    f" pending_interrupts, {CONVERSATION_PLAN}, created_at, updated_at, {CONVERSATION_COST}"
 )
 ACTIVE_STATUSES = ("queued", "running")
 # The most of a model's stated reason a failed run's error repeats (MOD-015).
@@ -78,6 +80,8 @@ def conversation_response(row: Any) -> schemas.Conversation:
         forked_from=None
         if row.forked_from_conversation_id is None and row.forked_from_run_id is None
         else schemas.ForkedFrom(conversation_id=row.forked_from_conversation_id, run_id=row.forked_from_run_id),
+        interrupts=interrupts(row.pending_interrupts),
+        plan=[schemas.PlanStep(**step) for step in plan_steps(row.plan)],
         cost=money(row.cost),
         last_message_at=row.last_message_at,
         created_at=row.created_at,
@@ -264,11 +268,11 @@ async def rewind_conversation(
         await _refuse_while_active(connection, conversation_id)
         pending = (
             await connection.execute(
-                text("SELECT pending_approvals IS NOT NULL FROM conversations WHERE id = :id"), {"id": conversation_id}
+                text("SELECT pending_interrupts IS NOT NULL FROM conversations WHERE id = :id"), {"id": conversation_id}
             )
         ).scalar_one()
         if pending:
-            raise errors.ApiError(409, "run.interrupt_pending", "An approval is pending")
+            raise errors.interrupt_pending()
         if body.run_id is not None:
             owned = (
                 await connection.execute(
@@ -334,8 +338,11 @@ async def fork_conversation(
     Its workspace starts as a copy of this conversation's (SBX-010, ADR-0078); when the copy fails, there is no fork.
     """
     async with transaction(engine, identity) as connection:
-        if (await find_conversation(connection, conversation_id, lock=True)).temporary:
+        original = await find_conversation(connection, conversation_id, lock=True)
+        if original.temporary:
             raise errors.temporary()
+        if original.pending_interrupts is not None:
+            raise errors.interrupt_pending()
         await _refuse_while_active(connection, conversation_id)
         path = await path_runs(connection, conversation_id, body.run_id)
         if not path:
@@ -381,6 +388,7 @@ async def fork_conversation(
                     ),
                     {"new": new_ids[run.id], "fork": fork_id, "old": run.id},
                 )
+        await copy_plan(connection, conversation_id, fork_id)
         row = (
             await connection.execute(
                 text(

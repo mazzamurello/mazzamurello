@@ -42,6 +42,8 @@ const COMPONENTS: Components = {
   h1: ({ children }) => <h3 className="mt-2 text-xl font-bold tracking-tight">{children}</h3>,
   h2: ({ children }) => <h3 className="mt-2 text-[17px] font-bold tracking-tight">{children}</h3>,
   h3: ({ children }) => <h4 className="mt-1.5 font-bold">{children}</h4>,
+  // A task list's box, shown and named rather than offered as a control nobody can use.
+  input: ({ type, checked }) => (type === "checkbox" ? <TaskBox done={checked === true} /> : null),
   pre: ({ children }) => <>{children}</>,
   code: ({ className, children }) => {
     const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
@@ -97,4 +99,16 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 function ImageText({ alt }: { alt: string | undefined }) {
   const { t } = useTranslation();
   return <span className="italic">[{alt || t("message.image")}]</span>;
+}
+
+function TaskBox({ done }: { done: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <span aria-hidden="true" className="mr-1.5 inline-block font-mono text-muted">
+        {done ? "☑" : "☐"}
+      </span>
+      <span className="sr-only">{t(done ? "tasks.status.completed" : "tasks.status.pending")}: </span>
+    </>
+  );
 }

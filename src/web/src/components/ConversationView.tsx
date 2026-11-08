@@ -9,12 +9,13 @@ import { ApiError, api, unwrap, type ModelChoice, type MessagePage, type PathRun
 import { forkConversation, rewindConversation, updateConversation, useRefreshConversations } from "../conversations";
 import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
-import { type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
+import { ASK_USER, isPlanning, type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
 import { openTemporary } from "../temporary";
 import { type AttachedFile, download, downloadUrl, formatSize, listFolder, useAttachments } from "../workspace";
 import { ChatSettings } from "./AssistantSettings";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
+import { QuestionCard, TaskList } from "./Questions";
 import { Sprite } from "./Sprite";
 import { type Reveal, WorkspacePanel } from "./WorkspacePanel";
 
@@ -166,6 +167,8 @@ export function ConversationView() {
       void navigate(location.pathname, { replace: true, state: null });
     }
   }, [firstMessage, firstAttachments, conversationId, start, navigate, location.pathname]);
+
+  const questions = conversation.data?.interrupts ?? [];
 
   // A temporary conversation goes when its user leaves it (CNV-011).
   const temporary = conversation.data?.temporary === true;
@@ -322,15 +325,21 @@ export function ConversationView() {
             )}
             {contextUsage && <ContextGauge usage={contextUsage} />}
           </div>
-          <Composer
-            onSend={(text, files) => start({ conversationId, text, attachments: files })}
-            attachments={attachments}
-            onStop={() => void stop()}
-            running={running}
-            model={conversation.data?.model ?? null}
-            onModel={(choice) => void chooseModel(choice)}
-            placeholder={t("composer.placeholder")}
-          />
+          <TaskList steps={live?.plan ?? conversation.data?.plan ?? []} />
+          {/* A pending question takes the message box's place until it is answered (AGT-015, UX-009). */}
+          {!running && questions.length > 0 ? (
+            <QuestionCard key={questions.map((question) => question.id).join()} interrupts={questions} onAnswer={(resume) => start({ conversationId, text: "", resume })} />
+          ) : (
+            <Composer
+              onSend={(text, files) => start({ conversationId, text, attachments: files })}
+              attachments={attachments}
+              onStop={() => void stop()}
+              running={running}
+              model={conversation.data?.model ?? null}
+              onModel={(choice) => void chooseModel(choice)}
+              placeholder={t("composer.placeholder")}
+            />
+          )}
         </div>
       </div>
       </div>
@@ -648,7 +657,11 @@ function ToolCall({ part }: { part: Extract<LivePart, { kind: "tool" }> }) {
   const { t } = useTranslation();
   const activity = toolActivity(part.name);
   const label =
-    activity === "running" ? t("activity.ran") : activity === "writing" ? t("activity.wrote") : activity === "reading" ? t("activity.read") : activity === "searching" ? t("activity.searched") : t("activity.used", { name: part.name });
+    part.name === ASK_USER
+      ? t("activity.asked")
+      : isPlanning(part.name)
+        ? t("activity.planned")
+        : activity === "running" ? t("activity.ran") : activity === "writing" ? t("activity.wrote") : activity === "reading" ? t("activity.read") : activity === "searching" ? t("activity.searched") : t("activity.used", { name: part.name });
   const preview = argumentPreview(part.args);
   return (
     <details className="group/tool max-w-full">

@@ -22,6 +22,9 @@ export type UserSettings = Schemas["UserSettings"];
 export type UserSettingsView = Schemas["UserSettingsView"];
 export type Reasoning = Schemas["Reasoning"];
 export type ToolName = Schemas["ToolName"];
+export type Interrupt = Schemas["Interrupt"];
+export type Question = Schemas["Question"];
+export type PlanStep = Schemas["PlanStep"];
 
 export const API_BASE = "/v1";
 
