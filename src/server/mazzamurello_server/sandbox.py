@@ -13,13 +13,14 @@ import logging
 import math
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, cast
 
 import httpx
 from pydantic_ai import RunContext
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.messages import WorkspaceRef
+from pydantic_ai.messages import ToolCallPart, WorkspaceRef
+from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.workspaces import (
     CommandResult,
     WorkspaceBackend,
@@ -219,3 +220,49 @@ class SandboxWorkspace(AbstractCapability[RunDeps]):
             # A reference from history never points the run at another sandbox.
             return None
         return backend
+
+
+# The commands that say what they are for, and what they are asked (ADR-0085).
+COMMAND_TOOLS = frozenset({"run_command", "start_command"})
+PURPOSE = {
+    "type": "string",
+    "description": (
+        "What the command is for, in a few words the user reads instead of the command,"
+        " in the user's language, such as 'Making the PDF'."
+    ),
+}
+
+
+@dataclass
+class CommandPurposes(AbstractCapability[RunDeps]):
+    """Asks for what each sandbox command is for, which the user reads, and keeps it from the command (UX-003)."""
+
+    async def prepare_tools(self, ctx: RunContext[RunDeps], tool_defs: list[ToolDefinition]) -> list[ToolDefinition]:
+        return [_with_purpose(tool) if tool.name in COMMAND_TOOLS else tool for tool in tool_defs]
+
+    async def before_tool_validate(
+        self, ctx: RunContext[RunDeps], *, call: ToolCallPart, tool_def: ToolDefinition, args: str | dict[str, Any]
+    ) -> str | dict[str, Any]:
+        # The stored call keeps the description; the harness's tool never sees it.
+        if call.tool_name not in COMMAND_TOOLS:
+            return args
+        if isinstance(args, str):
+            try:
+                decoded: Any = json.loads(args) if args else {}
+            except ValueError:
+                # Invalid arguments are the validator's to report to the model.
+                return args
+            if not isinstance(decoded, dict):
+                return args
+            values: dict[str, Any] = cast(dict[str, Any], decoded)
+        else:
+            values = dict(args)
+        values.pop("description", None)
+        return values
+
+
+def _with_purpose(tool: ToolDefinition) -> ToolDefinition:
+    schema = dict(tool.parameters_json_schema)
+    schema["properties"] = {**schema.get("properties", {}), "description": PURPOSE}
+    schema["required"] = [*schema.get("required", []), "description"]
+    return replace(tool, parameters_json_schema=schema)

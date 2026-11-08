@@ -38,6 +38,8 @@ new entry here first (ADR-0005).
 | Conversation settings | A conversation's model, reasoning and enabled tools, copied from the user's defaults when it starts, and its own instructions, if any (CNV-013, CNV-014). |
 | User defaults | The settings and instructions a user chooses for their conversations: new conversations copy the settings, and conversations without instructions of their own use the instructions (CNV-013, CNV-014, ADR-0081). |
 | Reasoning | What a model works out before it answers, set per conversation to off, on or deep, and shown folded above the answer (CNV-013). |
+| Question | A question the assistant asks the user during a run, with choices; it ends the run with an interrupt, and the answer starts the next run (AGT-015, ADR-0083). |
+| Task list | The steps the assistant plans for a long task and marks as it works, kept per conversation; shown as a checklist (UX-009, ADR-0083). |
 | Skill | A reusable package of instructions and files in the open Agent Skills format, loaded by the model when relevant (AGT-017). |
 | Context window | The most tokens a model reads at once: listed by the provider, or set on a connection to the household's own server (ADR-0073). |
 | Compaction | Reducing the history sent to the model when it approaches the context window, without changing the stored conversation (ADR-0041). |

@@ -25,6 +25,7 @@ KEY_COLUMNS: dict[str, tuple[str, ...]] = {
     "folders": ("id",),
     "user_settings": ("owner_id",),
     "conversations": ("id",),
+    "conversation_plans": ("conversation_id",),
     "compaction_checkpoints": ("run_id",),
     "runs": ("id",),
     "conversation_messages": ("run_id", "seq"),
@@ -96,6 +97,11 @@ def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> Us
         (conversation_id, tenant_id, user_id, "Test conversation", folder_id),
     )
     conn.execute(
+        "INSERT INTO conversation_plans (conversation_id, tenant_id, owner_id, items, updated_at)"
+        " VALUES (%s, %s, %s, %s, now())",
+        (conversation_id, tenant_id, user_id, Jsonb([{"id": "a", "content": "Test step", "status": "pending"}])),
+    )
+    conn.execute(
         "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status, created_at)"
         " VALUES (%s, %s, %s, %s, NULL, 'message', 'completed', now())",
         (run_id, tenant_id, user_id, conversation_id),
@@ -120,6 +126,7 @@ def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> Us
         "folders": (folder_id,),
         "user_settings": (user_id,),
         "conversations": (conversation_id,),
+        "conversation_plans": (conversation_id,),
         "compaction_checkpoints": (run_id,),
         "runs": (run_id,),
         "conversation_messages": (run_id, 1),

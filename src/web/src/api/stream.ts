@@ -58,7 +58,15 @@ export interface StartRun {
   // Files already uploaded to the workspace's `uploads/` (CNV-017).
   attachments?: { path: string; size: number }[];
   parentRunId?: string;
+  // Answers to the pending interrupts, in place of a message (AGT-015, ADR-0083).
+  resume?: ResumeEntry[];
   signal?: AbortSignal;
+}
+
+export interface ResumeEntry {
+  interruptId: string;
+  status: "resolved" | "cancelled";
+  payload?: { answers: ({ header: string; selected: string[] } | { header: string; custom_answer: string })[] };
 }
 
 /** Start a run with one user message, and read its events. */
@@ -66,8 +74,9 @@ export async function startRun(start: StartRun): Promise<AsyncGenerator<RunEvent
   const input: Record<string, unknown> = {
     threadId: start.conversationId,
     runId: start.runId,
-    messages: [{ id: crypto.randomUUID(), role: "user", content: start.text }],
+    messages: start.resume ? [] : [{ id: crypto.randomUUID(), role: "user", content: start.text }],
   };
+  if (start.resume) input.resume = start.resume;
   if (start.parentRunId !== undefined) input.parentRunId = start.parentRunId;
   if (start.attachments !== undefined && start.attachments.length > 0) input.attachments = start.attachments.map((file) => file.path);
   const init: RequestInit = {

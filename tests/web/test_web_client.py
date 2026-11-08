@@ -6,6 +6,7 @@ The model the tests serve answers `Echo: <message>`, and scripts such as
 
 from __future__ import annotations
 
+import json
 import re
 import socket
 import time
@@ -80,12 +81,38 @@ def test_messages_render_markdown_but_no_html_or_images(
 def test_tool_activity_is_summarized_and_expands(page: Page, member: Account, default_model: HarnessModel) -> None:
     sign_in(page, member)
     _send(page, "run:echo tool-output-42")
-    summary = page.locator("summary", has_text="Ran a command")
+    summary = page.locator("summary", has_text="Sandbox command")
     expect(summary).to_be_visible(timeout=30_000)
     # Collapsed by default; its details expand on request.
     expect(page.locator("details[open]")).to_have_count(0)
     summary.click()
     expect(page.locator("details[open]")).to_contain_text("tool-output-42")
+
+
+@pytest.mark.spec("UX-003", "UX-007")
+def test_tool_activity_shows_where_it_happened_and_whether_it_runs(
+    page: Page, member: Account, default_model: HarnessModel
+) -> None:
+    sign_in(page, member)
+    call = {"command": "sleep 3; echo tool-output-7\necho more", "description": "Looking around"}
+    _send(page, f"say:Let me look. ||| tool:run_command {json.dumps(call)}")
+    summary = page.locator("summary", has_text="Sandbox command: Looking around")
+    # Running, with the command's first line below what it is for.
+    expect(summary).to_contain_text("Running", timeout=30_000)
+    expect(summary).to_contain_text("sleep 3; echo tool-output-7")
+    expect(summary).not_to_contain_text("echo more")
+    assert accessibility_violations(page) == []
+    expect(summary).to_contain_text("Done", timeout=30_000)
+    # Where it happened: after what was said before it, before the answer that followed.
+    main = page.get_by_role("main")
+    expect(main).to_contain_text("Tool said:", timeout=30_000)
+    said = main.get_by_text("Let me look.", exact=True).bounding_box()
+    tool = summary.bounding_box()
+    after = main.get_by_text("Tool said:").bounding_box()
+    assert said is not None
+    assert tool is not None
+    assert after is not None
+    assert said["y"] < tool["y"] < after["y"]
 
 
 @pytest.mark.spec("UX-001")
