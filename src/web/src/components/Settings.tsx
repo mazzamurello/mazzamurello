@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, House, Palette, Plug, Plus, X } from "lucide-react";
+import { Bot, Check, Cloud, House, Palette, Plug, Plus, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +8,7 @@ import { ApiError, api, unwrap, type Connection, type ConnectionTest, type Model
 import { MODELS, useModels } from "../models";
 import { useNotify } from "../notices";
 import { type Theme, useTheme } from "../theme";
+import { AssistantSection } from "./AssistantSettings";
 import { ModelSelect } from "./ModelPicker";
 
 const CONNECTIONS = ["connections"] as const;
@@ -15,13 +16,19 @@ const BUTTON = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[
 const PRIMARY = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] bg-fg px-4 text-sm font-semibold text-bg disabled:opacity-50";
 const INPUT = "h-10 w-full rounded-[10px] border border-line-strong bg-bg px-3 outline-none focus:border-accent";
 
-/** The settings: the household's models for its admins (UX-015, UX-016), and the theme for everyone (UX-011). */
+type Tab = "models" | "assistant" | "appearance";
+
+/**
+ * The settings: the household's models for its admins (UX-015, UX-016), and for everyone
+ * their assistant (CNV-013, CNV-014) and the theme (UX-011).
+ */
 export function Settings({ me }: { me: User }) {
   const { t } = useTranslation();
   const admin = me.role === "tenant_admin";
-  const [tab, setTab] = useState<"models" | "appearance">(admin ? "models" : "appearance");
-  const tabs: { id: "models" | "appearance"; label: string; icon: React.ReactNode }[] = [
+  const [tab, setTab] = useState<Tab>(admin ? "models" : "assistant");
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     ...(admin ? [{ id: "models" as const, label: t("settings.models"), icon: <Plug className="size-[18px]" aria-hidden="true" /> }] : []),
+    { id: "assistant", label: t("assistant.title"), icon: <Bot className="size-[18px]" aria-hidden="true" /> },
     { id: "appearance", label: t("settings.appearance"), icon: <Palette className="size-[18px]" aria-hidden="true" /> },
   ];
   return (
@@ -42,7 +49,7 @@ export function Settings({ me }: { me: User }) {
             </button>
           ))}
         </nav>
-        <div className="flex min-w-0 flex-col gap-[34px]">{tab === "models" && admin ? <ModelsSection /> : <AppearanceSection />}</div>
+        <div className="flex min-w-0 flex-col gap-[34px]">{tab === "models" && admin ? <ModelsSection /> : tab === "assistant" ? <AssistantSection /> : <AppearanceSection />}</div>
       </div>
     </div>
   );

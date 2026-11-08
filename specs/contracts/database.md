@@ -237,9 +237,26 @@ A user's groups of conversations (CNV-007, ADR-0073).
 | `forked_from_conversation_id`, `forked_from_run_id` | uuid | where a fork came from (CNV-005); (`tenant_id`, `owner_id`, `forked_from_conversation_id`) references `conversations` on delete set null (`forked_from_conversation_id`); the run is kept as an identifier, without a reference, so that a fork stays one when its original is gone |
 | `last_message_at` | timestamptz | not null; its creation, then the time a run last added messages; the list's order (CNV-008) |
 | `connection_id`, `model` | uuid, text | the model of the conversation (MOD-012): set from the tenant's default model on creation, or chosen by its user; both null when the tenant had no default model; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`), so a removed connection leaves `model` without a connection and runs fail |
+| `reasoning` | text | not null, default `on`; `off`, `on` or `deep` (CNV-013, ADR-0081) |
+| `disabled_tools` | text[] | not null, default empty; the tools that are off, each one of `web_search`, `read_page`, `shell`, `file_system` and `offer_download` (CNV-013) |
+| `base_instructions`, `additional_instructions` | text | the conversation's own instructions; null to use the user's defaults (CNV-014) |
 | `archived_at` | timestamptz | null when active |
 | `created_at` | timestamptz | not null |
 | `updated_at` | timestamptz | not null; updated when a run adds messages |
+
+### `user_settings` (private)
+
+A user's defaults for their conversations (CNV-013, CNV-014, ADR-0081); at
+most one row per user, and none until they set one.
+
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id`, `owner_id` | uuid | not null; primary key; (`tenant_id`, `owner_id`) references `users` |
+| `connection_id`, `model` | uuid, text | the default model, both null when none; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`), and a model without a connection is not offered |
+| `reasoning` | text | `off`, `on` or `deep`; null when unset |
+| `disabled_tools` | text[] | not null, default empty; as in `conversations` |
+| `base_instructions`, `additional_instructions` | text | null when unset |
+| `updated_at` | timestamptz | not null |
 
 ### `conversation_messages` (private)
 
@@ -365,6 +382,7 @@ ADR-0069).
 | `position` | integer | not null; the provider's order, from 1: for OpenRouter, most used in the past week first |
 | `context_window` | integer | null when unknown |
 | `tools` | boolean | whether the model can call tools; null when unknown (MOD-014) |
+| `reasoning` | boolean | whether the model can reason; null when unknown (CNV-013, ADR-0081) |
 | `input_price`, `cached_input_price`, `output_price` | numeric(20, 10) | price per million tokens, or null |
 | `currency` | text | ISO 4217 code; not null exactly when a price is set |
 
@@ -373,9 +391,9 @@ listing the models again replaces the rows of the connection.
 
 ### Policies for private tables
 
-`device_sessions`, `folders`, `conversations`, `conversation_messages`,
-`compaction_checkpoints`, `runs` and `usage_ledger` use the same policy for
-every operation:
+`device_sessions`, `folders`, `user_settings`, `conversations`,
+`conversation_messages`, `compaction_checkpoints`, `runs` and `usage_ledger`
+use the same policy for every operation:
 
 ```sql
 USING      (tenant_id = app_tenant_id() AND owner_id = app_user_id())
@@ -397,6 +415,7 @@ keys, not by privileges of `mzm_app`.
 | `device_sessions` | `SELECT`, `INSERT`, `DELETE`; `UPDATE` of `revoked_at` |
 | `login_attempts` | none |
 | `folders` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `user_settings` | `SELECT`, `INSERT`, `UPDATE` |
 | `conversations` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `compaction_checkpoints` | `SELECT`, `INSERT`: checkpoints never change (ADR-0041) |
 | `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |

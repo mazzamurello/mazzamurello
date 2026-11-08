@@ -23,6 +23,7 @@ ARGON2_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA"
 KEY_COLUMNS: dict[str, tuple[str, ...]] = {
     "device_sessions": ("id",),
     "folders": ("id",),
+    "user_settings": ("owner_id",),
     "conversations": ("id",),
     "compaction_checkpoints": ("run_id",),
     "runs": ("id",),
@@ -85,6 +86,11 @@ def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> Us
         (folder_id, tenant_id, user_id, "Test folder"),
     )
     conn.execute(
+        "INSERT INTO user_settings (tenant_id, owner_id, additional_instructions, updated_at)"
+        " VALUES (%s, %s, %s, now())",
+        (tenant_id, user_id, "Test instructions"),
+    )
+    conn.execute(
         "INSERT INTO conversations (id, tenant_id, owner_id, title, folder_id, last_message_at, created_at, updated_at)"
         " VALUES (%s, %s, %s, %s, %s, now(), now(), now())",
         (conversation_id, tenant_id, user_id, "Test conversation", folder_id),
@@ -112,6 +118,7 @@ def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> Us
     rows: dict[str, tuple[object, ...]] = {
         "device_sessions": (session_id,),
         "folders": (folder_id,),
+        "user_settings": (user_id,),
         "conversations": (conversation_id,),
         "compaction_checkpoints": (run_id,),
         "runs": (run_id,),

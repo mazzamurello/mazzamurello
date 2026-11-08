@@ -40,6 +40,7 @@ GRANTS: dict[str, dict[str, Columns]] = {
     "device_sessions": {"SELECT": EVERY, "INSERT": EVERY, "DELETE": EVERY, "UPDATE": Columns(only=("revoked_at",))},
     "login_attempts": {},
     "folders": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
+    "user_settings": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY},
     "conversations": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
     "compaction_checkpoints": {"SELECT": EVERY, "INSERT": EVERY},
     "conversation_messages": {"SELECT": EVERY, "INSERT": EVERY},

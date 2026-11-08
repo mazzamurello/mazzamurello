@@ -99,13 +99,15 @@ as OpenAI-compatible servers do.
 
 The served model also answers as OpenRouter's API does, for connections of
 kind `openrouter` whose address points to it (ADR-0057): its model list with
-`supported_parameters` and `sort`, the key check at `/key`, keep-alive comments,
+`supported_parameters`, which say which models call tools and which reason,
+and `sort`, the key check at `/key`, keep-alive comments,
 a final usage chunk that repeats the finish reason and reports `cost`, and
 errors before and during a stream, as OpenRouter's documentation describes
 them. Both refuse a request when the test asks, as a content filter does: a
 `refusal` with the provider's reason and the finish reason `content_filter`
-(MOD-015). It records the headers of each request, so tests can check what the
-gateway sends.
+(MOD-015). Both stream reasoning before the answer when the test asks, in the
+field each names it with (CNV-013). It records the headers of each request, so
+tests can check what the gateway sends.
 
 ## Search
 

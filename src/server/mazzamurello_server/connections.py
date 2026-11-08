@@ -84,6 +84,7 @@ class ListedModel:
     name: str
     context_window: int | None = None
     tools: bool | None = None
+    reasoning: bool | None = None
     input_price: Decimal | None = None
     cached_input_price: Decimal | None = None
     output_price: Decimal | None = None
@@ -183,6 +184,7 @@ def _openrouter_models(payload: list[Any]) -> list[ListedModel]:
                 name=str(entry.get("name") or entry["id"]),
                 context_window=entry.get("context_length") if isinstance(entry.get("context_length"), int) else None,
                 tools="tools" in (entry.get("supported_parameters") or []),
+                reasoning="reasoning" in (entry.get("supported_parameters") or []),
                 # OpenRouter prices one token; the contract prices a million.
                 input_price=prompt * TOKENS_PER_PRICE if priced and prompt is not None else None,
                 cached_input_price=cached * TOKENS_PER_PRICE if priced and cached is not None else None,
@@ -410,9 +412,9 @@ async def store_models(
         await connection.execute(
             text(
                 "INSERT INTO connection_models (tenant_id, connection_id, model, name, position, context_window, tools,"
-                " input_price, cached_input_price, output_price, currency) VALUES (:tenant_id, :connection_id, :model,"
-                " :name, :position, :context_window, :tools, :input_price, :cached_input_price, :output_price,"
-                " :currency) ON CONFLICT (connection_id, model) DO NOTHING"
+                " reasoning, input_price, cached_input_price, output_price, currency) VALUES (:tenant_id,"
+                " :connection_id, :model, :name, :position, :context_window, :tools, :reasoning, :input_price,"
+                " :cached_input_price, :output_price, :currency) ON CONFLICT (connection_id, model) DO NOTHING"
             ),
             {
                 "tenant_id": tenant_id,
@@ -422,6 +424,7 @@ async def store_models(
                 "position": position,
                 "context_window": listed.context_window,
                 "tools": listed.tools,
+                "reasoning": listed.reasoning,
                 "input_price": listed.input_price,
                 "cached_input_price": listed.cached_input_price,
                 "output_price": listed.output_price,
@@ -726,7 +729,7 @@ async def list_models(identity: Authenticated, engine: Engine, secret: SecretKey
                 text(
                     "SELECT m.connection_id, c.name AS connection_name, c.location, m.model, m.name,"
                     " coalesce(c.context_window, m.context_window) AS context_window,"
-                    " m.tools, m.input_price, m.cached_input_price, m.output_price, m.currency,"
+                    " m.tools, m.reasoning, m.input_price, m.cached_input_price, m.output_price, m.currency,"
                     " c.models_refreshed_at < now() - make_interval(secs => :age) AS stale"
                     " FROM connection_models m JOIN connections c ON c.id = m.connection_id"
                     " ORDER BY c.name, c.id, m.position"
@@ -750,6 +753,7 @@ async def list_models(identity: Authenticated, engine: Engine, secret: SecretKey
             prices=None if row.location == "local" else _prices(row),
             context_window=row.context_window,
             tools=row.tools,
+            reasoning=row.reasoning,
         )
         for row in rows
     ]

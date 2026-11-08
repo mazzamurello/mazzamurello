@@ -26,12 +26,14 @@ from pydantic_ai.messages import (
     ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
+    ModelSettingsDeltaEvent,
     TextContent,
     UserContent,
     UserPromptPart,
     repair_messages,
 )
 from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.ui.ag_ui import AGUIEventStream
 from pydantic_ai_harness.filesystem import FileSystem
 from pydantic_ai_harness.shell import Shell
@@ -61,6 +63,7 @@ from mazzamurello_server.gateway import (
 )
 from mazzamurello_server.offers import TOOLS as OFFER_TOOLS
 from mazzamurello_server.sandbox import SandboxWorkspace, sandbox_ref, stop_sandbox
+from mazzamurello_server.settings import BUILT_IN_BASE_INSTRUCTIONS
 from mazzamurello_server.web_tools import TOOLS as WEB_TOOLS
 from mazzamurello_server.workflow_input import RunWorkflowInput
 
@@ -73,19 +76,40 @@ SHELL_OUTPUT_CHARS = 64 * 1024 * 1024
 QUEUE_POLLING_SECONDS = 0.2
 # The most of a provider's refusal a run's error repeats.
 REASON_CHARS = 500
-# Until instructions and skills arrive (ADR-0044, ADR-0052).
-INSTRUCTIONS = (
-    "You are Mazzamurello, an assistant for the people of a household. "
-    "Answer helpfully, clearly and briefly, in the language the user writes in.\n\n"
-    # What the workspace keeps (AGT-022, ADR-0076).
+# The sandbox, not a list of command names, decides what a command can do (ADR-0062).
+SHELL = Shell(max_output_chars=SHELL_OUTPUT_CHARS, denied_commands=())
+FILE_SYSTEM = FileSystem()
+
+
+def _tool_names(capability: Shell[Any] | FileSystem[Any]) -> frozenset[str]:
+    toolset = capability.get_toolset()
+    if not isinstance(toolset, FunctionToolset):
+        raise TypeError(f"{type(capability).__name__} has no tools of its own")
+    return frozenset(cast("FunctionToolset[Any]", toolset).tools)
+
+
+# The tools a user can switch off, and the names the model knows them by (CNV-013, ADR-0081).
+TOOL_NAMES: dict[str, frozenset[str]] = {
+    "web_search": frozenset({"web_search"}),
+    "read_page": frozenset({"read_page"}),
+    "shell": _tool_names(SHELL),
+    "file_system": _tool_names(FILE_SYSTEM),
+    "offer_download": frozenset({"offer_download"}),
+}
+# The working instructions, each about tools that must be on (CNV-014, ADR-0081).
+# What the workspace keeps (AGT-022, ADR-0076).
+WORKSPACE_INSTRUCTIONS = (
     "Your commands run in the user's sandbox, starting in /scratch. Everything outside /workspace,"
     " /scratch included, and anything you install in the system, is discarded when the sandbox stops."
     " Work in /scratch. Put in /workspace only what the user will want again: scripts, results and notes,"
     " each piece of work in a folder of its own with a README.md that says what it is and how to make it"
     " again. Do not keep data there that can be fetched again: write down where it comes from instead."
     " Look in /workspace for earlier work before starting again. Files the user attaches are in"
-    " /workspace/uploads/. To give the user a file, offer it with offer_download.\n\n"
-    # The sandbox toolbox (SBX-021, ADR-0080).
+    " /workspace/uploads/."
+)
+DOWNLOAD_INSTRUCTIONS = "To give the user a file of /workspace, offer it with offer_download."
+# The sandbox toolbox (SBX-021, ADR-0080).
+TOOLBOX_INSTRUCTIONS = (
     "The sandbox has these tools, ready without installing anything: for PDFs, pdftotext, pdftoppm,"
     " pdfinfo and qpdf; markitdown, which turns PDF, Word, Excel, PowerPoint and HTML files into Markdown"
     " for you to read; pandoc for documents, with the DejaVu, Liberation and Noto fonts; ImageMagick"
@@ -94,6 +118,20 @@ INSTRUCTIONS = (
     " There is no office suite and no text recognition. Use these tools before installing anything, and"
     " install only what is missing: it lasts for this answer only."
 )
+
+
+def instructions(ctx: RunContext[RunDeps]) -> str:
+    """The base instructions, the working instructions for the tools that are on, then the user's additions."""
+    deps = ctx.deps
+    off = deps.disabled_tools if deps.tools else frozenset(TOOL_NAMES)
+    working = [
+        WORKSPACE_INSTRUCTIONS if not {"shell", "file_system"} <= off else "",
+        DOWNLOAD_INSTRUCTIONS if "offer_download" not in off else "",
+        TOOLBOX_INSTRUCTIONS if "shell" not in off else "",
+    ]
+    base = BUILT_IN_BASE_INSTRUCTIONS if deps.base_instructions is None else deps.base_instructions
+    parts = [base, " ".join(part for part in working[:2] if part), working[2], deps.additional_instructions or ""]
+    return "\n\n".join(part for part in parts if part.strip())
 
 
 class _Worker:
@@ -131,7 +169,14 @@ async def _handle_events(ctx: RunContext[RunDeps], events: AsyncIterable[AgentSt
     run_id = str(ctx.deps.run_id)
     encoder = _ENCODERS[run_id]
     async for event in events:
+        # A change of reasoning level is the history's business, not the client's (ADR-0081).
+        if isinstance(event, ModelSettingsDeltaEvent):
+            continue
         async for encoded in encoder.handle_event(event):
+            # The provider's own form of the reasoning stays with the stored messages: clients never send
+            # history back (ADR-0031).
+            if encoded.type == "REASONING_ENCRYPTED_VALUE":
+                continue
             await _write(run_id, _encoded(encoded))
         title = _TITLES.get(run_id)
         if title is not None and title.done():
@@ -149,7 +194,7 @@ agent = Agent(
     model_reference(str(uuid.UUID(int=0)), "unset"),
     name="mazzamurello",
     deps_type=RunDeps,
-    instructions=INSTRUCTIONS,
+    instructions=instructions,
     # Web search through the instance's search service, page reading in the sandbox (ADR-0075).
     # And offering a file of the workspace to download (AGT-023, ADR-0079).
     tools=(*WEB_TOOLS, *OFFER_TOOLS),
@@ -157,9 +202,8 @@ agent = Agent(
         Gateway(),
         # The user's sandbox, and the harness's tools that work in it (AGT-011, ADR-0035).
         SandboxWorkspace(),
-        # The sandbox, not a list of command names, decides what a command can do (ADR-0062).
-        Shell(max_output_chars=SHELL_OUTPUT_CHARS, denied_commands=()),
-        FileSystem(),
+        SHELL,
+        FILE_SYSTEM,
         # Large results reach the model bounded; the rest stays in the workspace (AGT-014).
         ToolOutputLimits(),
         DBOSDurability(event_stream_handler=_handle_events),
@@ -257,6 +301,11 @@ async def run_workflow(serialized_input: str) -> None:
         sandboxd_token=_WORKER.sandboxd_token,
         search_url=_WORKER.search_url,
         emit=lambda event: _write(run.run_id, event),
+        reasoning=run.reasoning,
+        disabled_tools=frozenset(run.disabled_tools),
+        withheld_tools=frozenset(name for group in run.disabled_tools for name in TOOL_NAMES.get(group, ())),
+        base_instructions=run.base_instructions,
+        additional_instructions=run.additional_instructions,
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
     _ENCODERS[run.run_id] = encoder

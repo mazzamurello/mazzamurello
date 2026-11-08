@@ -146,11 +146,12 @@ ordered by their use in the past week, most used first (ADR-0069).
 - **Phase:** 1
 - **Verification:** integration
 
-A new conversation MUST start with the tenant's default model. When a tenant
-without a default model gets a working connection, the default model MUST
-become one of its models: for OpenRouter, its most used free model that can
-call tools; for another server, the first model it lists. A user MUST
-be able to choose, for a conversation, any model offered by the connections
+A new conversation MUST start with its user's default model, or the tenant's
+default model when the user has none or theirs is no longer offered
+(CNV-013). When a tenant without a default model gets a working connection,
+the default model MUST become one of its models: for OpenRouter, its most
+used free model that can call tools; for another server, the first model it
+lists. A user MUST be able to choose, for a conversation, any model offered by the connections
 of their tenant; the choice applies from the conversation's next run. When
 the conversation's model is no longer offered, a run MUST fail instead of
 using another model (ADR-0069).

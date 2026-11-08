@@ -31,6 +31,7 @@ MIGRATION_TIMEOUT_SECONDS = 300
 PRIVATE_TABLES = (
     "device_sessions",
     "folders",
+    "user_settings",
     "conversations",
     "conversation_messages",
     "compaction_checkpoints",
