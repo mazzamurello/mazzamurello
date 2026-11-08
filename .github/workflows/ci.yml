@@ -124,8 +124,13 @@ jobs:
           # The web client in Chromium, and its unit tests (ADR-0067). Its
           # browser tests grew with the daily-use conversations (ADR-0073).
           - part: web
-            paths: tests/web
+            paths: tests/web --ignore=tests/web/test_workspace_panel.py
             budget: 150
+          # The workspace panel in Chromium (ADR-0079): its files live in a
+          # sandbox, which each test starts.
+          - part: web-files
+            paths: tests/web/test_workspace_panel.py
+            budget: 90
     env:
       MAX_TEST_SECONDS: "30"
     steps:
@@ -139,7 +144,7 @@ jobs:
       - name: Install from the lock file (REPO-009)
         run: uv sync --locked --all-packages
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: matrix.part == 'web' && hashFiles('src/web/package.json') != ''
+        if: startsWith(matrix.part, 'web') && hashFiles('src/web/package.json') != ''
         with:
           node-version: "24.14.1"
       - name: Install the web app from its lock file, and run its unit tests
@@ -155,12 +160,12 @@ jobs:
       # The browser is kept between runs for the Playwright version in the
       # lock file; its system libraries still come from apt on every runner.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: matrix.part == 'web' && hashFiles('src/web/package.json') != ''
+        if: startsWith(matrix.part, 'web') && hashFiles('src/web/package.json') != ''
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
       - name: Install Chromium for the browser tests
-        if: matrix.part == 'web' && hashFiles('src/web/package.json') != ''
+        if: startsWith(matrix.part, 'web') && hashFiles('src/web/package.json') != ''
         # It takes under a minute; a stalled download fails the job instead of holding it.
         timeout-minutes: 5
         run: uv run --locked playwright install --with-deps chromium
@@ -223,7 +228,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=sandboxd
       - name: Tests
         # A part whose tests do not exist yet, on a branch from before them, has nothing to run.
-        if: matrix.part != 'web' || hashFiles('tests/web/conftest.py') != ''
+        if: (!startsWith(matrix.part, 'web')) || hashFiles('tests/web/conftest.py') != ''
         env:
           TEST_PATHS: ${{ matrix.paths }}
           # Built above: the tests use them instead of building their own
