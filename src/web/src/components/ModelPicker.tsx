@@ -22,6 +22,7 @@ export function ModelSelect(props: { value: ModelChoice | null; onChange: (choic
   const chosen = findModel(models.data?.items, props.value);
   if (props.compact && !chosen) return null;
   const local = chosen?.location === "local";
+  const shown = chosen ? (props.compact ? chosen.name : `${chosen.name} · ${chosen.connection_name}`) : props.placeholder;
   return (
     <>
       <button
@@ -32,14 +33,15 @@ export function ModelSelect(props: { value: ModelChoice | null; onChange: (choic
             ? "flex min-w-0 items-center gap-1.5 rounded-[9px] px-2 py-1.5 text-[13.5px] font-medium text-muted hover:bg-hover hover:text-fg aria-expanded:bg-hover aria-expanded:text-fg"
             : "flex h-10 w-full max-w-[420px] items-center gap-2 rounded-[10px] border border-line-strong bg-bg px-3 text-left outline-none hover:bg-hover focus-visible:border-accent aria-expanded:border-accent"
         }
-        aria-label={props.label}
+        // The name holds what the button shows, so that it can be spoken as it reads (UX-007).
+        aria-label={props.label && `${props.label}: ${shown ?? ""}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
         {chosen && (local ? <House className="size-4 flex-none" aria-hidden="true" /> : <Cloud className="size-4 flex-none" aria-hidden="true" />)}
         <span className={`truncate ${props.compact ? "" : "flex-1"}`}>
-          {chosen ? (props.compact ? chosen.name : `${chosen.name} · ${chosen.connection_name}`) : props.placeholder}
+          {shown}
         </span>
         <ChevronDown className="size-4 flex-none" aria-hidden="true" />
       </button>
