@@ -254,6 +254,7 @@ export function ConversationView() {
               turn={turn}
               busy={running}
               last={(live === null || settled) && index === shown.length - 1}
+              stopped={settled && live.runId === turn.run.run_id && live.errorCode === "run.cancelled"}
               reason={liveReason?.runId === turn.run.run_id ? liveReason.reason : undefined}
               editing={editing === index}
               onEdit={() => setEditing(index)}
@@ -429,6 +430,8 @@ function TurnView(props: {
   turn: Turn;
   busy: boolean;
   last: boolean;
+  /** The user stopped this run here; the history does not tell a stopped run from a finished one. */
+  stopped: boolean;
   // What the run's stream said about its failure, when the history keeps no reason.
   reason?: string | undefined;
   editing: boolean;
@@ -483,9 +486,15 @@ function TurnView(props: {
       {turn.run.error && turn.run.error.code !== "run.cancelled" && (
         <RunErrorView code={turn.run.error.code} reason={turn.run.error.reason ?? props.reason ?? null} />
       )}
+      {/* The last answer: the sprite waits, and says so if the user just stopped the run (CNV-003). */}
       {props.last && !turn.run.error && (
         <div className="mt-0.5 flex min-h-[58px] items-center gap-2.5">
           <Sprite pose="waiting" className="h-[53px] w-[46px] flex-none" />
+          {props.stopped && (
+            <span role="status" className="text-sm text-muted">
+              {t("message.stopped")}
+            </span>
+          )}
         </div>
       )}
       {answerText && (

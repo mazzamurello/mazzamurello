@@ -87,19 +87,32 @@ export function apply(run: LiveRun, event: RunEvent): LiveRun {
   return { ...run, parts };
 }
 
+async function cancel(runId: string) {
+  await api.POST("/runs/{run_id}/cancel", { params: { path: { run_id: runId } } });
+}
+
 /** Start or follow one run at a time, and stop it. */
 export function useLiveRun(onEnd: () => Promise<void>) {
   const [live, setLive] = useState<LiveRun | null>(null);
   const runId = useRef<string | null>(null);
+  // Whether the server has the run yet, and whether Stop came before it did (CNV-003).
+  const known = useRef(false);
+  const stopWanted = useRef(false);
   const queries = useQueryClient();
 
   const consume = useCallback(
-    async (initial: LiveRun, events: Promise<AsyncGenerator<RunEvent>>) => {
+    async (initial: LiveRun, events: Promise<AsyncGenerator<RunEvent>>, followed: boolean) => {
       runId.current = initial.runId;
+      known.current = followed;
+      stopWanted.current = false;
       let current = initial;
       setLive(current);
       try {
         for await (const event of await events) {
+          if (!known.current) {
+            known.current = true;
+            if (stopWanted.current) void cancel(initial.runId);
+          }
           current = apply(current, event);
           setLive(current);
           // The conversation got its title while it is answered (CNV-006).
@@ -124,7 +137,7 @@ export function useLiveRun(onEnd: () => Promise<void>) {
   const start = useCallback(
     (run: Omit<StartRun, "runId">) => {
       const id = crypto.randomUUID();
-      void consume({ runId: id, userText: run.text, attachments: run.attachments ?? [], parts: [], status: "running" }, startRun({ ...run, runId: id }));
+      void consume({ runId: id, userText: run.text, attachments: run.attachments ?? [], parts: [], status: "running" }, startRun({ ...run, runId: id }), false);
     },
     [consume],
   );
@@ -132,15 +145,16 @@ export function useLiveRun(onEnd: () => Promise<void>) {
   const follow = useCallback(
     (id: string) => {
       if (runId.current === id) return;
-      void consume({ runId: id, userText: null, parts: [], status: "running" }, followRun(id));
+      void consume({ runId: id, userText: null, parts: [], status: "running" }, followRun(id), true);
     },
     [consume],
   );
 
   const stop = useCallback(async () => {
-    if (runId.current !== null) {
-      await api.POST("/runs/{run_id}/cancel", { params: { path: { run_id: runId.current } } });
-    }
+    if (runId.current === null) return;
+    // A run the server does not have yet is stopped as soon as it does.
+    if (known.current) await cancel(runId.current);
+    else stopWanted.current = true;
   }, []);
 
   return { live, start, follow, stop, running: live?.status === "running" };
