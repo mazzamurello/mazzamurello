@@ -30,7 +30,9 @@
     "folderName": "Folder name",
     "createFolder": "Create",
     "pinned": "Pinned",
-    "recent": "Recent"
+    "recent": "Recent",
+    "dropToPin": "Drop here to pin",
+    "resizeList": "Resize the conversation list"
   },
   "conversationMenu": {
     "label": "Options for {{title}}",
@@ -206,13 +208,16 @@
   "settings": {
     "title": "Settings",
     "sections": "Settings sections",
+    "yours": "Yours",
+    "household": "Household",
+    "householdNote": "These settings apply to every user of the household. Only its admins see them.",
     "models": "Models",
     "appearance": "Appearance",
-    "defaultModel": "Default model",
-    "defaultHint": "New conversations start with this model. Anyone in the household can switch models in a conversation.",
+    "defaultModel": "Household default model",
+    "defaultHint": "New conversations start with this model, unless a user chose a default of their own. Anyone in the household can switch models in a conversation.",
     "noDefault": "No default model",
     "connections": "Connections",
-    "connectionsHint": "Each connection brings all of its models. Only household admins see this section.",
+    "connectionsHint": "Each connection brings all of its models.",
     "noConnections": "No connections yet.",
     "add": "Add a connection",
     "modelCountOne": "{{count}} model",
@@ -356,14 +361,16 @@
       "sandbox_unavailable": "The workspace can't be reached now. Try again in a minute.",
       "network": "The server can't be reached.",
       "internal_error": "It didn't work. Try again."
-    }
+    },
+    "resize": "Resize the files panel"
   },
   "assistant": {
     "title": "Assistant",
     "hint": "How your new conversations start. Each conversation can change these in its own settings.",
-    "model": "Model for new chats",
-    "modelHint": "Until you choose one, new chats use the household's default model.",
-    "householdModel": "The household's default model",
+    "model": "Your default model",
+    "modelHint": "For your new chats, it overrides the household's default model, which applies while you choose none.",
+    "householdModel": "Household default: {{name}}",
+    "noHouseholdModel": "The household has no default model",
     "reasoning": "Reasoning",
     "reasoningHint": "How much the model thinks before it answers. Deep is slower, and costs more on paid models.",
     "levels": {
@@ -373,12 +380,38 @@
     },
     "tools": "Tools",
     "toolsHint": "What the assistant may use. A tool that is off is not offered to the model.",
+    "toolsOn": "{{on}} of {{total}} on",
+    "toolGroups": {
+      "web": "Web",
+      "commands": "Commands",
+      "files": "Files",
+      "showing": "Showing files",
+      "questions": "Questions",
+      "tasks": "Task list"
+    },
     "toolNames": {
       "web_search": "Search the web",
       "read_page": "Read web pages",
-      "shell": "Run commands",
-      "file_system": "Read and write files",
-      "offer_download": "Offer downloads"
+      "run_command": "Run a command",
+      "start_command": "Start a command in the background",
+      "check_command": "Check on a background command",
+      "stop_command": "Stop a background command",
+      "read_file": "Read a file",
+      "write_file": "Write a file",
+      "edit_file": "Edit a file",
+      "create_directory": "Create a folder",
+      "list_directory": "List a folder",
+      "find_files": "Find files by name",
+      "search_files": "Search inside files",
+      "file_info": "Look up a file's details",
+      "offer_download": "Show you a file",
+      "ask_user_question": "Ask you questions",
+      "write_plan": "Write the task list",
+      "read_plan": "Read the task list",
+      "add_task": "Add a task",
+      "update_task_status": "Update a task",
+      "update_task_statuses": "Update several tasks",
+      "remove_task": "Remove a task"
     },
     "cannotReason": "This model can't reason.",
     "additional": "Additional prompt",

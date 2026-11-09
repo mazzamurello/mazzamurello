@@ -26,6 +26,8 @@ export interface LiveRun {
   usage?: RunUsage;
   // The task list, as the run changes it (UX-009).
   plan?: PlanStep[];
+  // Whether the history was fetched after the run ended, so that it holds all of it (UX-003).
+  inHistory?: boolean;
 }
 
 export interface RunUsage {
@@ -134,7 +136,7 @@ export function useLiveRun(onEnd: () => Promise<void>) {
       runId.current = null;
       await onEnd();
       // A failed run stays visible until the next one; a finished one is in the history now.
-      setLive(current.status === "failed" ? current : null);
+      setLive(current.status === "failed" ? { ...current, inHistory: true } : null);
     },
     [onEnd, queries],
   );

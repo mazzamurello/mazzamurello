@@ -88,9 +88,8 @@ class RunDeps:
     # Whether the model can reason, `None` when unknown, and how much it should (CNV-013, ADR-0081).
     reasons: bool | None = None
     reasoning: str = "on"
-    # The tools the user switched off, and the names the model knows them by (CNV-013).
+    # The tools the user switched off, by the names the model knows them by (CNV-013, ADR-0087).
     disabled_tools: frozenset[str] = frozenset()
-    withheld_tools: frozenset[str] = frozenset()
     # The instructions of the run: null base instructions are the built-in ones (CNV-014).
     base_instructions: str | None = None
     additional_instructions: str | None = None
@@ -223,7 +222,7 @@ class Gateway(AbstractCapability[RunDeps]):
     async def prepare_tools(self, ctx: RunContext[RunDeps], tool_defs: list[ToolDefinition]) -> list[ToolDefinition]:
         if not ctx.deps.tools:
             return []
-        return [tool for tool in tool_defs if tool.name not in ctx.deps.withheld_tools]
+        return [tool for tool in tool_defs if tool.name not in ctx.deps.disabled_tools]
 
     async def before_model_request(
         self, ctx: RunContext[RunDeps], request_context: ModelRequestContext

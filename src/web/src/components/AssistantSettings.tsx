@@ -13,7 +13,17 @@ import { ModelSelect } from "./ModelPicker";
 
 export const SETTINGS = ["me", "settings"] as const;
 const REASONING: Reasoning[] = ["off", "on", "deep"];
-const TOOLS: ToolName[] = ["web_search", "read_page", "shell", "file_system", "offer_download"];
+// Every tool of the assistant, by group (CNV-013, ADR-0087); the groups are the client's own.
+const TOOL_GROUPS: { id: string; tools: ToolName[] }[] = [
+  { id: "web", tools: ["web_search", "read_page"] },
+  { id: "commands", tools: ["run_command", "start_command", "check_command", "stop_command"] },
+  { id: "files", tools: ["read_file", "write_file", "edit_file", "create_directory", "list_directory", "find_files", "search_files", "file_info"] },
+  { id: "showing", tools: ["offer_download"] },
+  { id: "questions", tools: ["ask_user_question"] },
+  { id: "tasks", tools: ["write_plan", "read_plan", "add_task", "update_task_status", "update_task_statuses", "remove_task"] },
+];
+const SWITCH =
+  "relative h-6 w-10 flex-none rounded-full bg-line-strong transition-colors peer-checked:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-accent after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-bg after:transition-transform peer-checked:after:translate-x-4";
 const BUTTON = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] border border-line-strong bg-surface px-4 text-sm font-semibold hover:bg-hover disabled:opacity-50";
 const PRIMARY = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] bg-fg px-4 text-sm font-semibold text-bg disabled:opacity-50";
 const TEXTAREA = "min-h-24 w-full rounded-[10px] border border-line-strong bg-bg px-3 py-2 text-sm outline-none focus:border-accent";
@@ -75,29 +85,67 @@ function ReasoningField({ value, onChange, reasons }: { value: Reasoning; onChan
   );
 }
 
+/** A switch: the label names it, the description says more (UX-007). */
+function Switch({ label, description, checked, onChange, strong = false }: { label: string; description?: React.ReactNode; checked: boolean; onChange: (on: boolean) => void; strong?: boolean }) {
+  const name = useId();
+  const more = useId();
+  return (
+    <div className="relative flex max-w-[460px] items-center justify-between gap-3 rounded-[10px] px-1 py-1.5 text-sm">
+      <span className="flex min-w-0 flex-col">
+        <label htmlFor={name} className={`cursor-pointer ${strong ? "font-bold" : ""}`}>
+          {label}
+        </label>
+        {description && (
+          <span id={more} className="text-[12.5px] text-muted">
+            {description}
+          </span>
+        )}
+      </span>
+      <input
+        id={name}
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        aria-describedby={description ? more : undefined}
+        onChange={(event) => onChange(event.target.checked)}
+        className="peer absolute inset-0 size-full cursor-pointer opacity-0"
+      />
+      <span aria-hidden="true" className={SWITCH} />
+    </div>
+  );
+}
+
+/** Every tool, by group with its name, each with a switch, and a switch for each group (CNV-013, ADR-0087). */
 function ToolSwitches({ disabled, onChange }: { disabled: ToolName[]; onChange: (disabled: ToolName[]) => void }) {
   const { t } = useTranslation();
+  const heading = useId();
+  const set = (tools: ToolName[], on: boolean) => onChange(on ? disabled.filter((name) => !tools.includes(name)) : [...disabled.filter((name) => !tools.includes(name)), ...tools]);
   return (
-    <div>
-      <h3 className="mb-1 text-sm font-bold">{t("assistant.tools")}</h3>
+    <div role="group" aria-labelledby={heading}>
+      <h3 id={heading} className="mb-1 text-sm font-bold">
+        {t("assistant.tools")}
+      </h3>
       <p className="mb-2.5 max-w-[62ch] text-sm text-muted">{t("assistant.toolsHint")}</p>
-      <div className="flex flex-col gap-1">
-        {TOOLS.map((tool) => (
-          <label key={tool} className="relative flex max-w-[420px] cursor-pointer items-center justify-between gap-3 rounded-[10px] px-1 py-1.5 text-sm">
-            {t(`assistant.toolNames.${tool}`)}
-            <input
-              type="checkbox"
-              role="switch"
-              checked={!disabled.includes(tool)}
-              onChange={(event) => onChange(event.target.checked ? disabled.filter((name) => name !== tool) : [...disabled, tool])}
-              className="peer absolute inset-0 size-full cursor-pointer opacity-0"
-            />
-            <span
-              aria-hidden="true"
-              className="relative h-6 w-10 flex-none rounded-full bg-line-strong transition-colors peer-checked:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-accent after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-bg after:transition-transform peer-checked:after:translate-x-4"
-            />
-          </label>
-        ))}
+      <div className="flex flex-col gap-3">
+        {TOOL_GROUPS.map((group) => {
+          const on = group.tools.filter((tool) => !disabled.includes(tool)).length;
+          return (
+            <div key={group.id} className="max-w-[460px] rounded-[14px] border border-line px-2.5 py-1.5">
+              <Switch
+                label={t(`assistant.toolGroups.${group.id}`)}
+                description={t("assistant.toolsOn", { on, total: group.tools.length })}
+                checked={on === group.tools.length}
+                onChange={(checked) => set(group.tools, checked)}
+                strong
+              />
+              <div className="mt-0.5 flex flex-col border-t border-line pt-0.5 pl-2">
+                {group.tools.map((tool) => (
+                  <Switch key={tool} label={t(`assistant.toolNames.${tool}`)} description={<code className="font-mono">{tool}</code>} checked={!disabled.includes(tool)} onChange={(checked) => set([tool], checked)} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -154,6 +202,8 @@ export function AssistantSection() {
 
 function AssistantForm({ view }: { view: UserSettingsView }) {
   const { t } = useTranslation();
+  const models = useModels();
+  const householdModel = findModel(models.data?.items, models.data?.default);
   const queries = useQueryClient();
   const heading = useId();
   const notify = useNotify();
@@ -194,7 +244,12 @@ function AssistantForm({ view }: { view: UserSettingsView }) {
       <div>
         <h3 className="mb-1 text-sm font-bold">{t("assistant.model")}</h3>
         <p className="mb-2.5 max-w-[62ch] text-sm text-muted">{t("assistant.modelHint")}</p>
-        <ModelSelect value={settings.model} onChange={(model) => void save({ model })} label={t("assistant.model")} placeholder={t("assistant.householdModel")} />
+        <ModelSelect
+          value={settings.model}
+          onChange={(model) => void save({ model })}
+          label={t("assistant.model")}
+          placeholder={householdModel ? t("assistant.householdModel", { name: householdModel.name }) : t("assistant.noHouseholdModel")}
+        />
       </div>
       <ReasoningField value={settings.reasoning ?? "on"} onChange={(reasoning) => void save({ reasoning })} reasons={reasons} />
       <ToolSwitches disabled={settings.disabled_tools} onChange={(disabled_tools) => void save({ disabled_tools })} />

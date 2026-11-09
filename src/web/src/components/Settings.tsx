@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Check, Cloud, House, Palette, Plug, Plus, X } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { Bot, Check, Cloud, House, Palette, Plug, Plus, Users, X } from "lucide-react";
+import { type FormEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ApiError, api, unwrap, type Connection, type ConnectionTest, type ModelChoice, type User } from "../api/client";
@@ -18,39 +18,59 @@ const INPUT = "h-10 w-full rounded-[10px] border border-line-strong bg-bg px-3 o
 
 type Tab = "models" | "assistant" | "appearance";
 
+interface TabItem {
+  id: Tab;
+  label: string;
+  icon: React.ReactNode;
+}
+
 /**
- * The settings: the household's models for its admins (UX-015, UX-016), and for everyone
- * their assistant (CNV-013, CNV-014) and the theme (UX-011).
+ * The settings: for everyone their assistant (CNV-013, CNV-014) and the theme (UX-011), and, set
+ * apart for its admins, the household's models (UX-015, UX-016).
  */
 export function Settings({ me }: { me: User }) {
   const { t } = useTranslation();
   const admin = me.role === "tenant_admin";
   const [tab, setTab] = useState<Tab>(admin ? "models" : "assistant");
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    ...(admin ? [{ id: "models" as const, label: t("settings.models"), icon: <Plug className="size-[18px]" aria-hidden="true" /> }] : []),
+  const yours: TabItem[] = [
     { id: "assistant", label: t("assistant.title"), icon: <Bot className="size-[18px]" aria-hidden="true" /> },
     { id: "appearance", label: t("settings.appearance"), icon: <Palette className="size-[18px]" aria-hidden="true" /> },
   ];
+  const household: TabItem[] = admin ? [{ id: "models", label: t("settings.models"), icon: <Plug className="size-[18px]" aria-hidden="true" /> }] : [];
   return (
     <div className="relative min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto grid max-w-[900px] grid-cols-1 gap-[18px] px-4 pt-6 pb-14 md:grid-cols-[190px_minmax(0,1fr)] md:gap-9">
         <h1 className="text-[26px] font-bold tracking-tight md:col-span-2">{t("settings.title")}</h1>
-        <nav aria-label={t("settings.sections")} className="flex gap-0.5 overflow-x-auto md:flex-col">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-current={tab === item.id ? "page" : undefined}
-              onClick={() => setTab(item.id)}
-              className="flex items-center gap-2.5 rounded-[9px] px-3 py-2 text-left font-medium text-muted hover:bg-hover hover:text-fg aria-[current=page]:bg-hover aria-[current=page]:font-semibold aria-[current=page]:text-fg"
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
+        <nav aria-label={t("settings.sections")} className="flex gap-3 overflow-x-auto md:flex-col md:gap-4">
+          <TabGroup title={t("settings.yours")} items={yours} tab={tab} onChoose={setTab} />
+          {household.length > 0 && <TabGroup title={t("settings.household")} items={household} tab={tab} onChoose={setTab} />}
         </nav>
         <div className="flex min-w-0 flex-col gap-[34px]">{tab === "models" && admin ? <ModelsSection /> : tab === "assistant" ? <AssistantSection /> : <AppearanceSection />}</div>
       </div>
+    </div>
+  );
+}
+
+/** The sections of one kind of settings: the user's own, or the household's (UX-015). */
+function TabGroup({ title, items, tab, onChoose }: { title: string; items: TabItem[]; tab: Tab; onChoose: (tab: Tab) => void }) {
+  const heading = useId();
+  return (
+    <div role="group" aria-labelledby={heading} className="flex flex-none gap-0.5 md:flex-col">
+      <h2 id={heading} className="hidden px-3 pb-1 text-xs font-semibold text-faint md:block">
+        {title}
+      </h2>
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          aria-current={tab === item.id ? "page" : undefined}
+          onClick={() => onChoose(item.id)}
+          className="flex items-center gap-2.5 rounded-[9px] px-3 py-2 text-left font-medium whitespace-nowrap text-muted hover:bg-hover hover:text-fg aria-[current=page]:bg-hover aria-[current=page]:font-semibold aria-[current=page]:text-fg"
+        >
+          {item.icon}
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -121,6 +141,10 @@ function ModelsSection() {
   const current = models.data?.default;
   return (
     <>
+      <p role="note" className="flex max-w-[62ch] items-start gap-2.5 rounded-[14px] border border-line bg-surface px-3.5 py-3 text-sm">
+        <Users className="mt-0.5 size-[18px] flex-none text-muted" aria-hidden="true" />
+        {t("settings.householdNote")}
+      </p>
       <section>
         <h2 className="mb-1 text-base font-bold">{t("settings.defaultModel")}</h2>
         <p className="mb-3.5 max-w-[62ch] text-sm text-muted">{t("settings.defaultHint")}</p>

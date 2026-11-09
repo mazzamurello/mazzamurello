@@ -240,7 +240,7 @@ A user's groups of conversations (CNV-007, ADR-0073).
 | `last_message_at` | timestamptz | not null; its creation, then the time a run last added messages; the list's order (CNV-008) |
 | `connection_id`, `model` | uuid, text | the model of the conversation (MOD-012): set from the tenant's default model on creation, or chosen by its user; both null when the tenant had no default model; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`), so a removed connection leaves `model` without a connection and runs fail |
 | `reasoning` | text | not null, default `on`; `off`, `on` or `deep` (CNV-013, ADR-0081) |
-| `disabled_tools` | text[] | not null, default empty; the tools that are off, each one of `web_search`, `read_page`, `shell`, `file_system` and `offer_download` (CNV-013) |
+| `disabled_tools` | text[] | not null, default empty; the tools that are off, each one of the names of `ToolName` in the API contract (CNV-013, ADR-0087) |
 | `base_instructions`, `additional_instructions` | text | the conversation's own instructions; null to use the user's defaults (CNV-014) |
 | `temporary` | boolean | not null, default false; set on creation and never changed (CNV-011, ADR-0082) |
 | `archived_at` | timestamptz | null when active |

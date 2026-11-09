@@ -10,11 +10,12 @@ import json
 import re
 import socket
 import time
+from collections.abc import Callable
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
-from playwright.sync_api import Browser, Page, Route, expect
+from playwright.sync_api import Browser, Locator, Page, Route, expect
 
 from tests.support.accounts import Account
 from tests.support.fixtures import HarnessModel, HouseholdModel
@@ -113,6 +114,35 @@ def test_tool_activity_shows_where_it_happened_and_whether_it_runs(
     assert tool is not None
     assert after is not None
     assert said["y"] < tool["y"] < after["y"]
+
+
+# Records, at every change of the page, which of the marks the thread shows.
+WATCH_THREAD = """(marks) => {
+    window.__shown = [];
+    const record = () => {
+        const thread = document.querySelector("main ol");
+        const text = thread ? thread.innerText : "";
+        window.__shown.push(marks.filter((mark) => text.includes(mark)));
+    };
+    new MutationObserver(record).observe(document.body, {subtree: true, childList: true, characterData: true});
+}"""
+
+
+@pytest.mark.spec("UX-003")
+def test_nothing_of_an_answer_disappears_when_it_ends(page: Page, member: Account, default_model: HarnessModel) -> None:
+    sign_in(page, member)
+    marks = ["Sandbox command", "Tool said:"]
+    page.evaluate(WATCH_THREAD, marks)
+    # The first message of a chat, whose title arrives while it is answered.
+    _send(page, "run:sleep 2; echo acted")
+    _answer(page, "Tool said:")
+    expect(page.get_by_role("button", name="Send")).to_be_visible(timeout=30_000)
+    page.wait_for_timeout(1_500)
+    shown: list[list[str]] = page.evaluate("window.__shown")
+    for mark in marks:
+        first = next(index for index, seen in enumerate(shown) if mark in seen)
+        gone = [index for index, seen in enumerate(shown[first:], first) if mark not in seen]
+        assert gone == [], f"{mark!r} disappeared after it was shown"
 
 
 @pytest.mark.spec("UX-001")
@@ -506,6 +536,98 @@ def test_pinning_a_conversation(page: Page, member: Account) -> None:
     assert links.count() >= 2
 
 
+def _drag(page: Page, source: Locator, target: Callable[[], Locator]) -> None:
+    """Drag with the mouse; the target is looked up once the drag has started, as it may appear only then."""
+    source.hover()
+    page.mouse.down()
+    box = source.bounding_box()
+    assert box is not None
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2 + 12, steps=4)
+    place = target()
+    expect(place).to_be_visible()
+    place.hover()
+    place.hover(position={"x": 12, "y": 6})
+    page.mouse.up()
+
+
+@pytest.mark.spec("CNV-019", "CNV-007", "CNV-008")
+def test_dragging_a_conversation_into_a_folder_and_to_pin_it(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:6]
+    paths: list[str] = []
+    for text in (f"dragged {mark}", f"stays {mark}"):
+        page.goto("/")
+        _send(page, text)
+        _answer(page, f"Echo: {text}")
+        paths.append(urlsplit(page.url).path)
+    nav = page.get_by_role("navigation", name="Conversations")
+    nav.get_by_role("button", name="New folder").click()
+    page.get_by_label("Folder name").fill(f"Trips {mark}")
+    page.get_by_role("button", name="Create").click()
+    folder = nav.get_by_role("button", name=f"Trips {mark}")
+    expect(folder).to_be_visible()
+    link = f"a[href='{paths[0]}']"
+    dragged = nav.locator(link)
+    # Onto a folder: into it.
+    _drag(page, dragged, lambda: folder)
+    in_folder = nav.get_by_role("list", name=f"Trips {mark}")
+    expect(in_folder.locator(link)).to_be_visible()
+    # Onto the top of the list, where pinned entries go though none is pinned yet: pinned, out of its folder.
+    _drag(page, dragged, lambda: nav.get_by_text("Drop here to pin"))
+    pinned = nav.get_by_role("region", name="Pinned")
+    expect(pinned.locator(link)).to_be_visible()
+    expect(in_folder.locator(link)).to_have_count(0)
+    # Onto the other entries: unpinned.
+    _drag(page, dragged, lambda: nav.get_by_role("region", name="Recent"))
+    expect(pinned).to_have_count(0)
+    expect(dragged).to_be_visible()
+    expect(in_folder.locator(link)).to_have_count(0)
+    # It lasts.
+    page.reload()
+    expect(dragged).to_be_visible(timeout=15_000)
+    expect(nav.get_by_role("region", name="Pinned")).to_have_count(0)
+    assert accessibility_violations(page) == []
+
+
+def _width(locator: Locator) -> float:
+    box = locator.bounding_box()
+    assert box is not None
+    return box["width"]
+
+
+@pytest.mark.spec("UX-021", "UX-007")
+def test_the_conversation_list_is_resized_by_dragging_its_edge(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    sidebar = page.get_by_role("navigation", name="Conversations")
+    edge = page.get_by_role("separator", name="Resize the conversation list")
+    expect(edge).to_be_visible()
+    start = _width(sidebar)
+    box = edge.bounding_box()
+    assert box is not None
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] / 2 + 80, box["y"] + box["height"] / 2, steps=5)
+    page.mouse.up()
+    wider = _width(sidebar)
+    assert 70 <= wider - start <= 90
+    assert edge.get_attribute("aria-valuenow") == str(round(wider))
+    # Kept on the device.
+    page.reload()
+    expect(edge).to_be_visible()
+    assert abs(_width(sidebar) - wider) <= 1
+    # With the keyboard too, and never beyond its bounds.
+    edge.focus()
+    page.keyboard.press("ArrowLeft")
+    assert _width(sidebar) < wider
+    for _ in range(80):
+        page.keyboard.press("ArrowRight")
+    assert abs(_width(sidebar) - float(edge.get_attribute("aria-valuemax") or 0)) <= 1
+    # A double click brings back the default.
+    edge.dblclick()
+    assert abs(_width(sidebar) - start) <= 1
+    assert accessibility_violations(page) == []
+
+
 @pytest.mark.spec("CNV-009", "UX-007")
 def test_searching_conversations(page: Page, member: Account) -> None:
     sign_in(page, member)
@@ -600,11 +722,11 @@ def test_the_default_model_is_chosen_with_the_model_picker(
     _add_openrouter(server, default_model.connect(admin.tenant_id))
     sign_in(page, admin)
     page.get_by_role("link", name="Settings").click()
-    page.get_by_role("button", name="Default model").click()
+    page.get_by_role("button", name="Household default model").click()
     picker = page.get_by_role("dialog", name="Choose a model")
     expect(picker).to_be_visible()
     picker.get_by_role("searchbox").fill("popular")
     picker.get_by_role("button", name=re.compile("Test: Popular")).click()
-    expect(page.get_by_role("button", name="Default model")).to_contain_text("Test: Popular")
+    expect(page.get_by_role("button", name="Household default model")).to_contain_text("Test: Popular")
     page.get_by_role("link", name="New chat").click()
     expect(page.get_by_role("button", name=re.compile("Test: Popular"))).to_be_visible()

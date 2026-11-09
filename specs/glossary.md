@@ -58,6 +58,7 @@ new entry here first (ADR-0005).
 | Durable execution engine | The library that checkpoints runs so they survive crashes and restarts: DBOS (ADR-0034). |
 | Interrupt | The end of a run that needs the user's answer, such as an approval; the answer starts a new run (ADR-0033). |
 | Tool | A capability the agent can invoke. All tools are mediated tools. |
+| Tool group | A named set of tools that do one kind of work, such as the web, commands or files, which a user can switch on and off together (CNV-013, ADR-0087). |
 | Mediated tool | A tool executed by the control plane, which checks permissions, approvals and records audit events. |
 | Capability class | A declared property of a tool used for safety decisions: `reads_private_data`, `ingests_untrusted`, `external_communication`, `irreversible`, `physical`. |
 | Untrusted content | Any content not authored by the user or the system: web pages, received emails, external files, sandbox output. |

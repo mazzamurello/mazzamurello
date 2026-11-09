@@ -26,6 +26,7 @@ import {
 } from "../workspace";
 import { errorKey } from "./Composer";
 import { CodeBlock, Markdown } from "./Markdown";
+import { ResizeHandle, usePanelWidth } from "./ResizeHandle";
 
 const WIDE = "(min-width: 768px)";
 // The API shows at most this much of a text (UX-020).
@@ -75,10 +76,12 @@ export function WorkspacePanel(props: { conversationId: string; open: boolean; o
   const { t } = useTranslation();
   const wide = useWide();
   const title = useId();
+  const panel = usePanelWidth("mzm.filesWidth", 400, 300, 760);
   if (wide) {
     if (!props.open) return null;
     return (
-      <section aria-labelledby={title} className="flex w-[min(400px,40vw)] flex-none flex-col border-l border-line bg-panel">
+      <section aria-labelledby={title} style={{ width: panel.width }} className="relative flex max-w-[50vw] flex-none flex-col border-l border-line bg-panel">
+        <ResizeHandle label={t("files.resize")} side="left" panel={panel} />
         <header className="flex h-[52px] flex-none items-center gap-2 px-4">
           <h2 id={title} className="flex-1 font-semibold">
             {t("files.title")}
