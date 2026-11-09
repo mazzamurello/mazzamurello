@@ -152,6 +152,23 @@ TOOLBOX_INSTRUCTIONS = (
 )
 
 
+# How the run's message came, when it was not typed (UX-005, ADR-0088).
+VOICE_INSTRUCTIONS = {
+    "dictated": (
+        "The user dictated their last message, and a speech-to-text model transcribed it: some words may be"
+        " misheard, such as names, words of another language and words that sound alike. Read it for what the"
+        " user meant."
+    ),
+    "hands_free": (
+        "The user is speaking to you hands-free, and your answer will be read aloud to them. Their message was"
+        " transcribed from speech, so some words may be misheard: read it for what they meant. Write your answer"
+        " for listening: in plain sentences, without tables, code, links or headings unless the user asks for"
+        " them, with numbers and symbols as they are said. Make it no shorter and no simpler than you would"
+        " otherwise."
+    ),
+}
+
+
 def instructions(ctx: RunContext[RunDeps]) -> str:
     """The base instructions, the working instructions for the tools that are on, then the user's additions."""
     deps = ctx.deps
@@ -162,7 +179,13 @@ def instructions(ctx: RunContext[RunDeps]) -> str:
         TOOLBOX_INSTRUCTIONS if on & {"run_command", "start_command"} else "",
     ]
     base = BUILT_IN_BASE_INSTRUCTIONS if deps.base_instructions is None else deps.base_instructions
-    parts = [base, " ".join(part for part in working[:2] if part), working[2], deps.additional_instructions or ""]
+    parts = [
+        base,
+        " ".join(part for part in working[:2] if part),
+        working[2],
+        VOICE_INSTRUCTIONS.get(deps.voice or "", ""),
+        deps.additional_instructions or "",
+    ]
     return "\n\n".join(part for part in parts if part.strip())
 
 
@@ -366,6 +389,7 @@ async def run_workflow(serialized_input: str) -> None:
         disabled_tools=frozenset(run.disabled_tools),
         base_instructions=run.base_instructions,
         additional_instructions=run.additional_instructions,
+        voice=run.voice,
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
     _ENCODERS[run.run_id] = encoder

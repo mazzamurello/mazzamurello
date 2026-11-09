@@ -4,12 +4,14 @@ import { Bot, Check, Cloud, House, Palette, Plug, Plus, Users, X } from "lucide-
 import { type FormEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ApiError, api, unwrap, type Connection, type ConnectionTest, type ModelChoice, type User } from "../api/client";
-import { MODELS, useModels } from "../models";
+import { ApiError, api, unwrap, type Connection, type ConnectionTest, type ModelChoice, type Schemas, type User } from "../api/client";
+import { findModel, MODELS, useModels } from "../models";
 import { useNotify } from "../notices";
 import { type Theme, useTheme } from "../theme";
 import { AssistantSection } from "./AssistantSettings";
 import { ModelSelect } from "./ModelPicker";
+
+type SpeechSettings = Schemas["SpeechSettings"];
 
 const CONNECTIONS = ["connections"] as const;
 const BUTTON = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] border border-line-strong bg-surface px-4 text-sm font-semibold hover:bg-hover disabled:opacity-50";
@@ -150,6 +152,7 @@ function ModelsSection() {
         <p className="mb-3.5 max-w-[62ch] text-sm text-muted">{t("settings.defaultHint")}</p>
         <ModelSelect value={current ?? null} onChange={(choice) => void chooseDefault(choice)} label={t("settings.defaultModel")} placeholder={t("settings.noDefault")} />
       </section>
+      <SpeechSection />
       <section>
         <h2 className="mb-1 text-base font-bold">{t("settings.connections")}</h2>
         <p className="mb-3.5 max-w-[62ch] text-sm text-muted">{t("settings.connectionsHint")}</p>
@@ -209,6 +212,100 @@ function ModelsSection() {
         </Dialog.Portal>
       </Dialog.Root>
     </>
+  );
+}
+
+/** The household's speech models: one that transcribes spoken turns, one that reads aloud with a voice (API-006, ADR-0088). */
+function SpeechSection() {
+  const { t } = useTranslation();
+  const queries = useQueryClient();
+  const notify = useNotify();
+  const models = useModels();
+  const current = models.data?.speech ?? { transcription: null, speech: null };
+  const speechModel = findModel(models.data?.items, current.speech);
+  const [pending, setPending] = useState<{ choice: ModelChoice; voice: string } | null>(null);
+  const shown = pending ?? (current.speech ? { choice: current.speech, voice: current.speech.voice } : null);
+  const shownModel = findModel(models.data?.items, shown?.choice) ?? speechModel;
+  const voiceField = useId();
+
+  async function save(settings: SpeechSettings) {
+    try {
+      unwrap(await api.PUT("/tenant/speech", { body: settings }));
+      await queries.invalidateQueries({ queryKey: MODELS });
+      setPending(null);
+      notify({ kind: "info", title: t("settings.saved") });
+    } catch {
+      notify({ kind: "error", title: t("errors.title"), text: t("errors.internal_error") });
+    }
+  }
+
+  function chooseSpeech(choice: ModelChoice) {
+    const voices = findModel(models.data?.items, choice)?.voices ?? [];
+    const voice = voices[0];
+    if (voice) void save({ ...current, speech: { ...choice, voice } });
+    else setPending({ choice, voice: "" });
+  }
+
+  return (
+    <section>
+      <h2 className="mb-1 text-base font-bold">{t("settings.voice")}</h2>
+      <p className="mb-3.5 max-w-[62ch] text-sm text-muted">{t("settings.voiceHint")}</p>
+      <div className="flex max-w-[420px] flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <ModelSelect kind="transcription" value={current.transcription} onChange={(choice) => void save({ ...current, transcription: choice })} label={t("settings.transcriptionModel")} placeholder={t("settings.noTranscription")} />
+          {current.transcription && (
+            <button type="button" className={`${BUTTON} h-10 flex-none px-3 text-[13px]`} onClick={() => void save({ ...current, transcription: null })}>
+              {t("settings.remove")}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <ModelSelect kind="speech" value={shown?.choice ?? null} onChange={chooseSpeech} label={t("settings.speechModel")} placeholder={t("settings.noSpeech")} />
+          {current.speech && (
+            <button type="button" className={`${BUTTON} h-10 flex-none px-3 text-[13px]`} onClick={() => void save({ ...current, speech: null })}>
+              {t("settings.remove")}
+            </button>
+          )}
+        </div>
+        {shown && (
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const voice = String(new FormData(event.currentTarget).get("voice") ?? "").trim();
+              if (voice) void save({ ...current, speech: { ...shown.choice, voice } });
+            }}
+          >
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label htmlFor={voiceField} className="text-[13.5px] font-semibold">
+                {t("settings.voiceName")}
+              </label>
+              {shownModel?.voices?.length ? (
+                <select
+                  id={voiceField}
+                  name="voice"
+                  defaultValue={shown.voice}
+                  key={`${shown.choice.model}-${shown.voice}`}
+                  onChange={(event) => void save({ ...current, speech: { ...shown.choice, voice: event.target.value } })}
+                  className={INPUT}
+                >
+                  {shownModel.voices.map((voice) => (
+                    <option key={voice}>{voice}</option>
+                  ))}
+                </select>
+              ) : (
+                <input id={voiceField} name="voice" defaultValue={shown.voice} key={`${shown.choice.model}-${shown.voice}`} required maxLength={200} className={INPUT} placeholder={t("settings.voicePlaceholder")} />
+              )}
+            </div>
+            {!shownModel?.voices?.length && (
+              <button type="submit" className={`${BUTTON} h-10`}>
+                {t("settings.saveVoice")}
+              </button>
+            )}
+          </form>
+        )}
+      </div>
+    </section>
   );
 }
 

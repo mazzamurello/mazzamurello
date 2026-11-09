@@ -192,8 +192,32 @@ body {
 .sprite[data-sprite-pose="reading"] .pose-read,
 .sprite[data-sprite-pose="writing"] .pose-write,
 .sprite[data-sprite-pose="running"] .pose-knock,
-.sprite[data-sprite-pose="error"] .pose-sign {
+.sprite[data-sprite-pose="error"] .pose-sign,
+.sprite[data-sprite-pose="listening"] .pose-listen {
   display: inline;
+}
+/* Listening (UX-005): a hand behind the ear, and the user's voice coming in. */
+.sprite[data-sprite-pose="listening"] .head {
+  transform-origin: 100px 120px;
+  transform: rotate(-6deg);
+}
+.sprite .wave {
+  animation: sprite-wave-in 1.4s ease-in-out infinite;
+}
+.sprite .w2 {
+  animation-delay: -0.45s;
+}
+.sprite .w3 {
+  animation-delay: -0.9s;
+}
+@keyframes sprite-wave-in {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .sprite .fig {
   transform-origin: 100px 212px;

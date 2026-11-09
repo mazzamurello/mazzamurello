@@ -1,4 +1,4 @@
-import { ArrowUp, FileText, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, FileText, Headphones, LoaderCircle, Mic, Paperclip, Square, X } from "lucide-react";
 import { type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,10 +7,15 @@ import { hasKeyboard } from "../focus";
 import { findModel, useModels } from "../models";
 import { type AttachedFile, formatSize, type useAttachments } from "../workspace";
 import { ModelSelect } from "./ModelPicker";
+import { Recorder, transcribe } from "../speech";
+import { VoiceLevel } from "./VoiceLevel";
+import { useVoice, type VoiceMode } from "../voice";
+import { useNotify } from "../notices";
 
 /** The message box: Enter sends, Shift+Enter starts a new line; while a run goes on, Stop. Files attach by picking or dropping (CNV-017). */
 export function Composer(props: {
-  onSend: (text: string, attachments: AttachedFile[]) => void;
+  // `voice`: how the message came, when it was not typed (ADR-0088).
+  onSend: (text: string, attachments: AttachedFile[], voice?: VoiceMode) => void;
   attachments: ReturnType<typeof useAttachments>;
   onStop?: () => void;
   running: boolean;
@@ -28,6 +33,43 @@ export function Composer(props: {
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const files = props.attachments;
+  const voice = useVoice();
+  const notify = useNotify();
+  const recorder = useRef(new Recorder());
+  const [dictation, setDictation] = useState<"off" | "recording" | "preparing">("off");
+  // A hands-free turn is sent by the message box in view (UX-005).
+  const onSend = useRef(props.onSend);
+  onSend.current = props.onSend;
+  useEffect(() => voice?.register((said, mode) => onSend.current(said, [], mode)), [voice?.register]);
+  // Whether the box holds dictated words, which the assistant is told about (ADR-0088).
+  const [dictated, setDictated] = useState(false);
+
+  /** Dictation: the spoken turn becomes the text of the box, to review before sending (UX-005). */
+  async function dictate() {
+    if (dictation === "preparing") return;
+    if (dictation === "off") {
+      try {
+        await recorder.current.start();
+        setDictation("recording");
+      } catch {
+        notify({ kind: "error", title: t("voice.noMicrophone") });
+      }
+      return;
+    }
+    setDictation("preparing");
+    try {
+      const said = (await transcribe(await recorder.current.stop())).trim();
+      if (said) {
+        setText((now) => (now.trim() ? `${now.trimEnd()} ${said}` : said));
+        setDictated(true);
+      }
+    } catch {
+      notify({ kind: "error", title: t("voice.notHeard") });
+    } finally {
+      setDictation("off");
+      requestAnimationFrame(() => area.current?.focus());
+    }
+  }
 
   useEffect(() => {
     const element = area.current;
@@ -40,8 +82,9 @@ export function Composer(props: {
     event?.preventDefault();
     const message = text.trim();
     if (!message || props.running || files.uploading) return;
-    props.onSend(message, files.ready);
+    props.onSend(message, files.ready, dictated ? "dictated" : undefined);
     setText("");
+    setDictated(false);
     files.clear();
   }
 
@@ -107,13 +150,38 @@ export function Composer(props: {
           id="composer"
           ref={area}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value);
+            // Cleared, the box holds no dictated words anymore.
+            if (!event.target.value.trim()) setDictated(false);
+          }}
           onKeyDown={keyDown}
           rows={1}
           autoFocus={props.autoFocus === true && hasKeyboard()}
           placeholder={props.placeholder}
-          className="max-h-[220px] min-h-[26px] resize-none bg-transparent text-base leading-normal outline-none placeholder:text-faint"
+          className={`max-h-[220px] min-h-[26px] resize-none bg-transparent text-base leading-normal outline-none placeholder:text-faint ${dictation === "off" ? "" : "hidden"}`}
         />
+        {/* Dictation in the box itself: the voice as it is captured, and how to end it; then the wait (UX-005). */}
+        {dictation === "recording" && recorder.current.stream && (
+          <div className="flex items-center gap-3">
+            <VoiceLevel stream={recorder.current.stream} label={t("voice.capturing")} className="min-w-0 flex-1 text-danger" />
+            <button
+              type="button"
+              onClick={() => void dictate()}
+              aria-label={t("voice.stopDictating")}
+              className="flex h-11 flex-none items-center gap-2 rounded-full bg-danger px-4 text-sm font-semibold text-on-danger"
+            >
+              <Square className="size-3.5" fill="currentColor" aria-hidden="true" />
+              {t("voice.stop")}
+            </button>
+          </div>
+        )}
+        {dictation === "preparing" && (
+          <p role="status" className="flex h-14 items-center gap-2.5 text-base text-muted">
+            <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
+            <span className="live-text">{t("voice.preparing")}</span>
+          </p>
+        )}
         <div className="flex items-center gap-1.5">
           <input
             ref={picker}
@@ -135,6 +203,22 @@ export function Composer(props: {
           >
             <Paperclip className="size-[18px]" aria-hidden="true" />
           </button>
+          {voice?.transcription && dictation === "off" && (
+            <button
+              type="button"
+              onClick={() => void dictate()}
+              title={t("voice.dictate")}
+              aria-label={t("voice.dictate")}
+              className="grid size-9 place-items-center rounded-xl text-muted hover:bg-hover hover:text-fg"
+            >
+              <Mic className="size-[18px]" aria-hidden="true" />
+            </button>
+          )}
+          {voice?.transcription && voice.speech && (
+            <button type="button" onClick={voice.open} title={t("voice.handsFree")} aria-label={t("voice.handsFree")} className="grid size-9 place-items-center rounded-xl text-muted hover:bg-hover hover:text-fg">
+              <Headphones className="size-[18px]" aria-hidden="true" />
+            </button>
+          )}
           <span className="flex-1" />
           <ModelSelect compact value={props.model} onChange={props.onModel} />
           {props.running && props.onStop ? (

@@ -9,6 +9,7 @@ import { useModels } from "../models";
 import { type AttachedFile, useAttachments } from "../workspace";
 import { Composer } from "./Composer";
 import { Sprite } from "./Sprite";
+import type { VoiceMode } from "../voice";
 
 interface Quote {
   text: string;
@@ -42,10 +43,10 @@ export function Welcome({ me }: { me: User }) {
   }, [chosen, temporary]);
   const attachments = useAttachments(conversation);
 
-  async function start(text: string, files: AttachedFile[]) {
+  async function start(text: string, files: AttachedFile[], voice?: VoiceMode) {
     const id = await conversation();
     await refresh();
-    await navigate(`/c/${id}`, { state: { firstMessage: text, attachments: files } });
+    await navigate(`/c/${id}`, { state: { firstMessage: text, attachments: files, voice } });
   }
 
   function another() {
@@ -92,7 +93,7 @@ export function Welcome({ me }: { me: User }) {
             </figure>
           )}
         </div>
-        <Composer onSend={(text, files) => void start(text, files)} attachments={attachments} running={false} model={model} onModel={setChosen} placeholder={t("welcome.placeholder")} autoFocus />
+        <Composer onSend={(text, files, voice) => void start(text, files, voice)} attachments={attachments} running={false} model={model} onModel={setChosen} placeholder={t("welcome.placeholder")} autoFocus />
       </div>
     </div>
   );

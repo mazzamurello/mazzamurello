@@ -60,6 +60,8 @@ export interface StartRun {
   parentRunId?: string;
   // Answers to the pending interrupts, in place of a message (AGT-015, ADR-0083).
   resume?: ResumeEntry[];
+  // How the message came, when it was not typed (UX-005, ADR-0088).
+  voice?: "dictated" | "hands_free";
   signal?: AbortSignal;
 }
 
@@ -78,6 +80,7 @@ export async function startRun(start: StartRun): Promise<AsyncGenerator<RunEvent
   };
   if (start.resume) input.resume = start.resume;
   if (start.parentRunId !== undefined) input.parentRunId = start.parentRunId;
+  if (start.voice !== undefined) input.voice = start.voice;
   if (start.attachments !== undefined && start.attachments.length > 0) input.attachments = start.attachments.map((file) => file.path);
   const init: RequestInit = {
     method: "POST",

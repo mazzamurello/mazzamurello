@@ -177,6 +177,10 @@ TABLES = [
       api_key_ciphertext bytea,
       private_network boolean NOT NULL DEFAULT false,
       default_model text CHECK (default_model <> ''),
+      -- The household's speech models (API-006, ADR-0088).
+      transcription_model text CHECK (transcription_model <> ''),
+      speech_model text CHECK (speech_model <> ''),
+      speech_voice text CHECK (speech_voice <> ''),
       -- The context window of a server's models; OpenRouter lists each model's (ADR-0073).
       context_window integer CHECK (context_window >= 512),
       models_refreshed_at timestamptz,
@@ -185,11 +189,15 @@ TABLES = [
       UNIQUE (tenant_id, name),
       UNIQUE (tenant_id, id),
       -- OpenRouter's inference is always remote (MOD-010).
-      CHECK (kind <> 'openrouter' OR location = 'remote')
+      CHECK (kind <> 'openrouter' OR location = 'remote'),
+      CHECK ((speech_model IS NULL) = (speech_voice IS NULL))
     )
     """,
-    # One default model per tenant (MOD-012).
+    # One default model per tenant (MOD-012), and one of each speech model (ADR-0088).
     "CREATE UNIQUE INDEX connections_one_default ON connections (tenant_id) WHERE default_model IS NOT NULL",
+    "CREATE UNIQUE INDEX connections_one_transcription ON connections (tenant_id)"
+    " WHERE transcription_model IS NOT NULL",
+    "CREATE UNIQUE INDEX connections_one_speech ON connections (tenant_id) WHERE speech_model IS NOT NULL",
     """
     CREATE TABLE connection_models (
       tenant_id uuid NOT NULL,
@@ -200,6 +208,9 @@ TABLES = [
       context_window integer CHECK (context_window >= 1),
       tools boolean,
       reasoning boolean,
+      -- What the model does, and a speech model's voices (ADR-0088).
+      kind text NOT NULL DEFAULT 'chat' CHECK (kind IN ('chat', 'transcription', 'speech')),
+      voices text[],
       input_price numeric(20, 10) CHECK (input_price >= 0),
       cached_input_price numeric(20, 10) CHECK (cached_input_price >= 0),
       output_price numeric(20, 10) CHECK (output_price >= 0),

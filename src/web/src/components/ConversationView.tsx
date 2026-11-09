@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Check, ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, Ghost, GitFork, LoaderCircle, Pencil, SlidersHorizontal } from "lucide-react";
+import { Brain, Check, ChevronRight, Copy, Download, FilePen, FileText, FolderOpen, Ghost, GitFork, LoaderCircle, Pencil, SlidersHorizontal, Square, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
@@ -11,6 +11,7 @@ import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
 import { ASK_USER, isPlanning, type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
 import { openTemporary } from "../temporary";
+import { useVoice, type VoiceMode } from "../voice";
 import { type AttachedFile, download, downloadUrl, formatSize, listFolder, useAttachments } from "../workspace";
 import { ChatSettings } from "./AssistantSettings";
 import { Composer } from "./Composer";
@@ -129,6 +130,18 @@ export function ConversationView() {
   }, [refresh]);
 
   const { live, start, follow, stop, running } = useLiveRun(runEnded);
+  // A hands-free turn's answer is read aloud once it is complete, and the sprite there acts out the run (UX-005).
+  const voice = useVoice();
+  const pose = poseOf(live);
+  const showRun = voice?.showRun;
+  useEffect(() => showRun?.(pose), [showRun, pose]);
+  const liveStatus = live?.status;
+  const liveParts = live?.parts;
+  useEffect(() => {
+    if (liveStatus === "finished") voice?.answered((liveParts ?? []).flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n\n"));
+    else if (liveStatus === "failed") voice?.failed();
+    // Only when the run ends: its parts are complete then.
+  }, [liveStatus]);
   // The latest context reading stays in view after the run, until another conversation opens.
   const [contextUsage, setContextUsage] = useState<RunUsage | null>(null);
   const [usageFor, setUsageFor] = useState(conversationId);
@@ -156,17 +169,18 @@ export function ConversationView() {
   }, []);
 
   // The first message of a new chat, handed over by the new-chat screen, with its attachments.
-  const handedOver = location.state as { firstMessage?: string; attachments?: AttachedFile[] } | null;
+  const handedOver = location.state as { firstMessage?: string; attachments?: AttachedFile[]; voice?: VoiceMode } | null;
+  const firstVoice = handedOver?.voice;
   const firstMessage = handedOver?.firstMessage;
   const firstAttachments = handedOver?.attachments;
   const started = useRef(false);
   useEffect(() => {
     if (firstMessage && !started.current) {
       started.current = true;
-      start({ conversationId, text: firstMessage, attachments: firstAttachments ?? [] });
+      start({ conversationId, text: firstMessage, attachments: firstAttachments ?? [], ...(firstVoice ? { voice: firstVoice } : {}) });
       void navigate(location.pathname, { replace: true, state: null });
     }
-  }, [firstMessage, firstAttachments, conversationId, start, navigate, location.pathname]);
+  }, [firstMessage, firstAttachments, firstVoice, conversationId, start, navigate, location.pathname]);
 
   const questions = conversation.data?.interrupts ?? [];
 
@@ -336,7 +350,7 @@ export function ConversationView() {
             <QuestionCard key={questions.map((question) => question.id).join()} interrupts={questions} onAnswer={(resume) => start({ conversationId, text: "", resume })} />
           ) : (
             <Composer
-              onSend={(text, files) => start({ conversationId, text, attachments: files })}
+              onSend={(text, files, voice) => start({ conversationId, text, attachments: files, ...(voice ? { voice } : {}) })}
               attachments={attachments}
               onStop={() => void stop()}
               running={running}
@@ -529,6 +543,7 @@ function TurnView(props: {
         <div className="flex items-center gap-0.5">
           <div className={`flex gap-0.5 transition-opacity group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100 ${props.last ? "opacity-100" : "opacity-0"}`}>
             <CopyButton text={answerText} />
+            <ReadAloudButton id={turn.run.run_id} text={answerText} />
             {props.onFork && (
               <IconButton label={t("message.fork")} disabled={busy} onClick={props.onFork}>
                 <GitFork className="size-4" aria-hidden="true" />
@@ -555,6 +570,19 @@ function IconButton(props: { label: string; disabled?: boolean; onClick: () => v
     >
       {props.children}
     </button>
+  );
+}
+
+/** Reading an answer aloud, and stopping it, when the household has a speech model (UX-005). */
+function ReadAloudButton({ id, text }: { id: string; text: string }) {
+  const { t } = useTranslation();
+  const voice = useVoice();
+  if (!voice?.speech) return null;
+  const reading = voice.reading === id;
+  return (
+    <IconButton label={reading ? t("voice.stopReading") : t("voice.readAloud")} onClick={() => (reading ? voice.stopReading() : voice.readAloud(id, text))}>
+      {reading ? <Square className="size-3.5" fill="currentColor" aria-hidden="true" /> : <Volume2 className="size-4" aria-hidden="true" />}
+    </IconButton>
   );
 }
 
