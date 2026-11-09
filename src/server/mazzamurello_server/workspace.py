@@ -65,6 +65,9 @@ PREVIEW_TYPES: dict[str, str] = {
             ".go",
             ".java",
             ".rb",
+            # Diagrams the viewer draws (ART-002, ADR-0086).
+            ".mmd",
+            ".mermaid",
         ),
         TEXT,
     ),
@@ -86,6 +89,12 @@ PREVIEW_TYPES: dict[str, str] = {
 }
 # A file opened by itself, as from a link in an answer, runs nothing in the app's origin (UX-020, T-22).
 FILE_POLICY = "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox"
+# A web page runs as a stranger to the app, an opaque origin, with nothing from the network (ART-003, ADR-0086).
+PAGE_POLICY = (
+    "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline';"
+    " img-src data: blob:; font-src data:; media-src data: blob:; sandbox allow-scripts"
+)
+PAGE_EXTENSIONS = frozenset({".html", ".htm"})
 # The browser's PDF viewer does not open in a sandboxed document; a PDF runs nothing of the app either.
 PDF_POLICY = "default-src 'none'; object-src 'self'; plugin-types application/pdf"
 SAFE_HEADERS = {
@@ -241,8 +250,11 @@ async def read_workspace_file(
     engine: Engine,
     request: Request,
     preview: bool = False,
+    page: bool = False,
 ) -> StreamingResponse:
     name = posixpath.basename(path.rstrip("/")) or "file"
+    if page and posixpath.splitext(name)[1].lower() not in PAGE_EXTENSIONS:
+        raise errors.ApiError(415, "file.not_previewable", "Only a web page runs; download this file instead")
     preview_type = PREVIEW_TYPES.get(posixpath.splitext(name)[1].lower()) if preview else None
     if preview and preview_type is None:
         raise errors.ApiError(415, "file.not_previewable", "This file has no preview; download it instead")
@@ -253,6 +265,17 @@ async def read_workspace_file(
         await response.aclose()
         await client.aclose()
 
+    if page:
+        return StreamingResponse(
+            _limited(response.aiter_bytes(CHUNK_BYTES), TEXT_PREVIEW_BYTES),
+            media_type="text/html",
+            headers={
+                **SAFE_HEADERS,
+                "Content-Security-Policy": PAGE_POLICY,
+                "Content-Disposition": _disposition("inline", name),
+            },
+            background=BackgroundTask(close),
+        )
     if preview_type is not None:
         limit = TEXT_PREVIEW_BYTES if preview_type.startswith("text/") else None
         policy = PDF_POLICY if preview_type == "application/pdf" else FILE_POLICY

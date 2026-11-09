@@ -113,7 +113,12 @@ WORKSPACE_INSTRUCTIONS = (
     " Look in /workspace for earlier work before starting again. Files the user attaches are in"
     " /workspace/uploads/."
 )
-DOWNLOAD_INSTRUCTIONS = "To give the user a file of /workspace, offer it with offer_download."
+DOWNLOAD_INSTRUCTIONS = (
+    "To show the user a file of /workspace, offer it with offer_download: they open it in a viewer that"
+    " renders Markdown, code, CSV, images and SVG, PDF, audio and video, Mermaid diagrams written in .mmd"
+    " files, and web pages. Make a web page one self-contained HTML file, with its scripts and styles"
+    " inline: it runs without any network access, so it cannot load libraries, fonts or data from anywhere."
+)
 # The sandbox toolbox (SBX-021, ADR-0080).
 TOOLBOX_INSTRUCTIONS = (
     "The sandbox has these tools, ready without installing anything: for PDFs, pdftotext, pdftoppm,"

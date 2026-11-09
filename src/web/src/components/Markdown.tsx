@@ -55,7 +55,7 @@ const COMPONENTS: Components = {
   },
 };
 
-function CodeBlock({ code, language }: { code: string; language: string }) {
+export function CodeBlock({ code, language }: { code: string; language: string }) {
   const { t } = useTranslation();
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

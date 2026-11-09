@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Download, File, Folder, FolderPlus, Link2, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { ChevronRight, Download, File, Folder, FolderPlus, Link2, Maximize2, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -13,8 +13,10 @@ import {
   download,
   downloadUrl,
   formatSize,
+  languageOf,
   listFolder,
   moveEntry,
+  pageUrl,
   previewKind,
   previewUrl,
   resetWorkspace,
@@ -23,7 +25,7 @@ import {
   workspaceSummary,
 } from "../workspace";
 import { errorKey } from "./Composer";
-import { Markdown } from "./Markdown";
+import { CodeBlock, Markdown } from "./Markdown";
 
 const WIDE = "(min-width: 768px)";
 // The API shows at most this much of a text (UX-020).
@@ -122,6 +124,7 @@ function PanelBody({ conversationId, reveal }: { conversationId: string; reveal:
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [asking, setAsking] = useState<Asking | null>(null);
+  const [large, setLarge] = useState<WorkspaceEntry | null>(null);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const picker = useRef<HTMLInputElement>(null);
   const summary = useQuery({ queryKey: [...workspaceKey(conversationId), "summary"], queryFn: () => workspaceSummary(conversationId) });
@@ -251,8 +254,14 @@ function PanelBody({ conversationId, reveal }: { conversationId: string; reveal:
               <ToolButton label={t("files.delete")} onClick={() => setAsking({ kind: "delete", entry })}>
                 <Trash2 className="size-4" aria-hidden="true" />
               </ToolButton>
+              {entry.type === "file" && previewKind(entry.name) !== "none" && (
+                <ToolButton label={t("files.fullView")} onClick={() => setLarge(entry)}>
+                  <Maximize2 className="size-4" aria-hidden="true" />
+                </ToolButton>
+              )}
             </div>
-            {entry.type === "file" && <FilePreview conversationId={conversationId} entry={entry} />}
+            {/* Each file opens as its preview, not as the last file's source. */}
+            {entry.type === "file" && <FilePreview key={entry.path} conversationId={conversationId} entry={entry} />}
             {entry.type === "link" && <p className="text-sm text-muted">{t("files.linkPreview")}</p>}
           </section>
         )}
@@ -273,6 +282,22 @@ function PanelBody({ conversationId, reveal }: { conversationId: string; reveal:
           </span>
         </div>
       )}
+      {/* A file larger, as a document or an app of its own (ART-001, ADR-0086). */}
+      <Dialog.Root open={large !== null} onOpenChange={(open) => !open && setLarge(null)}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[60] bg-scrim" />
+          <Dialog.Content className="fixed inset-2 z-[70] flex flex-col rounded-[20px] bg-raised text-fg shadow-soft sm:inset-6">
+            <div className="flex flex-none items-center gap-2 border-b border-line px-4 py-2.5">
+              <Dialog.Title className="min-w-0 flex-1 truncate font-semibold">{large?.name}</Dialog.Title>
+              <Dialog.Description className="sr-only">{t("files.fullViewHint")}</Dialog.Description>
+              <Dialog.Close className="grid size-9 flex-none place-items-center rounded-[10px] text-muted hover:bg-hover hover:text-fg" aria-label={t("files.close")}>
+                <X className="size-5" aria-hidden="true" />
+              </Dialog.Close>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4">{large !== null && <FilePreview conversationId={conversationId} entry={large} large />}</div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
       <Dialog.Root open={asking !== null} onOpenChange={(open) => !open && setAsking(null)}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[60] bg-scrim" />
@@ -474,10 +499,14 @@ function TreeItem(props: TreeProps & { entry: WorkspaceEntry; level: number; foc
 }
 
 /** A file shown as what it is, never run in the app: text as text, media in the browser's own players (UX-020). */
-function FilePreview({ conversationId, entry }: { conversationId: string; entry: WorkspaceEntry }) {
+/** Kinds that have a source to show beside their preview. */
+const WITH_SOURCE = new Set(["markdown", "diagram", "page"]);
+
+function FilePreview({ conversationId, entry, large = false }: { conversationId: string; entry: WorkspaceEntry; large?: boolean }) {
   const { t } = useTranslation();
   const kind = previewKind(entry.name);
-  const textual = kind === "text" || kind === "markdown" || kind === "csv";
+  const [showSource, setShowSource] = useState(false);
+  const textual = kind === "text" || kind === "code" || kind === "markdown" || kind === "csv" || kind === "diagram" || (kind === "page" && showSource);
   const content = useQuery({
     queryKey: [...workspaceKey(conversationId), "preview", entry.path, entry.modified],
     queryFn: async () => {
@@ -490,20 +519,58 @@ function FilePreview({ conversationId, entry }: { conversationId: string; entry:
   const source = previewUrl(conversationId, entry.path);
   const [broken, setBroken] = useState(false);
   useEffect(() => setBroken(false), [entry.path, entry.modified]);
+  const height = large ? "h-full" : "h-[60vh]";
+  const tall = large ? "max-h-none" : "max-h-[60vh]";
 
   if (kind === "none" || broken || content.isError) return <p className="text-sm text-muted">{t("files.noPreview")}</p>;
-  if (kind === "image") return <img src={source} alt={entry.name} onError={() => setBroken(true)} className="max-h-[60vh] max-w-full rounded-lg border border-line bg-surface object-contain" />;
-  if (kind === "pdf") return <iframe src={source} title={entry.name} className="h-[60vh] w-full rounded-lg border border-line bg-surface" />;
+  if (kind === "image") return <img src={source} alt={entry.name} onError={() => setBroken(true)} className={`${tall} max-w-full rounded-lg border border-line bg-surface object-contain`} />;
+  if (kind === "pdf") return <iframe src={source} title={entry.name} className={`${height} w-full rounded-lg border border-line bg-surface`} />;
   if (kind === "audio") return <audio src={source} controls className="w-full" aria-label={entry.name} onError={() => setBroken(true)} />;
-  if (kind === "video") return <video src={source} controls className="max-h-[60vh] w-full rounded-lg" aria-label={entry.name} onError={() => setBroken(true)} />;
+  if (kind === "video") return <video src={source} controls className={`${tall} w-full rounded-lg`} aria-label={entry.name} onError={() => setBroken(true)} />;
+
+  const toggle = WITH_SOURCE.has(kind) && (
+    <div className="mb-2 flex justify-end">
+      <button type="button" onClick={() => setShowSource(!showSource)} className="rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] font-semibold text-muted hover:bg-hover hover:text-fg">
+        {showSource ? t("files.showPreview") : t("files.showSource")}
+      </button>
+    </div>
+  );
+  // A web page runs in a sandboxed frame, a stranger to the app with no network (ART-003, ADR-0086).
+  if (kind === "page" && !showSource) {
+    return (
+      <div className={large ? "flex h-full flex-col" : ""}>
+        {toggle}
+        <iframe src={pageUrl(conversationId, entry.path)} sandbox="allow-scripts" title={entry.name} className={`${height} w-full rounded-lg border border-line bg-white`} />
+      </div>
+    );
+  }
   if (content.data === undefined) return <p className="text-sm text-muted">{t("files.loading")}</p>;
   const truncated = TEXT_PREVIEW_BYTES < entry.size;
   const cut = truncated ? <p className="mt-2 text-xs text-muted">{t("files.cut")}</p> : null;
+  if (showSource || kind === "code") {
+    const language = kind === "markdown" ? "markdown" : kind === "page" ? "html" : kind === "diagram" ? "text" : languageOf(entry.name);
+    return (
+      <div className="text-[13px]">
+        {toggle}
+        <CodeBlock code={content.data} language={language} />
+        {cut}
+      </div>
+    );
+  }
   if (kind === "markdown") {
     return (
       <div className="text-[14.5px]">
+        {toggle}
         <Markdown text={content.data} />
         {cut}
+      </div>
+    );
+  }
+  if (kind === "diagram") {
+    return (
+      <div>
+        {toggle}
+        <Diagram text={content.data} name={entry.name} large={large} />
       </div>
     );
   }
@@ -548,6 +615,34 @@ function FilePreview({ conversationId, entry }: { conversationId: string; entry:
       {cut}
     </>
   );
+}
+
+/** A Mermaid diagram, drawn in the app with its strict security level and shown as an image, which runs no scripts (ADR-0086). */
+function Diagram({ text, name, large }: { text: string; name: string; large: boolean }) {
+  const { t } = useTranslation();
+  const id = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const [drawn, setDrawn] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let current = true;
+    setFailed(false);
+    void import("mermaid")
+      .then(async ({ default: mermaid }) => {
+        const dark = window.matchMedia("(prefers-color-scheme: dark)").matches || document.documentElement.dataset.theme === "dark";
+        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
+        const { svg } = await mermaid.render(`diagram${id}`, text);
+        if (current) setDrawn(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+      })
+      .catch(() => current && setFailed(true));
+    return () => {
+      current = false;
+    };
+  }, [text, id]);
+  if (failed) return <p className="text-sm text-muted">{t("files.diagramFailed")}</p>;
+  if (drawn === null) return <p className="text-sm text-muted">{t("files.loading")}</p>;
+  // Mermaid sizes its drawing to its container: as an image it takes the panel's width, or fits the full view.
+  const size = large ? "h-[calc(100dvh-10rem)] w-full" : "h-auto max-h-[60vh] w-full";
+  return <img src={drawn} alt={name} className={`${size} rounded-lg border border-line bg-surface object-contain p-2`} />;
 }
 
 /** The first rows of a CSV text, with quoted fields. */
