@@ -25,7 +25,7 @@ choosing defaults for the others adds a screen nobody needs.
 
 ## Decision
 
-1. **Settings of a conversation:** its model, its reasoning, one of `off`,
+1. **Settings of a conversation** (the tools amended by ADR-0087): its model, its reasoning, one of `off`,
    `on` (the provider's default effort) and `deep` (high effort), and the
    tools it may use, each on its own: `web_search`, `read_page`, `shell`
    (running commands), `file_system` (reading and writing files) and

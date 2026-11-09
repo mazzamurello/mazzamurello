@@ -38,7 +38,9 @@ summaries that the user can expand to see full details. Tool activity MUST
 appear where it happened among the answer's text, also while the answer
 streams, and MUST show whether each call is still running or done. A command
 the agent runs in the sandbox MUST say in a few words what it is for, which
-clients show above the command (ADR-0085). Approval prompts MUST
+clients show above the command (ADR-0085). When an answer ends and the
+conversation's history takes the place of the streamed answer, nothing of
+the answer MUST disappear, even for a moment. Approval prompts MUST
 nevertheless always show the tool, its arguments and destination in full
 (ADR-0033).
 
@@ -214,6 +216,13 @@ model they MUST show its connection, its name, whether it runs locally or
 remotely (MOD-010), its price when it is paid per token, and whether it can
 only chat, without tools (MOD-014).
 
+Clients MUST show the settings of the household, such as its default model
+and its connections, only to tenant admins, set apart from the user's own
+settings and named as the household's, and MUST say that they apply to every
+user of the household. Where a user's own setting overrides one of the
+household's, as a user's default model does, clients MUST say so and show
+the household's value that applies when the user sets none.
+
 ## UX-016: Testing a connection in the settings
 
 - **Status:** implemented
@@ -278,3 +287,20 @@ for preview only as one of a fixed list of types, with
 file opened by itself run nothing in the app's origin; clients MUST show HTML
 as its source, or run it as a web page in an opaque origin without network
 (ART-003), and SVG as an image (ADR-0079, ADR-0086, T-22).
+
+## UX-021: Side panels the user can resize
+
+- **Status:** accepted
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e
+
+On screens wide enough to show them beside the conversation, clients SHOULD
+let the user resize the conversation list and the workspace panel by
+dragging their edge, and also with the keyboard, between a minimum and a
+maximum width that keep the conversation readable. Each width SHOULD be kept
+on the device, and SHOULD return to its default when the user double-clicks
+the edge (UX-007, UX-019).
+
+Rationale: long file names, wide pages and diagrams need a wider panel; a
+long answer needs a narrower one.

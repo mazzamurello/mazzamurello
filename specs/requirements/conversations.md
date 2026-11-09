@@ -191,7 +191,10 @@ Rationale: journey J5.
 A user MUST be able to change, for a conversation and at any turn, the model
 among those offered to them (MOD-012), whether the model reasons before it
 answers, at one of three levels: off, on or deep, and which of their
-permitted tools are enabled (AGT-002), each tool on its own. The change
+permitted tools are enabled (AGT-002), each tool on its own or a whole tool
+group at once. Clients MUST list every tool the assistant has, without
+exception, by tool group, each with its label and the name the model knows it
+by (ADR-0087). The change
 applies from the next run. A user MUST be able to set their own defaults for
 these settings, and a new conversation MUST start with a copy of them. The
 defaults belong to the user alone: until they set one, a new conversation
@@ -291,3 +294,21 @@ the run left without a result reaches the model as interrupted (ADR-0041).
 
 Rationale: a command that printed a binary file, or a run stopped mid-tool,
 must not leave the user with a conversation that can only fail.
+
+## CNV-019: Organizing conversations by dragging
+
+- **Status:** accepted
+- **Priority:** SHOULD
+- **Phase:** 1
+- **Verification:** e2e
+
+On devices with a mouse or a trackpad, clients SHOULD let the user drag a
+conversation in the conversation list: onto a folder to move it into that
+folder, onto the pinned entries at the top to pin it, and onto the other
+entries to unpin it, taking it out of its folder in both cases. While a
+conversation is dragged, clients SHOULD show where it can be dropped, the top
+of the list included when nothing is pinned yet. Dragging MUST do nothing the
+conversation's menu cannot do, so that a user without a pointer loses
+nothing (CNV-007, CNV-008, UX-007).
+
+Rationale: journey J3; moving and pinning from a menu takes three clicks.
