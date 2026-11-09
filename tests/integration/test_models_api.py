@@ -273,14 +273,33 @@ def test_a_server_brings_its_first_model_as_default(
         }
 
 
-# The tools a user can switch off, and the names the model knows them by (ADR-0081).
-TOOLS = {
-    "web_search": {"web_search"},
-    "read_page": {"read_page"},
-    "shell": {"run_command", "start_command", "check_command", "stop_command"},
-    "file_system": {"read_file", "write_file", "edit_file", "list_directory", "find_files", "search_files"},
-    "offer_download": {"offer_download"},
-}
+# Every tool of the assistant, each a user can switch off by its name (ADR-0081, ADR-0087).
+TOOLS = frozenset(
+    {
+        "web_search",
+        "read_page",
+        "run_command",
+        "start_command",
+        "check_command",
+        "stop_command",
+        "read_file",
+        "write_file",
+        "edit_file",
+        "create_directory",
+        "list_directory",
+        "find_files",
+        "search_files",
+        "file_info",
+        "offer_download",
+        "ask_user_question",
+        "write_plan",
+        "read_plan",
+        "add_task",
+        "update_task_status",
+        "update_task_statuses",
+        "remove_task",
+    }
+)
 NO_DEFAULTS: dict[str, Any] = {
     "model": None,
     "reasoning": None,
@@ -328,7 +347,7 @@ def test_a_user_has_no_defaults_until_they_set_them(database: Database, server: 
     chosen = {
         "model": {"connection_id": household.openrouter_id, "model": "test/popular"},
         "reasoning": "deep",
-        "disabled_tools": ["web_search", "shell"],
+        "disabled_tools": ["web_search", "run_command"],
         "base_instructions": "You are Ada, a patient helper.",
         "additional_instructions": "Answer in French.",
     }
@@ -348,6 +367,8 @@ def test_defaults_take_only_models_and_tools_that_exist(server: Server, househol
             {"model": {"connection_id": household.openrouter_id, "model": "test/unknown"}},
             {"reasoning": "maximum"},
             {"disabled_tools": ["teleport"]},
+            # The names of the tool groups before ADR-0087 are no tools.
+            {"disabled_tools": ["shell"]},
         ):
             assert_problem(client.put("/me/settings", json=NO_DEFAULTS | invalid), 422, "request.validation_failed")
         conversation = create_conversation(server, household.token)
@@ -362,7 +383,7 @@ def test_without_defaults_a_conversation_starts_well_configured(server: Server, 
     assert (conversation["reasoning"], conversation["disabled_tools"]) == ("on", [])
     assert (conversation["base_instructions"], conversation["additional_instructions"]) == (None, None)
     request = _request(server, household, conversation["id"], f"configured {secrets.token_hex(4)}")
-    assert set[str]().union(*TOOLS.values()) <= request.tool_names()
+    assert request.tool_names() == TOOLS
 
 
 @pytest.mark.spec("CNV-013", "MOD-012")
@@ -381,9 +402,9 @@ def test_a_new_conversation_copies_the_users_defaults(server: Server, household:
         kept = body(client.get(f"/conversations/{conversation['id']}"))
         assert (kept["model"], kept["reasoning"], kept["disabled_tools"]) == (popular, "deep", ["web_search"])
         # What the request gives wins over the defaults.
-        created = client.post("/conversations", json={"reasoning": "deep", "disabled_tools": ["shell"]})
+        created = client.post("/conversations", json={"reasoning": "deep", "disabled_tools": ["run_command"]})
     assert created.status_code == 201, created.text
-    assert (body(created)["reasoning"], body(created)["disabled_tools"]) == ("deep", ["shell"])
+    assert (body(created)["reasoning"], body(created)["disabled_tools"]) == ("deep", ["run_command"])
 
 
 @pytest.mark.spec("CNV-013", "MOD-012")
@@ -441,14 +462,15 @@ def test_the_models_reasoning_is_streamed_and_kept(server: Server, household: Ho
 @pytest.mark.spec("CNV-013")
 def test_tools_that_are_off_are_not_offered_to_the_model(server: Server, household: Household) -> None:
     conversation = create_conversation(server, household.token)
-    for off in (["shell", "web_search"], ["file_system", "offer_download", "read_page"]):
+    # Every tool has a switch, and is offered while it is on (ADR-0087).
+    assert set(_request(server, household, conversation["id"], f"all {secrets.token_hex(4)}").tool_names()) == TOOLS
+    for off in (
+        ["run_command", "web_search", "ask_user_question", "write_plan"],
+        ["write_file", "edit_file", "offer_download", "read_page", "remove_task"],
+    ):
         assert _change(server, household.token, conversation["id"], disabled_tools=off)["disabled_tools"] == off
-        offered = _request(server, household, conversation["id"], f"tools {secrets.token_hex(4)}").tool_names()
-        for tool, names in TOOLS.items():
-            if tool in off:
-                assert not names & offered, f"{tool} is off but offered"
-            else:
-                assert names <= offered, f"{tool} is on but not offered"
+        offered = set(_request(server, household, conversation["id"], f"tools {secrets.token_hex(4)}").tool_names())
+        assert offered == TOOLS - set(off)
 
 
 def _working_instructions_follow(system: str, base: str, additional: str) -> None:
@@ -515,7 +537,13 @@ def test_the_working_instructions_describe_only_the_enabled_tools(server: Server
     system = _request(server, household, conversation["id"], f"all tools {secrets.token_hex(4)}").system_text()
     for phrase in ("/workspace", "pdftotext", "offer_download"):
         assert phrase in system, f"the working instructions lost {phrase}"
-    _change(server, household.token, conversation["id"], disabled_tools=["shell", "offer_download"])
+    for phrase in ("ask_user_question", "write_plan"):
+        assert phrase in system, f"the instructions of the harness lost {phrase}"
+    off = ["run_command", "start_command", "offer_download", "ask_user_question", "add_task"]
+    _change(server, household.token, conversation["id"], disabled_tools=off)
     system = _request(server, household, conversation["id"], f"fewer tools {secrets.token_hex(4)}").system_text()
     assert "pdftotext" not in system, "the toolbox is described without commands to run it"
     assert "offer_download" not in system
+    assert "ask_user_question" not in system
+    assert "write_plan" not in system, "the task list is described without all of its tools"
+    assert "/workspace" in system, "the workspace is described while its file tools are on"

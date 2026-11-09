@@ -57,7 +57,7 @@ def test_my_defaults_shape_every_new_chat(page: Page, member: Account, default_m
     assistant = page.get_by_role("region", name="Assistant")
     expect(assistant).to_be_visible()
     assistant.get_by_role("radio", name="Deep").check()
-    assistant.get_by_role("switch", name="Search the web").uncheck()
+    assistant.get_by_role("switch", name="Search the web", exact=True).uncheck()
     mark = uuid4().hex[:8]
     additional = assistant.get_by_label("Additional prompt")
     additional.fill(f"Sign as Ada {mark}.")
@@ -88,7 +88,7 @@ def test_changing_the_settings_of_one_chat(page: Page, member: Account, default_
     dialog = page.get_by_role("dialog", name="Chat settings")
     expect(dialog).to_be_visible()
     dialog.get_by_role("radio", name="Off").check()
-    dialog.get_by_role("switch", name="Run commands").uncheck()
+    dialog.get_by_role("switch", name="Run a command", exact=True).uncheck()
     system_prompt = dialog.get_by_role("region", name="Danger zone").get_by_label("System prompt")
     expect(system_prompt).to_have_value(re.compile("^You are Mazzamurello"))
     system_prompt.fill(f"You are Bea {mark}.")
@@ -121,7 +121,7 @@ def test_reasoning_is_disabled_for_models_that_cannot_reason(
     page.get_by_role("dialog", name="Choose a model").get_by_role("button", name=re.compile("Test: Second")).click()
     page.get_by_role("button", name="Chat settings").click()
     dialog = page.get_by_role("dialog", name="Chat settings")
-    expect(dialog.get_by_role("switch", name="Run commands")).to_be_visible()
+    expect(dialog.get_by_role("switch", name="Run a command", exact=True)).to_be_visible()
     reasoning = dialog.get_by_role("radiogroup", name="Reasoning")
     expect(reasoning).to_be_visible()
     for level in ("Off", "On", "Deep"):
@@ -151,3 +151,78 @@ def test_the_reasoning_is_folded_above_the_answer(page: Page, member: Account) -
     # Also from the history.
     page.reload()
     expect(page.locator("summary", has_text="Reasoning")).to_be_visible(timeout=30_000)
+
+
+COMMANDS = (
+    "Run a command",
+    "Start a command in the background",
+    "Check on a background command",
+    "Stop a background command",
+)
+COMMAND_TOOLS = {"run_command", "start_command", "check_command", "stop_command"}
+
+
+@pytest.mark.spec("CNV-013", "UX-007")
+def test_every_tool_has_a_switch_with_its_name_and_its_group(
+    page: Page, member: Account, default_model: HarnessModel
+) -> None:
+    sign_in(page, member)
+    page.get_by_role("link", name="Settings").click()
+    tools = page.get_by_role("region", name="Assistant").get_by_role("group", name="Tools")
+    expect(tools).to_be_visible()
+    # Each tool by the name the model knows it by: all of the tools the model is offered, and no others (ADR-0087).
+    listed = set(tools.locator("code").all_inner_texts())
+    page.get_by_role("link", name="New chat").click()
+    offered = _request(page, default_model, f"all tools {uuid4().hex[:8]}").tool_names()
+    assert listed == offered
+    # A group switches all of its tools at once.
+    page.get_by_role("link", name="Settings").click()
+    group = tools.get_by_role("switch", name="Commands", exact=True)
+    expect(group).to_be_checked()
+    group.uncheck()
+    for name in COMMANDS:
+        expect(tools.get_by_role("switch", name=name, exact=True)).not_to_be_checked()
+    # One of them back on: the group is no longer all on.
+    tools.get_by_role("switch", name="Run a command", exact=True).check()
+    expect(group).not_to_be_checked()
+    expect(tools.get_by_role("switch", name="Ask you questions", exact=True)).to_be_checked()
+    assert accessibility_violations(page) == []
+    page.get_by_role("link", name="New chat").click()
+    offered = _request(page, default_model, f"one command {uuid4().hex[:8]}").tool_names()
+    assert offered & COMMAND_TOOLS == {"run_command"}
+    assert "read_file" in offered
+    # Switching the group on again switches on every one of its tools.
+    page.get_by_role("link", name="Settings").click()
+    group.check()
+    for name in COMMANDS:
+        expect(tools.get_by_role("switch", name=name, exact=True)).to_be_checked()
+
+
+@pytest.mark.spec("UX-015", "UX-007")
+def test_the_households_settings_are_set_apart_for_its_admins(
+    page: Page, admin: Account, member: Account, default_model: HarnessModel
+) -> None:
+    sign_in(page, admin)
+    page.get_by_role("link", name="Settings").click()
+    sections = page.get_by_role("navigation", name="Settings sections")
+    household = sections.get_by_role("group", name="Household")
+    expect(household.get_by_role("button", name="Models")).to_be_visible()
+    expect(sections.get_by_role("group", name="Yours").get_by_role("button", name="Assistant")).to_be_visible()
+    household.get_by_role("button", name="Models").click()
+    main = page.get_by_role("main")
+    expect(main).to_contain_text("These settings apply to every user of the household.")
+    expect(main.get_by_role("button", name="Household default model")).to_contain_text("test-model")
+    assert accessibility_violations(page) == []
+    # The user's own default says what it overrides, and what applies without one.
+    sections.get_by_role("button", name="Assistant").click()
+    own = main.get_by_role("button", name="Your default model")
+    expect(own).to_contain_text("Household default: test-model")
+    expect(main).to_contain_text("overrides the household's default model")
+    # A member sees only their own settings.
+    page.context.clear_cookies()
+    sign_in(page, member)
+    page.get_by_role("link", name="Settings").click()
+    expect(sections.get_by_role("group", name="Household")).to_have_count(0)
+    expect(page.get_by_role("button", name="Models")).to_have_count(0)
+    own = page.get_by_role("main").get_by_role("button", name="Your default model")
+    expect(own).to_contain_text("Household default: test-model")

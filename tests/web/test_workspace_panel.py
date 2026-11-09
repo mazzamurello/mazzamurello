@@ -54,6 +54,41 @@ def test_an_attached_file_reaches_the_workspace_and_the_history(page: Page, memb
     assert accessibility_violations(page) == []
 
 
+@pytest.mark.spec("UX-021", "UX-019", "UX-007")
+def test_the_panel_is_resized_by_dragging_its_edge(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    _send(page, "a wider panel")
+    expect(page.get_by_role("main")).to_contain_text("Echo: a wider panel", timeout=30_000)
+    _open_panel(page)
+    panel = page.get_by_role("region", name="Files")
+    edge = page.get_by_role("separator", name="Resize the files panel")
+    start = panel.bounding_box()
+    box = edge.bounding_box()
+    assert start is not None
+    assert box is not None
+    # Its edge is on its left: dragging it to the left widens it.
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] / 2 - 120, box["y"] + box["height"] / 2, steps=5)
+    page.mouse.up()
+    wider = panel.bounding_box()
+    assert wider is not None
+    assert 110 <= wider["width"] - start["width"] <= 130
+    assert edge.get_attribute("aria-valuenow") == str(round(wider["width"]))
+    assert accessibility_violations(page) == []
+    # Kept on the device.
+    page.reload()
+    _open_panel(page)
+    kept = panel.bounding_box()
+    assert kept is not None
+    assert abs(kept["width"] - wider["width"]) <= 1
+    # A double click brings back the default.
+    edge.dblclick()
+    reset = panel.bounding_box()
+    assert reset is not None
+    assert abs(reset["width"] - start["width"]) <= 1
+
+
 @pytest.mark.spec("CNV-017")
 def test_removing_an_attachment_before_sending_deletes_it(page: Page, member: Account, tmp_path: Path) -> None:
     sign_in(page, member)
