@@ -48,7 +48,7 @@ new entry here first (ADR-0005).
 | Attachment | A file of the file library referenced by a message; uploading an attachment adds it to the library (CNV-012). |
 | Parent run | The run whose messages a run continues; the runs of a conversation form one chain (ADR-0037, ADR-0068). |
 | Active path | The chain of runs, from the first to the active run: the history the user sees and that a new run continues (ADR-0037, ADR-0068). |
-| Artifact | An output the assistant creates and revises for the user, such as a document, code, a diagram or a web page, shown next to the conversation, with immutable versions (ADR-0038). Not to be confused with a repository artifact, a file of this repository. |
+| Artifact | A file of the conversation's workspace that the assistant makes for the user and shows in the conversation, such as a document, code, a diagram or a web page, opened in the viewer (ADR-0086). Not to be confused with a repository artifact, a file of this repository. |
 | Voice turn | A user turn spoken instead of typed, started and ended explicitly by the user, answered in full and read aloud (ADR-0040). |
 | Notification | A content-free message pushed to a user's device when a run finishes or an approval is pending (ADR-0039). |
 | Agent | The component that turns a user request into model calls and tool calls. |

@@ -276,4 +276,5 @@ app's origin. The API MUST serve a file for download as an attachment, and
 for preview only as one of a fixed list of types, with
 `X-Content-Type-Options: nosniff` and a Content Security Policy that lets a
 file opened by itself run nothing in the app's origin; clients MUST show HTML
-as its source and SVG as an image (ADR-0079, T-22).
+as its source, or run it as a web page in an opaque origin without network
+(ART-003), and SVG as an image (ADR-0079, ADR-0086, T-22).
