@@ -8,7 +8,7 @@ Background: ADR-0086, which supersedes ADR-0038, journey J6 of the
 
 ## ART-001: Artifacts are workspace files
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -21,7 +21,7 @@ shown by an earlier answer opens as it is now (ADR-0086).
 
 ## ART-002: Artifact types
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -35,7 +35,7 @@ display (ADR-0086).
 
 ## ART-003: Isolated rendering of active content
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security
@@ -52,7 +52,7 @@ must not hand that content the user's session (threat T-22).
 
 ## ART-004: Artifacts are private data
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security
