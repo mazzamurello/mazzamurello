@@ -625,15 +625,25 @@ paths:
         Without `preview`, the file comes as an attachment, as
         `application/octet-stream`. With `preview=true`, only a file whose
         type is in the preview list comes, inline, with that type:
-        `text/plain` for text, code, JSON, logs and HTML; `text/markdown`;
+        `text/plain` for text, code, JSON, logs, HTML and Mermaid diagrams;
+        `text/markdown`;
         `text/csv`; `image/png`, `image/jpeg`, `image/gif`, `image/webp`,
         `image/svg+xml`; `application/pdf`; and the audio and video types
         browsers play. Text previews stop at 1 MiB. Every answer carries
         `X-Content-Type-Options: nosniff` (UX-020, ADR-0079). Links are not
         followed.
-      x-requirements: [UX-019, UX-020, AGT-023, SBX-014, TEN-006]
+
+        With `page=true`, an HTML file comes as `text/html`, to run in a
+        frame: its policy makes it a sandboxed document with an opaque
+        origin, allowing inline scripts and styles and `data:` and `blob:`
+        resources, and nothing from the network; any other file is refused
+        with `file.not_previewable` (ART-003, ADR-0086).
+      x-requirements: [ART-001, ART-003, UX-019, UX-020, AGT-023, SBX-014, TEN-006]
       parameters:
         - name: preview
+          in: query
+          schema: { type: boolean, default: false }
+        - name: page
           in: query
           schema: { type: boolean, default: false }
       responses:
@@ -644,6 +654,7 @@ paths:
             text/plain: { schema: { type: string } }
             text/markdown: { schema: { type: string } }
             text/csv: { schema: { type: string } }
+            text/html: { schema: { type: string }, description: "A web page, with `page=true` (ART-003)." }
             image/png: { schema: { type: string, format: binary } }
             image/jpeg: { schema: { type: string, format: binary } }
             image/gif: { schema: { type: string, format: binary } }

@@ -136,6 +136,13 @@ Prompts are never relied upon as a security boundary.
   never contain secrets (SBX-001, SBX-008, ADR-0078).
 - **Approval fatigue.** Users may approve requests without reading them.
   Approval prompts must show what will be sent and where.
+- **A web page leaving its frame.** A page the assistant made runs with an
+  opaque origin and no network access, but it can still navigate its own
+  frame to another address, carrying data it holds, and it relies on the
+  browser's sandbox and policy enforcement rather than on a separate domain
+  (ADR-0086). What a page holds is what the assistant wrote into it; the
+  lethal trifecta mitigation bounds what injected content can make it write
+  (AGT-004).
 - **Model-level manipulation without tools.** An injected page can still make
   the assistant give a wrong answer. Provenance labels make this visible but
   cannot prevent it.
