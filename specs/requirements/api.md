@@ -61,7 +61,7 @@ version, migration notes and a deprecation period for the previous behavior.
 
 ## API-006: Voice input and output
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration

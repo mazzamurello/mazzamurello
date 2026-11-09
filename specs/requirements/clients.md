@@ -65,7 +65,7 @@ about them in time.
 
 ## UX-005: Voice turns
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e, eval
