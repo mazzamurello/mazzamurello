@@ -1,6 +1,6 @@
 """A conversation's workspace through the API: browsing, previews, uploads, attachments and offers.
 
-(UX-019, UX-020, CNV-017, AGT-023, SBX-014, SBX-019, TEN-006, ADR-0079.)
+(UX-019, UX-020, CNV-017, AGT-023, ART-001, ART-002, ART-003, SBX-014, SBX-019, TEN-006, ADR-0079, ADR-0086.)
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def test_the_workspace_is_browsed_and_managed_through_the_api(server: Server, to
     assert emptied["entries"] == []
 
 
-@pytest.mark.spec("UX-019", "TEN-006")
+@pytest.mark.spec("UX-019", "TEN-006", "ART-004")
 def test_only_the_owner_reaches_a_conversations_workspace(
     database: Database, server: Server, token: str, default_model: HarnessModel
 ) -> None:
@@ -256,3 +256,54 @@ def test_an_offer_of_a_file_that_is_not_there_is_told_to_the_model(
     result = _tool_result(default_model, text).lower()
     assert "not" in result
     assert "root:" not in result
+
+
+@pytest.mark.spec("ART-003")
+def test_a_web_page_is_served_to_run_in_an_opaque_origin_without_network(server: Server, token: str) -> None:
+    conversation = create_conversation(server, token)["id"]
+    page = b"<!doctype html><title>Planner</title><script>document.title = 'ran'</script>"
+    with server.client(token) as client:
+        assert _put(client, conversation, "site/planner.html", page).status_code == 201
+        assert _put(client, conversation, "notes.txt", b"plain").status_code == 201
+        file = f"{_workspace(conversation)}/file"
+        served = client.get(file, params={"path": "site/planner.html", "page": "true"})
+        refused = client.get(file, params={"path": "notes.txt", "page": "true"})
+        preview = client.get(file, params={"path": "site/planner.html", "preview": "true"})
+    assert served.status_code == 200, served.text
+    assert served.content == page
+    assert served.headers["content-type"].split(";")[0] == "text/html"
+    assert served.headers["x-content-type-options"] == "nosniff"
+    policy = {
+        name: values
+        for directive in served.headers["content-security-policy"].split(";")
+        if directive.strip()
+        for name, *values in [directive.split()]
+    }
+    # An opaque origin: scripts run, as a stranger to the app's origin.
+    assert policy["sandbox"] == ["allow-scripts"]
+    # No network: inline code and styles, data and blobs, nothing from any address.
+    assert policy["default-src"] == ["'none'"]
+    for directive, values in policy.items():
+        for value in values:
+            assert value in {"'none'", "'unsafe-inline'", "'unsafe-eval'", "data:", "blob:", "allow-scripts"}, (
+                directive,
+                value,
+            )
+    assert refused.status_code == 415
+    assert refused.json()["code"] == "file.not_previewable"
+    # Without `page`, an HTML file still previews as its source only.
+    assert preview.headers["content-type"].split(";")[0] == "text/plain"
+
+
+@pytest.mark.spec("ART-002")
+def test_the_agent_is_told_how_to_make_pages_and_diagrams(
+    server: Server, token: str, default_model: HarnessModel
+) -> None:
+    conversation = create_conversation(server, token)["id"]
+    text = f"instructions {secrets.token_hex(4)}"
+    run_id, _ = start_run(server, token, conversation, text)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    (request,) = default_model.endpoint.requests_with(text)[:1]
+    system = request.system_text()
+    for phrase in ("self-contained", "Mermaid", ".mmd", "offer_download"):
+        assert phrase in system, f"the instructions do not mention {phrase}"
