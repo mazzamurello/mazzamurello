@@ -297,7 +297,7 @@ must not leave the user with a conversation that can only fail.
 
 ## CNV-019: Organizing conversations by dragging
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e

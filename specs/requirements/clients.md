@@ -290,7 +290,7 @@ as its source, or run it as a web page in an opaque origin without network
 
 ## UX-021: Side panels the user can resize
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** e2e
