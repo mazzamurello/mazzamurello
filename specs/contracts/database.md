@@ -370,6 +370,9 @@ A household's access to one provider (MOD-008, ADR-0069).
 | `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `SIBILLO_SECRET_KEY` (ADR-0051); null when the server needs no key |
 | `private_network` | boolean | not null, default false; true when `base_url` was set by a user who is the instance admin (MOD-009) |
 | `default_model` | text | the model of this connection that new conversations start with; at most one connection per tenant has one (MOD-012) |
+| `transcription_model` | text | the model of this connection that transcribes the household's spoken turns; at most one connection per tenant has one (API-006, ADR-0088) |
+| `speech_model` | text | the model of this connection that reads aloud for the household; at most one connection per tenant has one (API-006, ADR-0088) |
+| `speech_voice` | text | the voice of `speech_model`; set exactly when it is |
 | `context_window` | integer | for `openai`, the context window of its models in tokens, at least 512, 8192 unless set; null for `openrouter` (ADR-0073) |
 | `models_refreshed_at` | timestamptz | when its models were last listed |
 | `created_at`, `updated_at` | timestamptz | not null |
@@ -398,6 +401,8 @@ ADR-0069).
 | `context_window` | integer | null when unknown |
 | `tools` | boolean | whether the model can call tools; null when unknown (MOD-014) |
 | `reasoning` | boolean | whether the model can reason; null when unknown (CNV-013, ADR-0081) |
+| `kind` | text | not null, default `chat`; `chat`, `transcription` or `speech` (ADR-0088) |
+| `voices` | text[] | a speech model's voices, when its provider lists them; else null (ADR-0088) |
 | `input_price`, `cached_input_price`, `output_price` | numeric(20, 10) | price per million tokens, or null |
 | `currency` | text | ISO 4217 code; not null exactly when a price is set |
 

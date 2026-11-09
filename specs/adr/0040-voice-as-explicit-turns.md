@@ -20,7 +20,8 @@ which local deployments rarely offer.
 We will implement voice as **explicit turns** (UX-005):
 
 1. The user starts recording, speaks for as long as needed and ends the turn
-   explicitly. Silence never ends a turn.
+   explicitly. Silence never ends a turn. Amended by ADR-0088: in hands-free
+   mode, a turn starts by itself once the answer before it is read.
 2. The recording is transcribed by the speech-to-text service (API-006); the
    transcription becomes the user message, which the user can review before
    sending or send directly, according to a client setting.
@@ -29,7 +30,8 @@ We will implement voice as **explicit turns** (UX-005):
 4. When the answer is complete, it is synthesized and read aloud. Code, tables
    and artifacts are not read verbatim; the reading refers to them.
 5. Speech services are local by default and pass through the data egress
-   policy when remote (MOD-003).
+   policy when remote (MOD-003); amended by ADR-0088, speech comes from the
+   household's connections.
 
 ## Consequences
 

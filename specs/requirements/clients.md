@@ -65,18 +65,53 @@ about them in time.
 
 ## UX-005: Voice turns
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e, eval
 
-A user MUST be able to speak a turn instead of typing it. The user starts and
-ends the turn explicitly; pauses MUST NOT end it, and the assistant MUST NOT
-speak while the user's turn is open. After the turn ends, the assistant MUST
-produce its complete answer and read it aloud. Answers to spoken turns MUST
-NOT be shortened or simplified because they will be spoken (ADR-0040).
+When the household has a transcription model (API-006), a user MUST be able
+to speak a turn instead of typing it, and when it has a speech model, to have
+any answer read aloud. The user ends a turn explicitly, and starts it
+explicitly except in hands-free mode; pauses MUST NOT end it, and the
+assistant MUST NOT speak while the user's turn is open. Answers to spoken turns MUST NOT be shortened or simplified because
+they will be spoken (ADR-0040). Clients MUST offer:
 
-Rationale: journey J9.
+- **dictation:** a spoken turn becomes the text of the message box, which
+  the user reviews and sends. While the user speaks, the message box MUST
+  show that the voice is being captured, with an animation that follows its
+  loudness live, and a button that ends the turn;
+  then it MUST show that the text is being prepared. The assistant is told
+  that the message was dictated, so that it reads past what the
+  transcription misheard;
+- **reading aloud:** any answer can be read aloud, and stopped; code, tables,
+  images and files are named, not read out;
+- **hands-free mode:** for when the user cannot look at the screen, as when
+  driving. The upper half of the screen shows the sprite acting out what
+  happens: listening, working with its tools, reading the answer aloud
+  (UX-013); one large button in the lower half, which a stray touch does not
+  miss, starts and ends the user's turn, and shows the same animation while
+  it listens; an ended turn is sent at once, and its complete
+  answer is read aloud. Once it is read, the user's next turn starts by
+  itself; pressing the button while the answer is read stops the reading
+  and starts the next turn at once. The media buttons of a headset or a
+  car, the next-track button among them, MUST act as the large button where
+  the device passes them to the client. Sounds MUST say when the user's turn
+  starts and ends, that the assistant is still working, that its answer is
+  about to be read, and that something failed, so that the user knows where
+  the conversation stands without looking; a phone that quiets its speaker
+  while it opens the microphone MUST NOT swallow the sound of a turn
+  starting. The screen MUST also say, in words, which step the turn is at:
+  transcribing, writing the answer, preparing the voice, reading aloud,
+  with how long the step has taken, so that a slow step is not taken for a
+  stuck one; and when a step fails, which one and why. The assistant is
+  told that its answer will be read aloud, and writes it for listening, no
+  shorter and no simpler (ADR-0088).
+
+Clients MUST say when a speech model runs remotely, as they do for models
+(MOD-010).
+
+Rationale: journey J9; persona P2 brainstorms while driving.
 
 ## UX-006: Sharing into the app
 
@@ -180,7 +215,8 @@ interface (ADR-0070).
 
 While a run is in progress, clients SHOULD show the sprite acting out what
 the assistant is doing: thinking, searching the web, reading, writing files,
-running commands or answering; when the run ends, it stands still. The sprite
+running commands or answering, and in hands-free mode listening to the
+user (UX-005); when the run ends, it stands still. The sprite
 MUST be decorative: the same activity MUST be given as text, and the sprite
 MUST NOT move when the device asks for reduced motion (ADR-0070).
 

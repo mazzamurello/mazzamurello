@@ -61,16 +61,26 @@ version, migration notes and a deprecation period for the previous behavior.
 
 ## API-006: Voice input and output
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
 The API MUST transcribe a recorded spoken turn into text (speech-to-text) and
-synthesize an assistant message as audio (text-to-speech), for voice turns
-(UX-005). Speech services MUST be local by default; remote speech services
-MUST be subject to the data egress policy (MOD-003). Recordings MUST NOT be
-kept after transcription unless the user chooses to keep them.
+synthesize text as audio (text-to-speech), for voice turns (UX-005). Speech
+models MUST come from the household's connections, like its chat models: a
+connection lists which of its models transcribe and which speak, with their
+voices, and tenant admins choose the household's transcription model and
+speech model with its voice (ADR-0088). Each connection states whether it runs
+locally or remotely (MOD-010), and remote speech is subject to the data egress
+policy (MOD-003). Requests to speech models MUST carry the connection's
+credentials from the control plane only, and their cost, as the provider
+reports it with the answer or, failing that, after the request, MUST be
+recorded in the cost ledger with the purpose `speech` (MOD-006). A run MUST
+carry whether its message was dictated or spoken in hands-free mode, and the
+assistant's instructions for that run MUST say so (ADR-0088).
+A failed speech request MUST say why, such as a speech model that took too
+long to answer. Recordings MUST NOT be kept after transcription.
 
 ## API-007: Stable error codes
 
