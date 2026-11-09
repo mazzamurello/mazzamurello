@@ -85,9 +85,15 @@ def start_run(
     run_id: uuid.UUID | None = None,
     parent_run_id: str | None = None,
     stop_after: int | None = None,
+    voice: str | None = None,
 ) -> tuple[str, list[Event]]:
-    """Start a run and read its events, until the stream ends or `stop_after` events arrived."""
+    """Start a run and read its events, until the stream ends or `stop_after` events arrived.
+
+    `voice` says how the message came, when it was not typed (ADR-0088).
+    """
     payload = run_input(conversation_id, text, run_id, parent_run_id)
+    if voice is not None:
+        payload["voice"] = voice
     with (
         server.client(token) as client,
         client.stream(

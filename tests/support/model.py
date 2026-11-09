@@ -40,8 +40,16 @@ the finish reason and reports `cost`. Two more scripts apply there:
 - `error-midstream` streams one piece, then an error event, and ends.
 
 There, `GET /models` answers as OpenRouter's model list (`OPENROUTER_MODELS`),
-most used first when asked with `sort=top-weekly` and by name otherwise, and
-`GET /key` accepts every key except `REJECTED_KEY`.
+most used first when asked with `sort=top-weekly` and by name otherwise, its
+speech models (`OPENROUTER_SPEECH_MODELS`) when asked for their
+`output_modalities`, and `GET /key` accepts every key except `REJECTED_KEY`.
+
+Both serve speech (ADR-0088): `POST /audio/transcriptions` takes a recording
+as a multipart form, or as OpenRouter's JSON with base64 audio, and answers
+`Heard <bytes> bytes of <format>`; `POST /audio/speech` answers a short WAV
+file of silence, a second and a half long, and as OpenRouter an
+`X-Generation-Id`, whose cost `GET /generation` reports. A recording that holds `fail` is
+refused.
 
 Every request is recorded, with its headers, so that tests can check what
 reached the model.
@@ -49,6 +57,7 @@ reached the model.
 
 from __future__ import annotations
 
+import base64
 import json
 import threading
 import time
@@ -64,7 +73,8 @@ OPENROUTER_PREFIX = "/openrouter"
 OPENROUTER_COST = 0.000420
 # The models of the OpenAI-compatible server.
 # `gpt-4o-mini` is a model the price catalog knows.
-SERVER_MODELS = ("test-model", "refuses-tools", "gpt-4o-mini")
+# `test-transcribe` and `test-tts` are speech models, by their names (ADR-0088).
+SERVER_MODELS = ("test-model", "refuses-tools", "gpt-4o-mini", "test-transcribe", "test-tts")
 # What Ollama answers when a model that cannot call tools is offered some.
 REFUSES_TOOLS_ERROR = "registry.ollama.ai/library/refuses-tools does not support tools"
 # The reason a content filter gives for a request it refuses.
@@ -84,6 +94,60 @@ OPENROUTER_MODELS = (
     ("test/another", "Test: Another", "0.00000015", "0.0000006", 65536, True, False),
     ("test/router", "Test: Router", "-1", "-1", 2000000, False, True),
 )
+
+# OpenRouter's speech models: (id, name, output modality, voices) (ADR-0088).
+OPENROUTER_SPEECH_MODELS = (
+    ("test/transcribe", "Test: Transcribe", "transcription", None),
+    ("test/voice", "Test: Voice", "speech", ("alloy", "nova")),
+)
+# The cost OpenRouter reports for a transcription, and for a speech generation, which it reports at
+# `/generation` (ADR-0088).
+TRANSCRIPTION_COST = 0.000508
+SPEECH_COST = 0.000375
+
+
+def heard(size: int, audio_format: str) -> str:
+    """What the served transcription model answers for a recording."""
+    return f"Heard {size} bytes of {audio_format}"
+
+
+def silence(seconds: float = 1.5) -> bytes:
+    """A WAV file of silence: 16-bit mono at 8 kHz."""
+    samples = int(8000 * seconds)
+    data = bytes(2 * samples)
+    header = (
+        b"RIFF"
+        + (36 + len(data)).to_bytes(4, "little")
+        + b"WAVEfmt "
+        + (16).to_bytes(4, "little")
+        + (1).to_bytes(2, "little")
+        + (1).to_bytes(2, "little")
+        + (8000).to_bytes(4, "little")
+        + (16000).to_bytes(4, "little")
+        + (2).to_bytes(2, "little")
+        + (16).to_bytes(2, "little")
+        + b"data"
+        + len(data).to_bytes(4, "little")
+    )
+    return header + data
+
+
+def _multipart(content_type: str, data: bytes) -> dict[str, tuple[str | None, bytes]]:
+    """The fields of a multipart form: each one's file name, if it has one, and its value."""
+    boundary = content_type.partition("boundary=")[2].strip('"').encode()
+    fields: dict[str, tuple[str | None, bytes]] = {}
+    for part in data.split(b"--" + boundary):
+        head, separator, value = part.partition(b"\r\n\r\n")
+        if not separator:
+            continue
+        disposition = next(
+            (line for line in head.decode().split("\r\n") if line.lower().startswith("content-disposition")), ""
+        )
+        attributes = dict(item.strip().split("=", 1) for item in disposition.split(";")[1:] if "=" in item)
+        name = attributes.get("name", "").strip('"')
+        filename = attributes.get("filename")
+        fields[name] = (None if filename is None else filename.strip('"'), value.removesuffix(b"\r\n"))
+    return fields
 
 
 @dataclass(frozen=True)
@@ -143,6 +207,11 @@ class ModelServer:
     def record(self, request: ModelRequest) -> None:
         with self._lock:
             self.requests.append(request)
+
+    def speech(self, path: str) -> list[ModelRequest]:
+        """The speech requests to `path`, `/audio/transcriptions` or `/audio/speech`, in order."""
+        with self._lock:
+            return [r for r in self.requests if r.method == "POST" and r.path.endswith(path)]
 
     def requests_with(self, text: str) -> list[ModelRequest]:
         """The requests whose last user message is `text`."""
@@ -212,8 +281,17 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                     self._error(401, "User not found.", "authentication")
                 else:
                     self._json(200, {"data": {"label": "sk-or-v1-...", "limit": None, "usage": 0}})
+            elif self.openrouter and path.endswith("/api/v1/generation"):
+                generation = next((item.partition("=")[2] for item in query.split("&") if item.startswith("id=")), "")
+                self._json(200, {"data": {"id": generation, "total_cost": SPEECH_COST}})
             elif self.openrouter and path.endswith("/api/v1/models"):
-                self._json(200, {"data": _openrouter_models("sort=top-weekly" in query.split("&"))})
+                modalities = next(
+                    (item.partition("=")[2] for item in query.split("&") if item.startswith("output_modalities=")),
+                    "text",
+                )
+                wanted = set(modalities.replace("%2C", ",").split(","))
+                listed = _openrouter_models("sort=top-weekly" in query.split("&")) if "text" in wanted else []
+                self._json(200, {"data": listed + _openrouter_speech_models(wanted)})
             elif not self.openrouter and path == "/v1/models":
                 self._json(200, {"object": "list", "data": [{"id": name, "object": "model"} for name in SERVER_MODELS]})
             else:
@@ -226,8 +304,15 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", "0"))
-            body = cast(dict[str, Any], json.loads(self.rfile.read(length) or b"{}"))
+            raw = self.rfile.read(length)
             self.openrouter = self.path.startswith(f"{OPENROUTER_PREFIX}/")
+            if self.path.endswith("/audio/transcriptions"):
+                self._transcribe(raw)
+                return
+            body = cast(dict[str, Any], json.loads(raw or b"{}"))
+            if self.path.endswith("/audio/speech"):
+                self._speak(body)
+                return
             headers = {name.lower(): value for name, value in self.headers.items()}
             request = ModelRequest(self.headers.get("Authorization"), body, headers, self.openrouter, "POST", self.path)
             model.record(request)
@@ -273,6 +358,51 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 self._stream(body, _pieces(last))
             else:
                 self._json(200, self._completion(body, "".join(piece for piece, _ in _pieces(last))))
+
+        def _transcribe(self, raw: bytes) -> None:
+            """A transcription, from a multipart form or OpenRouter's JSON (ADR-0088)."""
+            headers = {name.lower(): value for name, value in self.headers.items()}
+            content_type = self.headers.get("Content-Type", "")
+            if content_type.startswith("multipart/form-data"):
+                fields = _multipart(content_type, raw)
+                filename, audio = fields.get("file", (None, b""))
+                audio_format = (filename or "").rpartition(".")[2] or "unknown"
+                model_name = fields.get("model", (None, b""))[1].decode()
+            else:
+                body = cast(dict[str, Any], json.loads(raw or b"{}"))
+                given = cast(dict[str, Any], body.get("input_audio") or {})
+                audio = base64.b64decode(str(given.get("data", "")))
+                audio_format = str(given.get("format", "unknown"))
+                model_name = str(body.get("model", ""))
+            summary = {"model": model_name, "bytes": len(audio), "format": audio_format}
+            model.record(
+                ModelRequest(self.headers.get("Authorization"), summary, headers, self.openrouter, "POST", self.path)
+            )
+            if b"fail" in audio:
+                self._error(500, "scripted failure", "server_error")
+                return
+            answer: dict[str, Any] = {"text": heard(len(audio), audio_format)}
+            if self.openrouter:
+                answer["usage"] = {"seconds": 1.0, "cost": TRANSCRIPTION_COST}
+            self._json(200, answer)
+
+        def _speak(self, body: dict[str, Any]) -> None:
+            """Speech: a short WAV file of silence, whatever the text (ADR-0088)."""
+            headers = {name.lower(): value for name, value in self.headers.items()}
+            model.record(
+                ModelRequest(self.headers.get("Authorization"), body, headers, self.openrouter, "POST", self.path)
+            )
+            if "fail" in str(body.get("input", "")):
+                self._error(500, "scripted failure", "server_error")
+                return
+            data = silence()
+            self.send_response(200)
+            if self.openrouter:
+                self.send_header("X-Generation-Id", f"gen-speech-{len(model.requests)}")
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
 
         def _error(self, status: int, message: str, kind: str, headers: dict[str, str] | None = None) -> None:
             if self.openrouter:
@@ -490,6 +620,27 @@ def _openrouter_models(most_used_first: bool) -> list[dict[str, Any]]:
             "top_provider": {"context_length": context, "is_moderated": False},
         }
         for model_id, name, prompt, completion, context, tools, reasoning in models
+    ]
+
+
+def _openrouter_speech_models(modalities: set[str]) -> list[dict[str, Any]]:
+    """OpenRouter's speech models of the output modalities asked for."""
+    return [
+        {
+            "id": model_id,
+            "canonical_slug": model_id,
+            "name": name,
+            "context_length": None,
+            "architecture": {
+                "input_modalities": ["audio"] if modality == "transcription" else ["text"],
+                "output_modalities": [modality],
+            },
+            "pricing": {"prompt": "0", "completion": "0.0001"},
+            "supported_parameters": [],
+            "supported_voices": None if voices is None else list(voices),
+        }
+        for model_id, name, modality, voices in OPENROUTER_SPEECH_MODELS
+        if modality in modalities or "all" in modalities
     ]
 
 

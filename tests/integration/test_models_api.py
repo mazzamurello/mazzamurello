@@ -75,7 +75,8 @@ def test_every_member_sees_every_model_of_the_household(server: Server, househol
     local = by_connection[household.model.connection_id]
     assert [m["model"] for m in local] == list(SERVER_MODELS)
     assert {(m["location"], m["tools"], m["connection_name"]) for m in local} == {("local", None, "Test server")}
-    remote = by_connection[household.openrouter_id]
+    # Its chat models, and its speech models after them (ADR-0088).
+    remote = [m for m in by_connection[household.openrouter_id] if m["kind"] == "chat"]
     # Most used in the past week first, as OpenRouter ordered them when asked.
     assert [m["model"] for m in remote] == [model[0] for model in OPENROUTER_MODELS]
     assert {m["location"] for m in remote} == {"remote"}

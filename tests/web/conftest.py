@@ -70,7 +70,15 @@ def playwright() -> Iterator[Playwright]:
 
 @pytest.fixture(scope="session")
 def browser(playwright: Playwright) -> Iterator[Browser]:
-    chromium = playwright.chromium.launch()
+    # A fake microphone, which records a tone and is granted without asking, and audio that plays
+    # without a gesture, as after a press of a car's media button (ADR-0088).
+    chromium = playwright.chromium.launch(
+        args=[
+            "--use-fake-device-for-media-stream",
+            "--use-fake-ui-for-media-stream",
+            "--autoplay-policy=no-user-gesture-required",
+        ]
+    )
     yield chromium
     chromium.close()
 

@@ -16,7 +16,7 @@ import pytest
 from tests.support.accounts import assert_problem, body, create_account, create_tenant, login
 from tests.support.database import Database, uuid7
 from tests.support.fixtures import HarnessModel
-from tests.support.model import OPENROUTER_MODELS, REJECTED_KEY, SERVER_MODELS
+from tests.support.model import OPENROUTER_MODELS, OPENROUTER_SPEECH_MODELS, REJECTED_KEY, SERVER_MODELS
 from tests.support.server import Server
 
 
@@ -63,7 +63,8 @@ def test_openrouter_checks_the_key(server: Server, token: str, harness_model: Ha
     connection = {"name": "OpenRouter", "kind": "openrouter", "base_url": harness_model.endpoint.openrouter_url}
     passed = _test(server, token, connection | {"api_key": "sk-or-v1-accepted"})
     assert passed["passed"] is True
-    assert passed["model_count"] == len(OPENROUTER_MODELS)
+    # Its chat models and its speech models (ADR-0088).
+    assert passed["model_count"] == len(OPENROUTER_MODELS) + len(OPENROUTER_SPEECH_MODELS)
     assert [step for step, _ in _steps(passed)] == ["resolve", "connect", "authenticate", "list_models"]
     failed = _test(server, token, connection | {"api_key": REJECTED_KEY})
     assert failed["passed"] is False
