@@ -305,6 +305,11 @@
     "contextValue": "Context {{used}} of {{size}} tokens · {{percent}}%"
   },
   "files": {
+    "fullView": "Full view",
+    "fullViewHint": "The file, larger.",
+    "showSource": "Source",
+    "showPreview": "Preview",
+    "diagramFailed": "This diagram could not be drawn. Its source shows what is wrong.",
     "title": "Files",
     "close": "Close",
     "workspace": "Workspace",

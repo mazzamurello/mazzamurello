@@ -69,6 +69,11 @@ export function previewUrl(conversationId: string, path: string): string {
   return `${downloadUrl(conversationId, path)}&preview=true`;
 }
 
+/** Where a web page runs from: a sandboxed document with an opaque origin and no network (ART-003, ADR-0086). */
+export function pageUrl(conversationId: string, path: string): string {
+  return `${downloadUrl(conversationId, path)}&page=true`;
+}
+
 export function archiveUrl(conversationId: string, path: string): string {
   return `${base(conversationId)}/archive?path=${encodeURIComponent(path)}`;
 }
@@ -135,13 +140,19 @@ export function formatSize(bytes: number): string {
 }
 
 /** The kind of preview a file gets, by its extension, as the API serves it (UX-020). */
-export type PreviewKind = "text" | "markdown" | "csv" | "image" | "pdf" | "audio" | "video" | "none";
+export type PreviewKind = "text" | "code" | "markdown" | "csv" | "diagram" | "page" | "image" | "pdf" | "audio" | "video" | "none";
 
-const TEXT_EXTENSIONS = new Set(
-  "txt log json yaml yml toml ini cfg py js ts tsx jsx css sh sql xml html htm c h rs go java rb".split(" "),
-);
+// Source code, highlighted in its language (ART-002, ADR-0086).
+const CODE_EXTENSIONS = new Set("json yaml yml toml ini cfg py js ts tsx jsx css sh sql xml c h rs go java rb".split(" "));
 const KINDS: Record<string, PreviewKind> = {
+  txt: "text",
+  log: "text",
   md: "markdown",
+  // Diagrams, drawn; web pages, run (ART-002, ART-003).
+  mmd: "diagram",
+  mermaid: "diagram",
+  html: "page",
+  htm: "page",
   csv: "csv",
   png: "image",
   jpg: "image",
@@ -161,7 +172,13 @@ const KINDS: Record<string, PreviewKind> = {
 export function previewKind(name: string): PreviewKind {
   const dot = name.lastIndexOf(".");
   const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
-  return TEXT_EXTENSIONS.has(extension) ? "text" : (KINDS[extension] ?? "none");
+  return CODE_EXTENSIONS.has(extension) ? "code" : (KINDS[extension] ?? "none");
+}
+
+/** The language a file's code is highlighted in, from its extension. */
+export function languageOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "text";
 }
 
 /** The files attached to the message being written: each uploads as soon as it is picked (CNV-017). */
