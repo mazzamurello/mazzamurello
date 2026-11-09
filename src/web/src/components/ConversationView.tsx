@@ -228,14 +228,15 @@ export function ConversationView() {
   }
 
   const turns = history.data ? turnsOf(history.data) : [];
-  // The run being answered shows live, even when the history was loaded meanwhile (ADR-0085).
+  // The run being answered shows live, even when the history was loaded meanwhile (ADR-0085), until
+  // the history is fetched again once it ended: a history fetched while it ran lacks its end (UX-003).
   const shown = (live !== null && hideFrom !== null ? turns.slice(0, hideFrom) : turns).filter(
-    (turn) => !(live?.status === "running" && turn.run.run_id === live.runId),
+    (turn) => !(live !== null && live.inHistory !== true && turn.run.run_id === live.runId),
   );
   // A failed run, once in the history, is shown there with its error (UX-014); a reason only the
   // stream gave stays with it until the next run.
   // Once the history has the live run, it shows it: never both at once (ADR-0085).
-  const settled = live !== null && live.status !== "running" && shown.some((turn) => turn.run.run_id === live.runId);
+  const settled = live !== null && live.inHistory === true && shown.some((turn) => turn.run.run_id === live.runId);
   const liveReason = live?.status === "failed" ? { runId: live.runId, reason: live.reason } : null;
 
   function askToEdit(index: number, turn: Turn, text: string) {

@@ -1,20 +1,71 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Folder as FolderIcon, FolderPlus, Search } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { createContext, type DragEvent, type FormEvent, useContext, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router";
 
 import { api, unwrap, type Conversation, type Folder, type ListEntry } from "../api/client";
-import { CONVERSATIONS, createFolder, updateFolder, useConversationList } from "../conversations";
+import { CONVERSATIONS, createFolder, updateConversation, updateFolder, useConversationList } from "../conversations";
 import { ConversationMenu } from "./ConversationMenu";
+
+type Move = Pick<Conversation, "folder_id" | "pinned">;
+
+/** The conversation being dragged, and how to move it where it is dropped (CNV-019). */
+const Dragging = createContext<{ dragged: Conversation | null; start: (conversation: Conversation | null) => void; drop: (move: Partial<Move>) => void }>({
+  dragged: null,
+  start: () => undefined,
+  drop: () => undefined,
+});
+
+/** What a place where a conversation can be dropped needs: it shows that it takes it, and moves it. */
+function useDropTarget(move: Partial<Move>) {
+  const { dragged, drop } = useContext(Dragging);
+  const [over, setOver] = useState(false);
+  if (dragged === null) return { over: false, props: {} };
+  return {
+    over,
+    props: {
+      onDragOver: (event: DragEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        setOver(true);
+      },
+      onDragLeave: (event: DragEvent) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false);
+      },
+      onDrop: (event: DragEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setOver(false);
+        drop(move);
+      },
+    },
+  };
+}
+
+const DROP = "rounded-[9px] outline-2 -outline-offset-2 outline-accent";
 
 /** Folders and conversations, pinned first, then newest; a search over them all (CNV-007 to CNV-009). */
 export function ConversationList() {
   const { t } = useTranslation();
   const list = useConversationList();
+  const queries = useQueryClient();
   const [query, setQuery] = useState("");
   const [naming, setNaming] = useState(false);
+  const [dragged, setDragged] = useState<Conversation | null>(null);
+
+  // Dropped on the top, pinned; on the others, unpinned; on a folder, into it (CNV-019).
+  async function drop(move: Partial<Move>) {
+    const conversation = dragged;
+    setDragged(null);
+    if (conversation === null) return;
+    const changes = Object.fromEntries(Object.entries(move).filter(([key, value]) => conversation[key as keyof Move] !== value));
+    if (Object.keys(changes).length === 0) return;
+    await updateConversation(conversation.id, changes);
+    await queries.invalidateQueries({ queryKey: CONVERSATIONS });
+  }
   const entries = list.data ?? [];
   const folders = entries.flatMap((entry) => (entry.kind === "folder" ? [entry.folder] : []));
   const isPinned = (entry: ListEntry) => (entry.kind === "folder" ? entry.folder.pinned : entry.conversation.pinned);
@@ -43,11 +94,12 @@ export function ConversationList() {
         {query.trim() ? (
           <SearchResults query={query.trim()} />
         ) : (
-          <>
+          <Dragging.Provider value={{ dragged, start: setDragged, drop: (move) => void drop(move) }}>
             {entries.length === 0 && list.isSuccess && <p className="px-2.5 py-2 text-sm text-muted">{t("shell.empty")}</p>}
-            {pinned.length > 0 && <Group title={t("shell.pinned")} entries={pinned} folders={folders} />}
-            {others.length > 0 && <Group title={pinned.length > 0 ? t("shell.recent") : null} entries={others} folders={folders} />}
-          </>
+            {pinned.length > 0 && <Group title={t("shell.pinned")} entries={pinned} folders={folders} move={{ pinned: true, folder_id: null }} />}
+            {pinned.length === 0 && dragged !== null && <PinHere />}
+            {others.length > 0 && <Group title={pinned.length > 0 ? t("shell.recent") : null} entries={others} folders={folders} move={{ pinned: false, folder_id: null }} />}
+          </Dragging.Provider>
         )}
       </div>
       <NewFolder open={naming} onClose={() => setNaming(false)} />
@@ -55,10 +107,27 @@ export function ConversationList() {
   );
 }
 
-function Group({ title, entries, folders }: { title: string | null; entries: ListEntry[]; folders: Folder[] }) {
+/** The top of the list while nothing is pinned: a conversation dropped there is pinned (CNV-019). */
+function PinHere() {
+  const { t } = useTranslation();
+  const target = useDropTarget({ pinned: true, folder_id: null });
   return (
-    <section>
-      {title && <h2 className="mx-2.5 mt-3.5 mb-1 text-xs font-semibold text-faint">{title}</h2>}
+    <div {...target.props} className={`mx-1 mt-2 rounded-[9px] border border-dashed border-line-strong px-2.5 py-2 text-center text-[13px] text-muted ${target.over ? DROP : ""}`}>
+      {t("shell.dropToPin")}
+    </div>
+  );
+}
+
+function Group({ title, entries, folders, move }: { title: string | null; entries: ListEntry[]; folders: Folder[]; move: Partial<Move> }) {
+  const heading = useId();
+  const target = useDropTarget(move);
+  return (
+    <section aria-labelledby={title ? heading : undefined} {...target.props} className={target.over ? DROP : ""}>
+      {title && (
+        <h2 id={heading} className="mx-2.5 mt-3.5 mb-1 text-xs font-semibold text-faint">
+          {title}
+        </h2>
+      )}
       <ul className={title ? "" : "mt-2"}>
         {entries.map((entry) =>
           entry.kind === "folder" ? (
@@ -74,8 +143,17 @@ function Group({ title, entries, folders }: { title: string | null; entries: Lis
 
 function ConversationItem({ conversation, folders, nested = false }: { conversation: Conversation; folders: Folder[]; nested?: boolean }) {
   const { t } = useTranslation();
+  const { dragged, start } = useContext(Dragging);
   return (
-    <li className="group flex items-center rounded-[9px] hover:bg-hover">
+    <li
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        start(conversation);
+      }}
+      onDragEnd={() => start(null)}
+      className={`group flex items-center rounded-[9px] hover:bg-hover ${dragged?.id === conversation.id ? "opacity-50" : ""}`}
+    >
       <NavLink
         to={`/c/${conversation.id}`}
         className={({ isActive }) => `min-w-0 flex-1 truncate rounded-[9px] py-[7px] pr-2.5 text-sm ${nested ? "pl-8" : "pl-2.5"} ${isActive ? "bg-hover font-semibold" : ""}`}
@@ -90,20 +168,21 @@ function ConversationItem({ conversation, folders, nested = false }: { conversat
 /** A folder: it collapses and expands, and remembers which on every device (CNV-008). */
 function FolderItem({ folder, conversations, folders }: { folder: Folder; conversations: Conversation[]; folders: Folder[] }) {
   const queries = useQueryClient();
+  const target = useDropTarget({ folder_id: folder.id });
   const expanded = !folder.collapsed;
   async function toggle() {
     await updateFolder(folder.id, { collapsed: expanded });
     await queries.invalidateQueries({ queryKey: CONVERSATIONS });
   }
   return (
-    <li>
-      <button type="button" onClick={() => void toggle()} aria-expanded={expanded} className="flex w-full items-center gap-2 rounded-[9px] px-2.5 py-[7px] text-left text-sm font-medium hover:bg-hover">
+    <li {...target.props}>
+      <button type="button" onClick={() => void toggle()} aria-expanded={expanded} className={`flex w-full items-center gap-2 rounded-[9px] px-2.5 py-[7px] text-left text-sm font-medium hover:bg-hover ${target.over ? DROP : ""}`}>
         <ChevronRight className={`size-4 flex-none text-muted transition-transform ${expanded ? "rotate-90" : ""}`} aria-hidden="true" />
         <FolderIcon className="size-4 flex-none text-muted" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">{folder.name}</span>
       </button>
       {expanded && (
-        <ul>
+        <ul aria-label={folder.name}>
           {conversations.map((conversation) => (
             <ConversationItem key={conversation.id} conversation={conversation} folders={folders} nested />
           ))}

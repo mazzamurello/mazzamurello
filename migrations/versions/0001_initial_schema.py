@@ -48,8 +48,33 @@ PRIVATE_TABLES = (
     "compaction_checkpoints",
     "usage_ledger",
 )
-# The tools a user can switch off (CNV-013, ADR-0081).
-TOOL_NAMES = "ARRAY['web_search', 'read_page', 'shell', 'file_system', 'offer_download']"
+# The tools a user can switch off, every tool by its name (CNV-013, ADR-0081, ADR-0087).
+TOOL_NAMES = (
+    "ARRAY["
+    "'web_search', "
+    "'read_page', "
+    "'run_command', "
+    "'start_command', "
+    "'check_command', "
+    "'stop_command', "
+    "'read_file', "
+    "'write_file', "
+    "'edit_file', "
+    "'create_directory', "
+    "'list_directory', "
+    "'find_files', "
+    "'search_files', "
+    "'file_info', "
+    "'offer_download', "
+    "'ask_user_question', "
+    "'write_plan', "
+    "'read_plan', "
+    "'add_task', "
+    "'update_task_status', "
+    "'update_task_statuses', "
+    "'remove_task'"
+    "]"
+)
 
 HELPER_FUNCTIONS = [
     # Request context (TEN-005). A setting that was never set, or was reset at

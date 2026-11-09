@@ -1,5 +1,5 @@
 import { LogOut, Menu as MenuIcon, Plus, SlidersHorizontal, X } from "lucide-react";
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation } from "react-router";
 
@@ -8,12 +8,14 @@ import { formatMoney, useUsage } from "../costs";
 import { useSignOut } from "../session";
 import { useLeavingTemporary } from "../temporary";
 import { ConversationList } from "./ConversationList";
+import { ResizeHandle, usePanelWidth } from "./ResizeHandle";
 import { Sprite } from "./Sprite";
 
 /** The conversation list beside the conversation; on phones the list slides over it. */
 export function Shell({ me }: { me: User }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const list = usePanelWidth("mzm.listWidth", 268, 220, 440);
   const signOut = useSignOut();
   const location = useLocation();
   useLeavingTemporary();
@@ -29,8 +31,10 @@ export function Shell({ me }: { me: User }) {
       {open && <div className="fixed inset-0 z-30 bg-scrim md:hidden" aria-hidden="true" onClick={() => setOpen(false)} />}
       <nav
         aria-label={t("shell.conversations")}
-        className={`${open ? "flex" : "hidden"} fixed inset-y-0 left-0 z-40 w-[min(19rem,86vw)] flex-col gap-1.5 border-r border-line bg-panel px-2.5 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-soft md:static md:flex md:w-[268px] md:shadow-none`}
+        style={{ "--list-width": `${list.width}px` } as CSSProperties}
+        className={`${open ? "flex" : "hidden"} fixed inset-y-0 left-0 z-40 w-[min(19rem,86vw)] flex-col gap-1.5 border-r border-line bg-panel px-2.5 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-soft md:relative md:flex md:w-(--list-width) md:shadow-none`}
       >
+        <ResizeHandle label={t("shell.resizeList")} side="right" panel={list} className="hidden md:block" />
         <div className="flex items-center gap-1.5 px-1 pb-2">
           <Link to="/" className="flex flex-1 items-center gap-2 rounded-lg p-1 text-base font-bold tracking-tight">
             <Sprite pose="waiting" head className="size-7" />

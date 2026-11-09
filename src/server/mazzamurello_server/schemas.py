@@ -220,9 +220,32 @@ class ModelList(Response):
     default: ModelChoiceOut | None
 
 
-# How much a model reasons before it answers, and the tools a user can switch off (CNV-013, ADR-0081).
+# How much a model reasons before it answers, and the tools a user can switch off (CNV-013, ADR-0081, ADR-0087).
 type Reasoning = Literal["off", "on", "deep"]
-type ToolName = Literal["web_search", "read_page", "shell", "file_system", "offer_download"]
+type ToolName = Literal[
+    "web_search",
+    "read_page",
+    "run_command",
+    "start_command",
+    "check_command",
+    "stop_command",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "create_directory",
+    "list_directory",
+    "find_files",
+    "search_files",
+    "file_info",
+    "offer_download",
+    "ask_user_question",
+    "write_plan",
+    "read_plan",
+    "add_task",
+    "update_task_status",
+    "update_task_statuses",
+    "remove_task",
+]
 
 
 def _unique(tools: list[ToolName]) -> list[ToolName]:

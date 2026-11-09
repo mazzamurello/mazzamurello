@@ -13,12 +13,13 @@ import json
 import logging
 import signal
 import uuid
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Callable
 from dataclasses import replace
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 from dbos import DBOS, DBOSConfig
 from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, RunContext
+from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
@@ -45,6 +46,7 @@ from pydantic_ai_harness.tool_output_limits import ToolOutputLimits
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from mazzamurello_server import schemas
 from mazzamurello_server.config import WorkerConfiguration
 from mazzamurello_server.conversations import delete_everything, path_runs, stored_messages
 from mazzamurello_server.database import Identity, create_engine, transaction
@@ -87,21 +89,39 @@ SHELL = Shell(max_output_chars=SHELL_OUTPUT_CHARS, denied_commands=())
 FILE_SYSTEM = FileSystem()
 
 
-def _tool_names(capability: Shell[Any] | FileSystem[Any]) -> frozenset[str]:
+def _tool_names(capability: AbstractCapability[Any]) -> frozenset[str]:
     toolset = capability.get_toolset()
     if not isinstance(toolset, FunctionToolset):
         raise TypeError(f"{type(capability).__name__} has no tools of its own")
-    return frozenset(cast("FunctionToolset[Any]", toolset).tools)
+    return frozenset(toolset.tools)
 
 
-# The tools a user can switch off, and the names the model knows them by (CNV-013, ADR-0081).
-TOOL_NAMES: dict[str, frozenset[str]] = {
-    "web_search": frozenset({"web_search"}),
-    "read_page": frozenset({"read_page"}),
-    "shell": _tool_names(SHELL),
-    "file_system": _tool_names(FILE_SYSTEM),
-    "offer_download": frozenset({"offer_download"}),
-}
+def _while_on(instructions: object, tools: frozenset[str]) -> Callable[[RunContext[RunDeps]], str]:
+    """Instructions given only while every one of the tools they speak of is on (CNV-014, ADR-0087)."""
+    if not isinstance(instructions, str):
+        raise TypeError("only fixed instructions can follow their tools")
+
+    def given(ctx: RunContext[RunDeps]) -> str:
+        return instructions if ctx.deps.tools and not tools & ctx.deps.disabled_tools else ""
+
+    return given
+
+
+def _instructions_while_on[C: AbstractCapability[RunDeps]](capability: C) -> C:
+    """The capability, as it is, but for its instructions, given only while its tools are on (ADR-0087).
+
+    The harness's capabilities take no such condition, so the instance's instructions are replaced;
+    its class, its tools and what they do stay the harness's own (AGT-001).
+    """
+    given = _while_on(capability.get_instructions(), _tool_names(capability))
+    object.__setattr__(capability, "get_instructions", lambda: given)
+    return capability
+
+
+# Every tool a user can switch off, by the name the model knows it by (CNV-013, ADR-0087).
+TOOL_NAMES = frozenset(get_args(schemas.ToolName.__value__))
+COMMAND_TOOLS = _tool_names(SHELL)
+FILE_TOOLS = _tool_names(FILE_SYSTEM)
 # The working instructions, each about tools that must be on (CNV-014, ADR-0081).
 # What the workspace keeps (AGT-022, ADR-0076).
 WORKSPACE_INSTRUCTIONS = (
@@ -135,11 +155,11 @@ TOOLBOX_INSTRUCTIONS = (
 def instructions(ctx: RunContext[RunDeps]) -> str:
     """The base instructions, the working instructions for the tools that are on, then the user's additions."""
     deps = ctx.deps
-    off = deps.disabled_tools if deps.tools else frozenset(TOOL_NAMES)
+    on = TOOL_NAMES - deps.disabled_tools if deps.tools else frozenset[str]()
     working = [
-        WORKSPACE_INSTRUCTIONS if not {"shell", "file_system"} <= off else "",
-        DOWNLOAD_INSTRUCTIONS if "offer_download" not in off else "",
-        TOOLBOX_INSTRUCTIONS if "shell" not in off else "",
+        WORKSPACE_INSTRUCTIONS if on & (COMMAND_TOOLS | FILE_TOOLS) else "",
+        DOWNLOAD_INSTRUCTIONS if "offer_download" in on else "",
+        TOOLBOX_INSTRUCTIONS if on & {"run_command", "start_command"} else "",
     ]
     base = BUILT_IN_BASE_INSTRUCTIONS if deps.base_instructions is None else deps.base_instructions
     parts = [base, " ".join(part for part in working[:2] if part), working[2], deps.additional_instructions or ""]
@@ -239,8 +259,8 @@ agent = Agent[RunDeps, str | DeferredToolRequests](
         ToolOutputLimits(),
         # Questions to the user end the run, and the answer starts the next one; the task list lasts
         # from run to run (AGT-015, UX-009, ADR-0083).
-        AskUser(answerer=None),
-        Planning(store_resolver=_plan_store),
+        _instructions_while_on(AskUser[RunDeps](answerer=None)),
+        _instructions_while_on(Planning[RunDeps](store_resolver=_plan_store)),
         DBOSDurability(event_stream_handler=_handle_events),
     ],
 )
@@ -344,7 +364,6 @@ async def run_workflow(serialized_input: str) -> None:
         emit=lambda event: _write(run.run_id, event),
         reasoning=run.reasoning,
         disabled_tools=frozenset(run.disabled_tools),
-        withheld_tools=frozenset(name for group in run.disabled_tools for name in TOOL_NAMES.get(group, ())),
         base_instructions=run.base_instructions,
         additional_instructions=run.additional_instructions,
     )
