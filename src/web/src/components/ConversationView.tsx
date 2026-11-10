@@ -633,23 +633,29 @@ function UserBubble({ text, attachments, onShow }: { text: string; attachments: 
 
 function Answer({ parts, conversationId, onShow, running = false }: { parts: LivePart[]; conversationId: string; onShow: (path: string) => void; running?: boolean }) {
   const offers = parts.flatMap((part) => (part.kind === "tool" ? (offerOf(part) ?? []) : []));
-  const reasoning = parts.flatMap((part) => (part.kind === "reasoning" ? [part.text] : [])).join("\n\n");
-  // Text and tool calls in the order they came; consecutive calls form one group (UX-003, ADR-0085).
-  const blocks: ({ kind: "text"; part: Extract<LivePart, { kind: "text" }> } | { kind: "tools"; parts: Extract<LivePart, { kind: "tool" }>[] })[] = [];
+  // Text, reasoning and tool calls in the order they came: consecutive calls form one group, and
+  // consecutive reasoning one fold (UX-003, CNV-013, ADR-0085).
+  type Reasoning = Extract<LivePart, { kind: "reasoning" }>;
+  type Tool = Extract<LivePart, { kind: "tool" }>;
+  const blocks: ({ kind: "text"; part: Extract<LivePart, { kind: "text" }> } | { kind: "reasoning"; parts: Reasoning[] } | { kind: "tools"; parts: Tool[] })[] = [];
   for (const part of parts) {
+    const last = blocks.at(-1);
     if (part.kind === "text") blocks.push({ kind: "text", part });
-    else if (part.kind === "tool" && offerOf(part) === null) {
-      const last = blocks.at(-1);
+    else if (part.kind === "reasoning") {
+      if (last?.kind === "reasoning") last.parts.push(part);
+      else blocks.push({ kind: "reasoning", parts: [part] });
+    } else if (offerOf(part) === null) {
       if (last?.kind === "tools") last.parts.push(part);
       else blocks.push({ kind: "tools", parts: [part] });
     }
   }
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
-      {reasoning && <ReasoningView text={reasoning} />}
       {blocks.map((block) =>
         block.kind === "text" ? (
           <Markdown key={block.part.id} text={block.part.text} />
+        ) : block.kind === "reasoning" ? (
+          <ReasoningView key={block.parts[0]?.id} text={block.parts.map((part) => part.text).join("\n\n")} />
         ) : (
           <div key={block.parts[0]?.id} className="flex flex-col items-start gap-1.5">
             {block.parts.map((part) => (
@@ -669,7 +675,7 @@ function Answer({ parts, conversationId, onShow, running = false }: { parts: Liv
   );
 }
 
-/** The model's reasoning, folded above its answer (CNV-013). */
+/** A piece of the model's reasoning, folded where it happened (CNV-013, ADR-0085). */
 function ReasoningView({ text }: { text: string }) {
   const { t } = useTranslation();
   return (
