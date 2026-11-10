@@ -23,9 +23,11 @@ declare. A capability can change the tool definitions the model sees
 ## Decision
 
 1. **In order:** clients show an answer's parts in the order of its events,
-   text and tool calls interleaved; consecutive calls form one group. The
-   reasoning stays folded above the answer (CNV-013), and offered downloads
-   stay at the end.
+   text, reasoning and tool calls interleaved; consecutive calls form one
+   group, and each piece of reasoning is folded on its own, where it
+   happened (CNV-013). Offered downloads stay at the end. Reasoning was
+   first kept in one block above the answer, which put what the model
+   thought about a tool's result before the call that gave it.
 2. **Running or done:** a call without a result in a run that goes on is
    running, and shows a spinner; with a result it is done, and shows a check.
    Each says so to screen readers.

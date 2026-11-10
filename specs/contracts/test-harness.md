@@ -106,8 +106,9 @@ a final usage chunk that repeats the finish reason and reports `cost`, and
 errors before and during a stream, as OpenRouter's documentation describes
 them. Both refuse a request when the test asks, as a content filter does: a
 `refusal` with the provider's reason and the finish reason `content_filter`
-(MOD-015). Both stream reasoning before the answer when the test asks, in the
-field each names it with (CNV-013), and text before a tool call in the same
+(MOD-015). Both stream reasoning before the answer when the test asks, also
+before a tool call and again after its result, in the field each names it
+with (CNV-013), and text before a tool call in the same
 answer, as models do when they say what they are about to do (UX-003). It records the headers of each request, so
 tests can check what the gateway sends.
 
