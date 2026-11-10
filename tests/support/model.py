@@ -20,6 +20,9 @@ last user message:
   in the same answer, as `tool:` does (UX-003);
 - `think:<text>` streams `Thinking: <text>` as the model's reasoning, then
   `Echo: <message>` (CNV-013);
+- `think-run:<command>` reasons `Planning: <command>` and calls the command
+  tool, then, once the result arrives, reasons `Looking at the result` and
+  answers `Tool said: <result>` (CNV-013, ADR-0085);
 - anything else streams `Echo: <message>`.
 
 The command tool is found among the tools the request offers, by its name or
@@ -339,6 +342,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if last.startswith("run:"):
                 self._tool_turn(body, last.removeprefix("run:"))
                 return
+            if last.startswith("think-run:"):
+                self._thinking_tool_turn(body, last.removeprefix("think-run:"))
+                return
             if last.startswith("say:") and " ||| tool:" in last:
                 said, _, call = last.removeprefix("say:").partition(" ||| tool:")
                 name, _, arguments = call.partition(" ")
@@ -439,6 +445,15 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             name, argument = _command_tool(cast(list[dict[str, Any]], body.get("tools", [])))
             self._call(body, name, json.dumps({argument: command}))
 
+        def _thinking_tool_turn(self, body: dict[str, Any], command: str) -> None:
+            messages = cast(list[dict[str, Any]], body.get("messages", []))
+            if messages and messages[-1].get("role") == "tool":
+                result = str(messages[-1].get("content", ""))
+                self._think(body, "Looking at the result", f"Tool said: {result[:2000]}")
+                return
+            name, argument = _command_tool(cast(list[dict[str, Any]], body.get("tools", [])))
+            self._call(body, name, json.dumps({argument: command}), reasoning=f"Planning: {command}")
+
         def _tool_turns(self, body: dict[str, Any], commands: list[str]) -> None:
             messages = cast(list[dict[str, Any]], body.get("messages", []))
             # The tool results of this answer: those after the last user message.
@@ -463,7 +478,7 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 return
             self._call(body, name, arguments, said)
 
-        def _call(self, body: dict[str, Any], name: str, arguments: str, said: str = "") -> None:
+        def _call(self, body: dict[str, Any], name: str, arguments: str, said: str = "", reasoning: str = "") -> None:
             messages = cast(list[dict[str, Any]], body.get("messages", []))
             call = {
                 "id": f"call-{len(messages)}",
@@ -481,6 +496,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 return
             self._start_stream()
             base = self._chunk_base(body)
+            if reasoning:
+                field = "reasoning" if self.openrouter else "reasoning_content"
+                self._event(base | {"choices": [self._choice({"role": "assistant", field: reasoning}, None)]})
             if said:
                 self._event(base | {"choices": [self._choice({"role": "assistant", "content": said}, None)]})
             delta = {"role": "assistant", "tool_calls": [call | {"index": 0}]}

@@ -226,3 +226,37 @@ def test_the_households_settings_are_set_apart_for_its_admins(
     expect(page.get_by_role("button", name="Models")).to_have_count(0)
     own = page.get_by_role("main").get_by_role("button", name="Your default model")
     expect(own).to_contain_text("Household default: test-model")
+
+
+@pytest.mark.spec("CNV-013", "UX-003", "UX-007")
+def test_each_piece_of_reasoning_is_shown_where_it_happened(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    mark = uuid4().hex[:8]
+    _send(page, f"think-run:echo seen-{mark}")
+    _answer(page, f"Tool said: [stdout] seen-{mark}")
+
+    def check() -> None:
+        main = page.get_by_role("main")
+        thoughts = main.locator("summary", has_text="Reasoning")
+        expect(thoughts).to_have_count(2, timeout=30_000)
+        # Folded, each on its own.
+        expect(main.locator("details[open]")).to_have_count(0)
+        first, second = thoughts.nth(0).bounding_box(), thoughts.nth(1).bounding_box()
+        call = main.locator("summary", has_text="Sandbox command").bounding_box()
+        reply = main.get_by_text(f"Tool said: [stdout] seen-{mark}").bounding_box()
+        assert first is not None
+        assert second is not None
+        assert call is not None
+        assert reply is not None
+        # Planning before the call; looking at its result after it, before the reply.
+        assert first["y"] < call["y"] < second["y"] < reply["y"]
+        thoughts.nth(0).click()
+        expect(main.locator("details[open]")).to_contain_text(f"Planning: echo seen-{mark}")
+        expect(main.locator("details[open]")).not_to_contain_text("Looking at the result")
+        thoughts.nth(0).click()
+
+    check()
+    assert accessibility_violations(page) == []
+    # Also from the history.
+    page.reload()
+    check()
