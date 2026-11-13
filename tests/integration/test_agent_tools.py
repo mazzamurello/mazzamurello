@@ -53,6 +53,46 @@ def _tool_results(model: HarnessModel, text: str) -> list[str]:
 
 
 @pytest.mark.spec("AGT-011")
+def test_the_file_tools_reach_the_workspace(
+    server: Server, token: str, account: Account, default_model: HarnessModel, sandboxes: Driver
+) -> None:
+    # The user's files are in /workspace (ADR-0076): the file tools read and write them by their paths.
+    conversation = create_conversation(server, token)["id"]
+    marker = f"marker-{uuid7()}"
+    written = sandboxes.sh(
+        str(account.tenant_id),
+        str(account.id),
+        conversation,
+        f"mkdir -p /workspace/notes && echo {marker} > /workspace/notes/a.txt",
+    )
+    assert written.exit_code == 0, written
+    read = f"tool:read_file {json.dumps({'path': '/workspace/notes/a.txt'})}"
+    run_id, events = start_run(server, token, conversation, read)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    assert marker in text_of(events)
+    write = f"tool:write_file {json.dumps({'path': '/workspace/notes/b.txt', 'content': marker})}"
+    run_id, _ = start_run(server, token, conversation, write)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    kept = sandboxes.sh(str(account.tenant_id), str(account.id), conversation, "cat /workspace/notes/b.txt")
+    assert kept.stdout.strip() == marker
+
+
+@pytest.mark.spec("AGT-011")
+def test_the_file_tools_reach_the_scratch_folder(server: Server, token: str, default_model: HarnessModel) -> None:
+    # Relative paths start where commands start, in /scratch (ADR-0076).
+    conversation = create_conversation(server, token)["id"]
+    marker = f"marker-{uuid7()}"
+    # In one run: the scratch folder ends with the sandbox, after each run.
+    text = (
+        f"chain:write_file {json.dumps({'path': 'draft.txt', 'content': marker})}"
+        f" >>> run_command {json.dumps({'command': 'cat /scratch/draft.txt'})}"
+    )
+    run_id, events = start_run(server, token, conversation, text)
+    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    assert marker in text_of(events)
+
+
+@pytest.mark.spec("AGT-011")
 def test_the_agent_runs_commands_in_the_sandbox(server: Server, token: str, default_model: HarnessModel) -> None:
     conversation = create_conversation(server, token)
     marker = f"marker-{uuid7()}"
