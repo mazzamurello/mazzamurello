@@ -1,0 +1,23 @@
+# The models the eval suite runs against (EVL-002, ADR-0092).
+# Copy this file to evals/models.toml, which is not committed, and run:
+#
+#   uv run pytest evals --eval-models evals/models.toml
+#
+# Each model is reached through a connection, as the API creates one
+# (specs/contracts/test-harness.md, "Evals"). Keys are never written here:
+# `api_key_env` names the environment variable that holds one.
+
+# A small model on this machine, through Ollama's OpenAI-compatible API.
+[[model]]
+name = "gemma4 e4b (local)"
+kind = "openai"
+base_url = "http://127.0.0.1:11434/v1"
+location = "local"
+model = "gemma4:e4b"
+
+# A model through OpenRouter.
+[[model]]
+name = "claude sonnet (openrouter)"
+kind = "openrouter"
+model = "anthropic/claude-sonnet-4.5"
+api_key_env = "OPENROUTER_API_KEY"

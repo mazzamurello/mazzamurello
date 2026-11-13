@@ -9,6 +9,9 @@ answers by the query:
 - anything else answers with `RESULTS` results, whose titles, addresses and
   excerpts name the query (`result`).
 
+While `scripted_results` is set, every query is answered with those results
+instead, as an eval scenario sets them (ADR-0092).
+
 Every request is recorded, so that tests can check what left the worker.
 """
 
@@ -49,6 +52,7 @@ class SearchRequest:
 class SearchServer:
     url: str
     requests: list[SearchRequest] = field(default_factory=list[SearchRequest])
+    scripted_results: list[dict[str, Any]] | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record(self, request: SearchRequest) -> None:
@@ -84,8 +88,10 @@ def _handler(search: SearchServer) -> type[BaseHTTPRequestHandler]:
             if query == "fail":
                 self._json(500, {"error": "scripted failure"})
                 return
+            scripted = search.scripted_results
             count = {"many": MANY_RESULTS, "nothing": 0}.get(query, RESULTS)
-            results = [result(query, index) for index in range(count)]
+            results = list(scripted) if scripted is not None else [result(query, index) for index in range(count)]
+            count = len(results)
             self._json(
                 200,
                 {
