@@ -34,7 +34,8 @@ function Request({ interrupt }: { interrupt: Interrupt }) {
       <p className="text-[15px] font-semibold text-pretty">
         {toolLabel(t, request.tool)} <code className="font-mono text-[13px] font-normal text-muted">{request.tool}</code>
       </p>
-      <p className="text-pretty">{request.action}</p>
+      {/* What the call does, unless it only repeats the tool's name. */}
+      {request.action !== toolLabel(t, request.tool) && <p className="text-pretty">{request.action}</p>}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
         <dt className="font-semibold text-muted">{t("approvals.data")}</dt>
         <dd className="font-mono text-[13px] break-words whitespace-pre-wrap">{request.data}</dd>

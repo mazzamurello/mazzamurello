@@ -193,9 +193,9 @@ function PermissionsForm({ userId, stored, tools }: { userId: string; stored: To
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div>
         <h3 className="mb-1 text-sm font-bold">{t("permissions.byTool")}</h3>
-        <table className="w-full min-w-[520px] text-left text-sm">
+        <table className="w-full text-left text-sm">
           <thead className="text-xs text-muted">
             <tr>
               <th scope="col" className="py-1.5 font-semibold">{t("permissions.tool")}</th>

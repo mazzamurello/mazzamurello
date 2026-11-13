@@ -40,9 +40,12 @@ interface Turn {
 /** The runs of the conversation, each with its user message and what answered it. */
 function turnsOf(page: MessagePage): Turn[] {
   const byId = new Map(page.items.map((message) => [message.id, message as AgUiMessage]));
+  // Results by call, across runs: an approved call's result comes in the run that continues it (ADR-0090).
+  const results = new Map(
+    page.items.filter((m) => m.role === "tool").map((m) => [(m as AgUiMessage).toolCallId, textOf((m as AgUiMessage).content)]),
+  );
   return page.runs.map((run) => {
     const messages = run.message_ids.flatMap((id) => byId.get(id) ?? []);
-    const results = new Map(messages.filter((m) => m.role === "tool").map((m) => [m.toolCallId, textOf(m.content)]));
     let userText: string | null = null;
     let attachments: AttachedFile[] = [];
     const parts: LivePart[] = [];
@@ -786,7 +789,9 @@ function ToolCall({ part, running, decision }: { part: Extract<LivePart, { kind:
                 : t("activity.used", { name: part.name });
   // A command's first line, under what it is for; other tools show their first argument beside the label.
   const preview = command !== null ? (command.split("\n")[0] ?? "") : argumentPreview(part.args);
-  const done = part.result !== undefined;
+  // A call that never ran, denied or refused, is not done: its outcome says what became of it (UX-023).
+  const refused = decision !== undefined && ["denied", "expired", "refused"].includes(decision.outcome);
+  const done = part.result !== undefined && !refused;
   return (
     <details className="group/tool max-w-full">
       <summary className={`flex max-w-full cursor-pointer list-none items-center gap-2 border border-line py-[5px] pr-2.5 pl-[9px] text-[13.5px] text-muted hover:bg-hover hover:text-fg [&::-webkit-details-marker]:hidden ${command !== null ? "rounded-xl" : "w-fit rounded-full"}`}>
