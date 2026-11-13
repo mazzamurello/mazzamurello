@@ -218,6 +218,27 @@ message or choose another model.
 Rationale: a refusal is the model's decision, not a fault of the system,
 and the user can only act on it if they see it.
 
+## MOD-017: A model that cannot go on
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration, e2e
+
+A model MUST be given three consecutive retries of each tool, with the
+error each failed call caused, before its run gives up. When a model keeps
+calling a tool in a way that fails, the run MUST fail with the code
+`model.tool_misuse`; when a model's answer stops at its length or context
+limit before it says or calls anything, with `model.context_exceeded`.
+Neither MUST fail as `internal.error`. Clients MUST say that the model, not
+Sibillo, could not go on, and what the user can do: choose another model,
+or, for `model.context_exceeded`, give the model's server a larger context
+window, such as Ollama's `num_ctx`, or start a new conversation (UX-014).
+
+Rationale: small local models do both, and an internal error sends the
+user, or the household's admin, looking for a fault of the system. Found by
+the first eval suite (ADR-0092).
+
 ## MOD-016: Data egress policy of a shared space
 
 - **Status:** draft

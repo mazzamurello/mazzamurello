@@ -113,7 +113,9 @@ before a tool call and again after its result, in the field each names it
 with (CNV-013), and text before a tool call in the same
 answer, as models do when they say what they are about to do (UX-003), and
 several tools one after another, each once the result of the one before has
-arrived, as a model working through a task does (ADR-0090). It records the headers of each request, so
+arrived, as a model working through a task does (ADR-0090). It also stops an answer
+at its length limit before saying anything, with the finish reason `length`
+and no content, as a model whose context is full does (MOD-017). It records the headers of each request, so
 tests can check what the gateway sends.
 
 It also serves speech (ADR-0088). As an OpenAI-compatible server it lists
@@ -256,6 +258,7 @@ base_url = "http://127.0.0.1:11434/v1"
 location = "local"                    # where inference runs (MOD-010)
 model = "qwen3:8b"                    # the model, as the connection lists it
 api_key_env = "OLLAMA_API_KEY"        # optional: the variable that holds the key
+context_window = 32768                # optional, for `openai`: the connection's context window
 ```
 
 For each model, the suite adds a connection as the instance admin, so that

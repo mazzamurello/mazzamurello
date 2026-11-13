@@ -1666,6 +1666,8 @@ components:
         - model.request_failed
         - model.refused
         - model.egress_refused
+        - model.tool_misuse
+        - model.context_exceeded
         - speech.unavailable
         - file.too_large
         - file.not_previewable
@@ -2782,8 +2784,12 @@ components:
         `RUN_ERROR` carries the error's `code` and a `message`, which ends
         with the reason the model or its provider gave, when there is one;
         a request the model refuses fails with `model.refused` (MOD-015),
-        and a request the user's data egress policy refuses, checked before
-        each model request, with `model.egress_refused` (MOD-003).
+        a request the user's data egress policy refuses, checked before
+        each model request, with `model.egress_refused` (MOD-003), a model
+        that keeps calling a tool in a way that fails, after three
+        consecutive retries, with `model.tool_misuse`, and an answer that
+        stops at the model's length or context limit before it says or
+        calls anything with `model.context_exceeded` (MOD-017).
         A run that asks the user a question, or whose tool calls need
         approval, ends with `RUN_FINISHED` whose `outcome` is
         `{type: "interrupt", interrupts}`, each an `Interrupt` (AGT-015,
