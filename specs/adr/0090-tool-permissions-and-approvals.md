@@ -45,6 +45,11 @@ mostly quiet.
    | `check_command`, `read_file`, `list_directory`, `find_files`, `search_files`, `file_info` | `reads_private_data`, `ingests_untrusted` | allowed |
    | `stop_command`, `write_file`, `edit_file`, `create_directory`, `offer_download` | `reads_private_data` | allowed |
    | `ask_user_question`, the planning tools | none | allowed |
+   | `read_tool_result`, which reads back a large result set aside (AGT-014) | `reads_private_data`, `ingests_untrusted` | allowed |
+
+   `read_tool_result` belongs to the output limits, not to a tool group: the
+   user has no switch for it (ADR-0087), and tool permissions reach it
+   through its classes only.
 
    Web and command tools are allowed by default because the trifecta rule
    (point 3) already guards them where it matters. Nothing today is
@@ -118,7 +123,7 @@ mostly quiet.
    approvals of one run are pending together and answered together.
 
 7. **Expiry.** An approval request is pending for **24 hours**. When it
-   expires, a scheduled job resumes the conversation, answering its pending
+   expires, a sweep of the worker resumes the conversation, answering its pending
    approvals as denied and its pending questions as declined (AGT-007).
    Questions alone still never expire (ADR-0083). A request that cannot be
    stored is denied.
@@ -131,9 +136,10 @@ mostly quiet.
    kept after their conversation is deleted, naming it only by its ID, and
    deleted with their user. For tools that communicate externally or are
    irreversible or physical, the worker records the attempt, with the run
-   and tool call IDs as the idempotency key, in a durable step before the
-   call runs. A call recorded twice may have run twice after a crash
-   (ADR-0034), and its audit event says so. The user sees audit events on an
+   and tool call IDs as the idempotency key, before the call runs. Tool
+   calls are not durable steps: a run replayed after a crash calls its tools
+   again, and records the attempt again. A call recorded twice may have run
+   twice (ADR-0034), and its audit event says so. The user sees audit events on an
    Activity page of their settings, and the approval outcome of each call
    on the call itself in the conversation (UX-023).
 

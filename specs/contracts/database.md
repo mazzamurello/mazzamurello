@@ -82,6 +82,7 @@ minimum needed and nothing else.
 | `auth_record_login_attempt(username text, source inet, success boolean)` | `allowed boolean, retry_after_seconds integer` | Rate limiting (AUTH-006), by the rules below |
 | `default_model_configured()` | `boolean` | Whether any tenant has a default model, for `/health` before any sign-in (OPS-002, ADR-0054, ADR-0069) |
 | `expired_temporary_conversations(hours integer)` | `conversation_id, tenant_id, owner_id` for every temporary conversation whose `updated_at` is more than `hours` hours ago and that has no `queued` or `running` run | Deletion of temporary conversations (CNV-011, ADR-0082): only identifiers, so the worker can delete each one under its owner's request context |
+| `expired_approvals()` | `conversation_id, tenant_id, owner_id` for every conversation whose `approvals_expire_at` has passed and that has no `queued` or `running` run | Expiry of approval requests (AGT-007, ADR-0090): only identifiers, so the worker can deny them under the owner's request context |
 | `retention_expired_runs(days integer)` | `run_id` for every run whose `finished_at` is more than `days` days ago | Retention of durable workflows (TEN-009, ADR-0052): only identifiers, so the worker can delete their workflows across tenants |
 | `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `sibillo_owner`, run by the setup command |
 
@@ -106,8 +107,8 @@ these are the only policies for that role:
 | `users` | `SELECT`, `INSERT` | `auth_find_login`, `auth_find_session`, `bootstrap_instance` |
 | `device_sessions` | `SELECT`, `UPDATE` | `auth_find_session`, `auth_touch_session`, `revoke_sessions_of_disabled_user` |
 | `login_attempts` | `SELECT`, `INSERT`, `DELETE` | `auth_record_login_attempt`, which also deletes rows older than the rate-limit window |
-| `runs` | `SELECT` | `retention_expired_runs`, `expired_temporary_conversations` |
-| `conversations` | `SELECT` | `expired_temporary_conversations` |
+| `runs` | `SELECT` | `retention_expired_runs`, `expired_temporary_conversations`, `expired_approvals` |
+| `conversations` | `SELECT` | `expired_temporary_conversations`, `expired_approvals` |
 | `connections` | `SELECT` | `default_model_configured` |
 
 Owner policies have no condition (`USING (true)`): `sibillo_owner` is never used
@@ -393,11 +394,11 @@ rewinding a conversation keeps them; they are deleted with their user.
 | `tenant_id`, `owner_id` | uuid | the user the call acted for; (`tenant_id`, `owner_id`) references `users` on delete cascade |
 | `conversation_id`, `run_id` | uuid | not null; identifiers only |
 | `tool_call_id` | text | not null; unique with `run_id`: the idempotency key of the call |
-| `tool` | text | not null; a name of `ToolName` |
+| `tool` | text | not null; the tool's name: one of `ToolName`, or a tool without a switch, such as `read_tool_result` |
 | `outcome` | text | `not_needed`, `allowed`, `approved`, `denied`, `expired` or `refused` |
 | `scope` | text | `once`, `turn` or `conversation`, else null |
 | `reason` | text | `untrusted_content`, `tool_default`, `permission`, `consequential` or `device`, else null |
-| `attempts` | integer | not null, default 0; incremented in a durable step before each start of a call of a tool in the `external_communication`, `irreversible` or `physical` class; more than one means it may have run twice (ADR-0034) |
+| `attempts` | integer | not null, default 0; incremented before each start of a call of a tool in the `external_communication`, `irreversible` or `physical` class, outside any durable step, so that a run replayed after a crash, which calls its tools again, increments it again; more than one means it may have run twice (ADR-0034) |
 | `created_at` | timestamptz | not null; indexed with `owner_id` |
 
 ### `connections`

@@ -1161,7 +1161,7 @@ paths:
         - name: tool
           in: query
           description: Only the events of this tool.
-          schema: { $ref: "#/components/schemas/ToolName" }
+          schema: { type: string, maxLength: 100 }
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
@@ -2001,7 +2001,9 @@ components:
       required: [id, tool, conversation_id, conversation_title, run_id, tool_call_id, outcome, scope, reason, repeated, created_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
-        tool: { $ref: "#/components/schemas/ToolName" }
+        tool:
+          type: string
+          description: The tool's name, a `ToolName` or a tool the user has no switch for, such as `read_tool_result`.
         conversation_id: { $ref: "#/components/schemas/Id" }
         conversation_title:
           type: [string, "null"]

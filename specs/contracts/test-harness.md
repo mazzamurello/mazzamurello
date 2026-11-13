@@ -62,8 +62,10 @@ database procedure (ADR-0050):
 3. Start the worker, `python -m sibillo_server worker`, from the
    repository root, with `SIBILLO_DATABASE_URL` and `SIBILLO_SECRET_KEY` as for the
    API (ADR-0052), `SIBILLO_SANDBOXD_URL` and `SIBILLO_SANDBOXD_TOKEN` of the
-   sandbox driver below, and `SIBILLO_TEMPORARY_SWEEP_SECONDS` set to `1`, so
-   that tests of temporary conversations need not wait (ADR-0082). The worker has no readiness signal: tests wait for the
+   sandbox driver below, and `SIBILLO_TEMPORARY_SWEEP_SECONDS` and
+   `SIBILLO_APPROVAL_SWEEP_SECONDS` set to `1`, so that tests of temporary
+   conversations and of expired approvals need not wait (ADR-0082,
+   ADR-0090). The worker has no readiness signal: tests wait for the
    outcome of runs, with a timeout.
 4. Tests call the API over HTTP at `http://127.0.0.1:PORT/v1` and stop both
    processes at the end of the session. To check recovery (AGT-010), a test
@@ -109,7 +111,9 @@ them. Both refuse a request when the test asks, as a content filter does: a
 (MOD-015). Both stream reasoning before the answer when the test asks, also
 before a tool call and again after its result, in the field each names it
 with (CNV-013), and text before a tool call in the same
-answer, as models do when they say what they are about to do (UX-003). It records the headers of each request, so
+answer, as models do when they say what they are about to do (UX-003), and
+several tools one after another, each once the result of the one before has
+arrived, as a model working through a task does (ADR-0090). It records the headers of each request, so
 tests can check what the gateway sends.
 
 It also serves speech (ADR-0088). As an OpenAI-compatible server it lists

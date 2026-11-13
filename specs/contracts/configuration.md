@@ -33,6 +33,7 @@ variable.
 | `SIBILLO_SECRET_KEY` | yes | — | The same key as the API's. |
 | `SIBILLO_RUN_RETENTION_DAYS` | no | `30` | Days after a run finishes before its durable workflow and event stream are deleted (TEN-009), from 1 to 3650. |
 | `SIBILLO_TEMPORARY_SWEEP_SECONDS` | no | `600` | Seconds between two sweeps for temporary conversations to delete (CNV-011, ADR-0082), from 1 to 86400. |
+| `SIBILLO_APPROVAL_SWEEP_SECONDS` | no | `60` | Seconds between two sweeps for expired approval requests to deny (AGT-007, ADR-0090), from 1 to 3600. |
 | `SIBILLO_SANDBOXD_URL` | yes | — | Base URL of the sandbox driver's API, such as `http://sandboxd:8100/v1`, on the internal network (ADR-0022). |
 | `SIBILLO_SANDBOXD_TOKEN` | yes | — | The secret shared with the sandbox driver, at least 32 characters (ADR-0022). |
 | `SIBILLO_SEARCH_URL` | no | empty | Base URL of the search service, such as `http://search:8080`, on the `search` network (ADR-0075). When empty, the agent has no `web_search` tool (AGT-020). |
