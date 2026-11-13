@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import httpx
 import pytest
 
+from tests.support.approvals import approve
 from tests.support.database import uuid7
 from tests.support.deployment import (
     UP_TIMEOUT_SECONDS,
@@ -24,6 +25,7 @@ from tests.support.deployment import (
     run_text,
 )
 from tests.support.model import ModelServer
+from tests.support.runs import parse_events
 
 
 @dataclass(frozen=True)
@@ -100,6 +102,26 @@ def test_a_restored_installation_has_the_workspaces_and_the_connection_keys(
     marker = f"run:cat /workspace/notes/a.txt # {uuid7()}"
     with httpx.Client(base_url=deployment.base_url, headers=headers, timeout=120) as client:
         _, answer = run_text(client, restored.conversation_id, marker, parent=restored.last_run_id)
+        if not answer:
+            # The conversation's second command asks for approval: its output is untrusted content
+            # (AGT-004, ADR-0090).
+            answer = _approved(client, restored.conversation_id)
     assert "kept" in answer
     (request,) = reachable_model.requests_with(marker)[:1]
     assert request.authorization == f"Bearer {restored.api_key}"
+
+
+def _approved(client: httpx.Client, conversation_id: str) -> str:
+    """Approve the conversation's pending requests once: the answer of the run that continues."""
+    pending = client.get(f"/conversations/{conversation_id}").json()["interrupts"]
+    assert pending, "the run neither answered nor asked for approval"
+    payload = {
+        "threadId": conversation_id,
+        "runId": str(uuid7()),
+        "messages": [],
+        "resume": [approve(interrupt["id"]) for interrupt in pending],
+    }
+    with client.stream("POST", f"/conversations/{conversation_id}/runs", json=payload) as response:
+        assert response.status_code == 200, response.read().decode()
+        events = parse_events(list(response.iter_lines()))
+    return "".join(str(event.data.get("delta", "")) for event in events if event.type == "TEXT_MESSAGE_CONTENT")
