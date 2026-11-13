@@ -231,7 +231,12 @@ export function Composer(props: {
             </button>
           )}
           <span className="flex-1" />
-          <ModelSelect compact value={props.model} onChange={props.onModel} />
+          <ModelSelect
+            compact
+            value={props.model}
+            onChange={props.onModel}
+            {...(models.data && models.data.items.length > 0 ? { placeholder: t("composer.chooseModel") } : {})}
+          />
           {props.running && props.onStop ? (
             <button type="button" onClick={props.onStop} className="grid size-9 flex-none place-items-center rounded-xl bg-fg text-bg" aria-label={t("composer.stop")}>
               <Square className="size-3.5" fill="currentColor" aria-hidden="true" />

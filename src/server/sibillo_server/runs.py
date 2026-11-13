@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sibillo_server import egress, errors, schemas
 from sibillo_server.approvals import record
 from sibillo_server.auth import Authenticated, Engine
+from sibillo_server.connections import allowed, default_model
 from sibillo_server.conversations import Durable, find_conversation
 from sibillo_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
 from sibillo_server.durable import APPLICATION_VERSION, EVENTS_STREAM, RUN_QUEUE, RUN_WORKFLOW
@@ -158,6 +159,10 @@ async def _run_model(connection: AsyncConnection, conversation: Any) -> Any:
     if conversation.connection_id is None and conversation.model is None:
         default = (await new_conversation(connection)).model
         if default is None:
+            # The household's default, refused by the user's data egress policy, says why (MOD-003, ADR-0091).
+            household = await default_model(connection)
+            if household is not None and not await allowed(connection, household):
+                raise egress.refused()
             raise errors.ApiError(409, "model.unavailable", "No default model")
         await connection.execute(
             text("UPDATE conversations SET connection_id = :connection, model = :model WHERE id = :id"),

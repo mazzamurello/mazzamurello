@@ -31,7 +31,8 @@ export function ModelSelect(props: {
   const button = useRef<HTMLButtonElement>(null);
   const models = useModels();
   const chosen = findModel(models.data?.items, props.value);
-  if (props.compact && !chosen) return null;
+  // Without a model, the message box offers to choose one when there is something to choose.
+  if (props.compact && !chosen && !props.placeholder) return null;
   const local = chosen?.location === "local";
   const shown = chosen ? (props.compact ? chosen.name : `${chosen.name} · ${chosen.connection_name}`) : props.placeholder;
   return (

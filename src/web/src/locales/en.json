@@ -145,7 +145,8 @@
     "remote": "Messages go to {{connection}} and the provider that runs the model.",
     "chatOnly": "This model can only chat: it cannot search, read or write files, or run commands.",
     "noModel": "No model is set up yet. A household admin can add one in Settings.",
-    "refused": "This chat's model runs remotely, and only local models are allowed. Choose a local model to continue."
+    "refused": "This chat's model runs remotely, and only local models are allowed. Choose a local model to continue.",
+    "chooseModel": "Choose a model"
   },
   "picker": {
     "title": "Choose a model",
