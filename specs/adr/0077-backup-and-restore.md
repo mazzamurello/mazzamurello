@@ -27,13 +27,13 @@ other component can read a workspace volume.
 ## Decision
 
 1. **One command makes one archive.** `docker compose run --rm backup`
-   writes `mazzamurello-<UTC date and time>.tar.age` into the backup folder
+   writes `sibillo-<UTC date and time>.tar.age` into the backup folder
    of the host. The archive holds:
-   - `manifest.json`: the Mazzamurello version, the time, and the size and
+   - `manifest.json`: the Sibillo version, the time, and the size and
      SHA-256 of every other entry;
    - `database.dump`: `pg_dump` of the database in its custom format, made
      as PostgreSQL's superuser, so row-level security hides nothing;
-   - `secret-key`: the instance's `MZM_SECRET_KEY`;
+   - `secret-key`: the instance's `SIBILLO_SECRET_KEY`;
    - `workspaces/<tenant>/<user>.tar`: every user's workspace.
 2. **Workspaces go through the driver** (SBX-020): it streams a workspace as
    a tar archive, and replaces a stopped sandbox's workspace with one. The
@@ -44,7 +44,7 @@ other component can read a workspace volume.
    seconds newer than the database; the archive says when each part was
    taken.
 4. **Encrypted with a backup key** (`age`): `init` writes a new age
-   identity into `.env` as `MZM_BACKUP_KEY`, and archives are encrypted to
+   identity into `.env` as `SIBILLO_BACKUP_KEY`, and archives are encrypted to
    its recipient. The household must keep a copy of it away from the
    server: without it, no archive can be restored. Since the archive is
    encrypted, it can hold the secret key, and a restore needs only the
@@ -54,7 +54,7 @@ other component can read a workspace volume.
 5. **Restore into a fresh installation.** With the household's backup key
    in the new installation's `.env`, `docker compose run --rm restore FILE`
    decrypts the archive, checks the manifest and the checksums, refuses a
-   database that has users and an archive of another Mazzamurello version
+   database that has users and an archive of another Sibillo version
    (before the first release, ADR-0071), loads the database, writes the
    archive's secret key into `.env`, and imports the workspaces. It runs
    nothing from the archive.
@@ -63,8 +63,8 @@ other component can read a workspace volume.
    stopping their sandbox: the way back from a workspace that went wrong
    (T-33).
 7. **Every night, by itself** (OPS-010): a `backup` service in the Compose
-   deployment makes an archive every day at `MZM_BACKUP_TIME` (03:00 UTC by
-   default) and keeps the newest `MZM_BACKUP_KEEP` (14). It writes the
+   deployment makes an archive every day at `SIBILLO_BACKUP_TIME` (03:00 UTC by
+   default) and keeps the newest `SIBILLO_BACKUP_KEEP` (14). It writes the
    outcome of each attempt to `status.json` in the backup folder.
 8. **A failing backup does not go unnoticed** (OPS-011): `/health` reports
    `degraded` when the newest backup attempt failed, or when the last

@@ -1,4 +1,4 @@
-// The sprite: an original mazzamurello, drawn as SVG and animated with CSS (UX-012 to UX-014, ADR-0070).
+// The sprite: Sibillo, an original mazzamurello, drawn as SVG and animated with CSS (UX-012 to UX-014, ADR-0070).
 // It is decorative: hidden from assistive technologies, which get the same information as text.
 
 export type Pose = "greeting" | "thinking" | "searching" | "reading" | "writing" | "running" | "answering" | "waiting" | "error";

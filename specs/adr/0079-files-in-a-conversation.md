@@ -58,7 +58,7 @@ folders as projects, is a separate decision, deliberately left for later.
    a download button. A browser does not download without the user's tap, so
    the card never downloads by itself. It points at the workspace as it is:
    later it downloads the file's current content, or says it is gone.
-6. **Limits.** One upload is at most `MZM_UPLOAD_MAX_MB`, 1024 by default,
+6. **Limits.** One upload is at most `SIBILLO_UPLOAD_MAX_MB`, 1024 by default,
    and an upload that would take the workspace over its quota is refused.
    Uploads stream from the client through the API and the driver into the
    sandbox, held in memory by none; they are written under a temporary name,
@@ -79,7 +79,7 @@ folders as projects, is a separate decision, deliberately left for later.
 - Every file operation outside an answer starts a sandbox for a moment, about
   a third of a second.
 - A household behind a reverse proxy must let uploads of
-  `MZM_UPLOAD_MAX_MB` through, nginx's default being 1 MB; the README says so.
+  `SIBILLO_UPLOAD_MAX_MB` through, nginx's default being 1 MB; the README says so.
 - A 1 GB upload fits a 2 GB workspace once; the instance admin can raise the
   quota.
 

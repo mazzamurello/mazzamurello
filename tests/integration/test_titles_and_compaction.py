@@ -50,7 +50,7 @@ def test_a_new_conversation_gets_a_title_from_its_model(database: Database, serv
         time.sleep(0.3)
     assert 0 < len(title) <= 200
     # The run announces the title before it finishes, so clients show it while it is answered.
-    (announced,) = [e for e in events if e.type == "CUSTOM" and e.data.get("name") == "mzm.title"]
+    (announced,) = [e for e in events if e.type == "CUSTOM" and e.data.get("name") == "sibillo.title"]
     assert announced.data["value"] == {"title": title}
     finished = next(index for index, e in enumerate(events) if e.type == "RUN_FINISHED")
     assert events.index(announced) < finished

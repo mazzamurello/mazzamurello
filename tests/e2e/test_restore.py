@@ -58,10 +58,10 @@ def restored(deployment: Deployment, reachable_model: ModelServer) -> Restored:
         last, _ = run_text(client, conversation["id"], keep)
 
     # The README's backup command, while the instance runs.
-    deployment.compose("exec", "-T", "backup", "python", "-m", "mazzamurello_server", "backup", timeout=600)
-    archives = sorted((deployment.config_dir / "backups").glob("mazzamurello-*.tar.age"))
+    deployment.compose("exec", "-T", "backup", "python", "-m", "sibillo_server", "backup", timeout=600)
+    archives = sorted((deployment.config_dir / "backups").glob("sibillo-*.tar.age"))
     assert archives, "no archive was written"
-    key = env_values(deployment)["MZM_BACKUP_KEY"]
+    key = env_values(deployment)["SIBILLO_BACKUP_KEY"]
 
     # The server is lost: everything goes but the archive and the backup key.
     port = int(deployment.base_url.split(":")[-1].split("/")[0])
@@ -72,7 +72,7 @@ def restored(deployment: Deployment, reachable_model: ModelServer) -> Restored:
 
     # A new installation, with the household's backup key, then the README's restore command.
     deployment.compose("run", "--rm", "--no-deps", "init")
-    new_key = env_values(deployment)["MZM_BACKUP_KEY"]
+    new_key = env_values(deployment)["SIBILLO_BACKUP_KEY"]
     deployment.env_file.write_text(deployment.env_file.read_text().replace(new_key, key))
     configure(deployment, port)
     deployment.compose("up", "--detach", "--wait", timeout=UP_TIMEOUT_SECONDS)

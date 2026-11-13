@@ -25,11 +25,11 @@ FORBIDDEN_IMPORTS = (
 # The operator's backups run pg_dump, pg_restore and age in a container of their
 # own, on files of their own; the one function that does is pinned by
 # tests/design/test_mediated_actions.py (ADR-0077).
-OPERATOR_COMMANDS = {SERVER / "mazzamurello_server" / "backup.py": {"subprocess"}}
+OPERATOR_COMMANDS = {SERVER / "sibillo_server" / "backup.py": {"subprocess"}}
 
 
 def _python_files() -> list[Path]:
-    return sorted((SERVER / "mazzamurello_server").rglob("*.py"))
+    return sorted((SERVER / "sibillo_server").rglob("*.py"))
 
 
 def _imports(path: Path) -> set[str]:

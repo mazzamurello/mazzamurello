@@ -64,7 +64,7 @@ def test_my_defaults_shape_every_new_chat(page: Page, member: Account, default_m
     # The system prompt comes last, set apart, and starts from the built-in one.
     danger = assistant.get_by_role("region", name="Danger zone")
     system_prompt = danger.get_by_label("System prompt")
-    expect(system_prompt).to_have_value(re.compile("^You are Mazzamurello"))
+    expect(system_prompt).to_have_value(re.compile("^You are Sibillo"))
     additional_box, danger_box = additional.bounding_box(), danger.bounding_box()
     assert additional_box is not None
     assert danger_box is not None
@@ -90,7 +90,7 @@ def test_changing_the_settings_of_one_chat(page: Page, member: Account, default_
     dialog.get_by_role("radio", name="Off").check()
     dialog.get_by_role("switch", name="Run a command", exact=True).uncheck()
     system_prompt = dialog.get_by_role("region", name="Danger zone").get_by_label("System prompt")
-    expect(system_prompt).to_have_value(re.compile("^You are Mazzamurello"))
+    expect(system_prompt).to_have_value(re.compile("^You are Sibillo"))
     system_prompt.fill(f"You are Bea {mark}.")
     assert accessibility_violations(page) == []
     dialog.get_by_role("button", name="Save").click()
@@ -100,14 +100,14 @@ def test_changing_the_settings_of_one_chat(page: Page, member: Account, default_
     assert "run_command" not in request.tool_names()
     system = request.system_text()
     assert f"You are Bea {mark}." in system
-    assert "You are Mazzamurello" not in system
+    assert "You are Sibillo" not in system
     # Restoring the default brings back the built-in system prompt.
     page.get_by_role("button", name="Chat settings").click()
     expect(system_prompt).to_have_value(f"You are Bea {mark}.")
     dialog.get_by_role("button", name="Restore the default system prompt").click()
-    expect(system_prompt).to_have_value(re.compile("^You are Mazzamurello"))
+    expect(system_prompt).to_have_value(re.compile("^You are Sibillo"))
     dialog.get_by_role("button", name="Save").click()
-    assert "You are Mazzamurello" in _request(page, default_model, f"third {mark}").system_text()
+    assert "You are Sibillo" in _request(page, default_model, f"third {mark}").system_text()
 
 
 @pytest.mark.spec("CNV-013")

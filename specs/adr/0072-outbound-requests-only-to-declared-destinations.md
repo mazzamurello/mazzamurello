@@ -7,7 +7,7 @@
 
 ## Context
 
-A household runs Mazzamurello to keep its data at home. OBS-001 forbids
+A household runs Sibillo to keep its data at home. OBS-001 forbids
 telemetry, and the web app's Content Security Policy keeps scripts to its
 own origin (ADR-0067). Neither covers every way software reaches the
 internet on its own:

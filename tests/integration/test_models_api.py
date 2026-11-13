@@ -482,25 +482,25 @@ def _working_instructions_follow(system: str, base: str, additional: str) -> Non
 def test_default_instructions_reach_every_conversation_from_its_next_run(server: Server, household: Household) -> None:
     conversation = create_conversation(server, household.token)
     default = _request(server, household, conversation["id"], f"built in {secrets.token_hex(4)}").system_text()
-    assert "Mazzamurello" in default
+    assert "Sibillo" in default
     # Set after the conversation started, and used by it all the same.
     base, additional = f"You are Ada {secrets.token_hex(4)}.", f"Sign as Ada {secrets.token_hex(4)}."
     _settings(server, household.token, base_instructions=base, additional_instructions=additional)
     system = _request(server, household, conversation["id"], f"tailored {secrets.token_hex(4)}").system_text()
-    assert "You are Mazzamurello" not in system
+    assert "You are Sibillo" not in system
     _working_instructions_follow(system, base, additional)
     # Restoring the default brings back the built-in base instructions.
     _settings(server, household.token, additional_instructions=additional)
     system = _request(server, household, conversation["id"], f"restored {secrets.token_hex(4)}").system_text()
     assert base not in system
-    _working_instructions_follow(system, "You are Mazzamurello", additional)
+    _working_instructions_follow(system, "You are Sibillo", additional)
 
 
 @pytest.mark.spec("CNV-014")
 def test_the_built_in_base_instructions_come_with_the_defaults(server: Server, household: Household) -> None:
     with server.client(household.token) as client:
         built_in = body(client.get("/me/settings"))["built_in_base_instructions"]
-    assert "Mazzamurello" in built_in
+    assert "Sibillo" in built_in
     conversation = create_conversation(server, household.token)
     assert built_in in _request(server, household, conversation["id"], f"shown {secrets.token_hex(4)}").system_text()
     # The same when the user replaced them, so a client can show what restoring brings back.
@@ -527,7 +527,7 @@ def test_a_conversations_own_instructions_win_until_restored(server: Server, hou
     assert base not in system
     assert own not in system
     assert default not in system
-    assert "You are Mazzamurello" in system
+    assert "You are Sibillo" in system
 
 
 @pytest.mark.spec("CNV-014")

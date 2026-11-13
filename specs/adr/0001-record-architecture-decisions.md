@@ -7,7 +7,7 @@
 
 ## Context
 
-Mazzamurello is written by AI agents under human direction. Agents start
+Sibillo is written by AI agents under human direction. Agents start
 every session without memory of previous ones, and future contributors will
 not have been present when decisions were taken. Decisions that live only in
 conversations are lost, and lost decisions get silently re-litigated in code.

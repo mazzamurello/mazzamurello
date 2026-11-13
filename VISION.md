@@ -19,7 +19,7 @@ on a server in the house.
 
 ## The goal
 
-Mazzamurello is a **self-hosted, private, capable AI assistant for a
+Sibillo is a **self-hosted, private, capable AI assistant for a
 household**. One installation serves one family. Every member has:
 
 - private conversations — many of them, one per purpose;
@@ -66,7 +66,7 @@ assistant.
 - **Secondary:** small organizations or community operators who want to host
   isolated assistants for several households or a small team.
 
-## What Mazzamurello is not
+## What Sibillo is not
 
 - **Not a cloud service.** There is no hosted offering by this project.
 - **Not a desktop or laptop app.** The server runs only in containers on a

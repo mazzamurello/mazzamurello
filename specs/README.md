@@ -1,6 +1,6 @@
 # Specifications
 
-This directory is the source of truth for Mazzamurello. Code exists to
+This directory is the source of truth for Sibillo. Code exists to
 satisfy what is written here; tests exist to prove it does.
 
 | Path | Contents |

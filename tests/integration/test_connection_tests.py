@@ -84,7 +84,7 @@ def test_a_failure_names_its_step_and_reason(
     root = harness_model.endpoint.url.removesuffix("/v1")
     base_url, failed_step = {
         "connection_refused": (f"http://127.0.0.1:{_closed_port()}/v1", "connect"),
-        "name_not_found": ("http://mazzamurello-test.invalid:11434/v1", "resolve"),
+        "name_not_found": ("http://sibillo-test.invalid:11434/v1", "resolve"),
         # The server answers, but not at this path: most servers want `/v1`.
         "http_error": (root, "list_models"),
         "not_a_model_server": (f"{root}/html", "list_models"),

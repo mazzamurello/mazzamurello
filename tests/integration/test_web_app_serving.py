@@ -14,7 +14,7 @@ import pytest
 
 from tests.support.server import Server
 
-INDEX = "<!doctype html><title>Mazzamurello</title><div id=root></div><script src=/assets/app.js></script>"
+INDEX = "<!doctype html><title>Sibillo</title><div id=root></div><script src=/assets/app.js></script>"
 
 
 @pytest.fixture(scope="module")
@@ -24,8 +24,8 @@ def web(server: Server, tmp_path_factory: pytest.TempPathFactory) -> Iterator[st
     (root / "index.html").write_text(INDEX)
     (root / "assets").mkdir()
     (root / "assets" / "app.js").write_text("console.log('app')")
-    (root / "manifest.webmanifest").write_text('{"name": "Mazzamurello"}')
-    api, origin = server.start_twin_api(MZM_WEB_ROOT=str(root))
+    (root / "manifest.webmanifest").write_text('{"name": "Sibillo"}')
+    api, origin = server.start_twin_api(SIBILLO_WEB_ROOT=str(root))
     yield origin
     api.close()
 

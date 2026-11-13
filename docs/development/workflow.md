@@ -1,6 +1,6 @@
 # Development workflow
 
-How Mazzamurello is built: by AI agents, under human direction, with the
+How Sibillo is built: by AI agents, under human direction, with the
 specifications as the source of truth (ADR-0003) and CI as the enforcement
 layer (ADR-0004). This document is the long form of [AGENTS.md](../../AGENTS.md).
 

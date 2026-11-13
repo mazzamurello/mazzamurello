@@ -1,6 +1,6 @@
 # Workspace root (ADR-0028): tooling configuration shared by every package.
 [project]
-name = "mazzamurello-workspace"
+name = "sibillo-workspace"
 version = "0.0.0"
 requires-python = "==3.13.*"
 

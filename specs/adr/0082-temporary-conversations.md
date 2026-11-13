@@ -37,7 +37,7 @@ that returns only identifiers (ADR-0052).
    /conversations/{id}` when the user leaves it for another screen of the
    app or signs out. A reload is not leaving.
 5. **Deleted a day after its last activity:** every
-   `MZM_TEMPORARY_SWEEP_SECONDS` (default 600) the worker calls
+   `SIBILLO_TEMPORARY_SWEEP_SECONDS` (default 600) the worker calls
    `expired_temporary_conversations(hours)` with 24, a `SECURITY DEFINER`
    function that returns the identifiers, tenant and owner of temporary
    conversations whose `updated_at` is more than that many hours ago and that

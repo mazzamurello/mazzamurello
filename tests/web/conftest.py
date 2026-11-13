@@ -57,7 +57,7 @@ def web_build() -> Path:
 
 @pytest.fixture(scope="session")
 def web_origin(server: Server, web_build: Path) -> Iterator[str]:
-    api, origin = server.start_twin_api(MZM_WEB_ROOT=str(web_build))
+    api, origin = server.start_twin_api(SIBILLO_WEB_ROOT=str(web_build))
     yield origin
     api.close()
 

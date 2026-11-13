@@ -14,7 +14,7 @@ which search engine, and where each tool runs.
 No search engine offers free automated searches without a key. The free
 options all read the result pages of public search engines, which limit
 and block automated queries and change their pages. SearXNG is a
-self-hosted metasearch engine, AGPL-3.0 like Mazzamurello, built for
+self-hosted metasearch engine, AGPL-3.0 like Sibillo, built for
 privacy: it sends no cookies to the engines, uses a new browser profile
 for every request, sets no referrer, and pauses an engine that blocks it.
 It queries several engines at once, and its community keeps their parsers

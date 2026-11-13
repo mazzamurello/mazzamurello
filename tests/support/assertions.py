@@ -1,4 +1,4 @@
-"""Assertions about what `mzm_app` may do."""
+"""Assertions about what `sibillo_app` may do."""
 
 from __future__ import annotations
 

@@ -39,7 +39,7 @@ def test_signing_in_and_chatting(page: Page, member: Account, default_model: Har
     assert accessibility_violations(page) == []
     sign_in(page, member, form=True)
     # The session is a cookie that scripts cannot read (AUTH-005).
-    assert "mzm_session" not in page.evaluate("document.cookie")
+    assert "sibillo_session" not in page.evaluate("document.cookie")
     mark = uuid4().hex[:8]
     _send(page, f"hello {mark}")
     _answer(page, f"Echo: hello {mark}")

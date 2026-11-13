@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: Mazzamurello public API
+  title: Sibillo public API
   version: 0.8.0-draft
-  summary: The single public HTTP API used by every Mazzamurello client (API-001).
+  summary: The single public HTTP API used by every Sibillo client (API-001).
   description: |
     Contract for phase 0. Requirements are referenced in `x-requirements`.
 
@@ -20,7 +20,7 @@ info:
     - Runs stream AG-UI 1.0 events over Server-Sent Events (ADR-0032). Each
       SSE message has `id` = sequence number (from 1 within a run), `event` =
       the AG-UI event type and `data` = the JSON-encoded AG-UI event.
-      Resuming with `GET /runs/{run_id}/events` is a Mazzamurello extension;
+      Resuming with `GET /runs/{run_id}/events` is a Sibillo extension;
       standard AG-UI clients ignore `id`.
   license:
     name: CC-BY-4.0
@@ -54,7 +54,7 @@ paths:
         Attempts over the rate limits are refused with `429` and a
         `Retry-After` header, whether or not the password was right. With
         `session_delivery` set to `cookie`, the session is set as the
-        `mzm_session` cookie and the token is not in the body (ADR-0067).
+        `sibillo_session` cookie and the token is not in the body (ADR-0067).
       x-requirements: [AUTH-001, AUTH-004, AUTH-005, AUTH-006]
       security: []
       requestBody:
@@ -67,7 +67,7 @@ paths:
           description: Session created. The token is returned only once, in the body or as a cookie.
           headers:
             Set-Cookie:
-              description: The `mzm_session` cookie, when `session_delivery` is `cookie`.
+              description: The `sibillo_session` cookie, when `session_delivery` is `cookie`.
               schema: { type: string }
           content:
             application/json:
@@ -676,7 +676,7 @@ paths:
         The body is streamed into the sandbox under a temporary name and
         renamed when complete; an interrupted upload leaves nothing. Missing
         folders are created. A path that exists is refused with
-        `resource.conflict`, a body larger than `MZM_UPLOAD_MAX_MB` with
+        `resource.conflict`, a body larger than `SIBILLO_UPLOAD_MAX_MB` with
         `file.too_large`, and one that would take the workspace over its quota
         with `workspace.quota_exceeded` (SBX-014, SBX-019, ADR-0079).
       x-requirements: [UX-019, SBX-014, SBX-019, TEN-006]
@@ -1083,7 +1083,7 @@ paths:
     get:
       tags: [runs]
       operationId: streamRunEvents
-      summary: Resume the events of a run (Mazzamurello extension to AG-UI).
+      summary: Resume the events of a run (Sibillo extension to AG-UI).
       description: |
         Sends every event with a sequence number greater than the one given in
         `Last-Event-ID` (or `after`), then follows new events until the run
@@ -1146,12 +1146,12 @@ components:
     sessionCookie:
       type: apiKey
       in: cookie
-      name: mzm_session
+      name: sibillo_session
       description: |
         The same session token, in an `HttpOnly`, `Secure`, `SameSite=Lax`
         cookie set by `login` for the web app (ADR-0025, ADR-0067). A request
         authenticated by this cookie with a method other than `GET`, `HEAD`
-        or `OPTIONS` must carry the header `X-Mazzamurello-Request` with any
+        or `OPTIONS` must carry the header `X-Sibillo-Request` with any
         value; without it the request is unauthenticated (AUTH-005).
 
   parameters:
@@ -1203,7 +1203,7 @@ components:
   responses:
     FileTooLarge:
       description: |
-        The upload is larger than `MZM_UPLOAD_MAX_MB` (`file.too_large`), or
+        The upload is larger than `SIBILLO_UPLOAD_MAX_MB` (`file.too_large`), or
         would take the workspace over its quota (`workspace.quota_exceeded`,
         SBX-019); nothing was written.
       content:
@@ -2100,7 +2100,7 @@ components:
           type: array
           maxItems: 20
           description: |
-            A Mazzamurello extension: the paths of files the user attached to
+            A Sibillo extension: the paths of files the user attached to
             the message, already uploaded with `uploadAttachment`. Each must
             be a file of the workspace's `uploads/`, or the run is refused with
             `request.validation_failed`. The model reads them, with their sizes,
@@ -2160,13 +2160,13 @@ components:
       type: object
       description: |
         An AG-UI 1.0 event (https://docs.ag-ui.com/). The types below are the
-        ones Mazzamurello emits; clients must ignore unknown types. After each
-        model response, a `CUSTOM` event named `mzm.usage` carries as `value`
+        ones Sibillo emits; clients must ignore unknown types. After each
+        model response, a `CUSTOM` event named `sibillo.usage` carries as `value`
         `{context_window, context_tokens, input_tokens, output_tokens, cost}`:
         the model's window and the tokens its context used, the run's tokens
         so far, and its cost so far as a `Money`, or `null` when unknown
         (MOD-007, ADR-0073). When a conversation's automatic title is stored
-        during its first run, a `CUSTOM` event named `mzm.title` carries as
+        during its first run, a `CUSTOM` event named `sibillo.title` carries as
         `value` `{title}`, before the run finishes (CNV-006, ADR-0073).
         `RUN_ERROR` carries the error's `code` and a `message`, which ends
         with the reason the model or its provider gave, when there is one;
@@ -2174,7 +2174,7 @@ components:
         A run that asks the user a question ends with `RUN_FINISHED` whose
         `outcome` is `{type: "interrupt", interrupts}`, each an `Interrupt`
         (AGT-015, ADR-0083). After a planning tool changes the task list, a
-        `CUSTOM` event named `mzm.plan` carries as `value` `{steps}`, each a
+        `CUSTOM` event named `sibillo.plan` carries as `value` `{steps}`, each a
         `PlanStep` (UX-009).
       required: [type]
       additionalProperties: true

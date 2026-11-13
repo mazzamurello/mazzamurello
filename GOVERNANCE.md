@@ -2,7 +2,7 @@
 
 ## Current model: project lead
 
-Mazzamurello is led by its founder, who acts as project lead (a model often
+Sibillo is led by its founder, who acts as project lead (a model often
 called *Benevolent Dictator For Life*, BDFL). The project lead has the final
 say on scope, architecture, releases and membership.
 

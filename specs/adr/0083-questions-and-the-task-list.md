@@ -66,7 +66,7 @@ AI's AG-UI stream turns only approvals into interrupts, not deferred calls.
    `conversation_plans`, under row-level security. The list lasts from run
    to run; a fork copies it, and a rewind leaves it to the model to rewrite.
    After each planning tool returns, the worker emits a `CUSTOM` event
-   `mzm.plan` with the list; `GET /conversations/{id}` returns it as `plan`.
+   `sibillo.plan` with the list; `GET /conversations/{id}` returns it as `plan`.
 6. **Always on:** questions and the task list are not among the tools a
    user switches off (CNV-013); a run without tools has neither.
 7. **In the history**, the calls to `ask_user_question` and to the planning

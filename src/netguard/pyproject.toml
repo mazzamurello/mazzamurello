@@ -1,7 +1,7 @@
 [project]
-name = "mazzamurello-netguard"
+name = "sibillo-netguard"
 version = "0.0.0"
-description = "Mazzamurello network guard: maintains the host egress table (ADR-0021)."
+description = "Sibillo network guard: maintains the host egress table (ADR-0021)."
 requires-python = "==3.13.*"
 license = "AGPL-3.0-or-later"
 dependencies = []
@@ -11,5 +11,5 @@ requires = ["uv_build==0.13.6"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "mazzamurello_netguard"
+module-name = "sibillo_netguard"
 module-root = ""

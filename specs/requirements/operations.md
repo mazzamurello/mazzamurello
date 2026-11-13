@@ -1,6 +1,6 @@
 # OPS — Deployment and operations
 
-How Mazzamurello is installed, exposed, upgraded and backed up. Background:
+How Sibillo is installed, exposed, upgraded and backed up. Background:
 ADR-0007, ADR-0018.
 
 ## OPS-001: Docker Compose deployment

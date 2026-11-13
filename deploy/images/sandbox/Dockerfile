@@ -12,7 +12,7 @@ RUN printf '%s\n' \
         'path-exclude=/usr/lib/*/libLLVM*' 'path-exclude=/usr/lib/*/libgallium*' \
         'path-exclude=/usr/lib/*/libz3.so*' 'path-exclude=/usr/lib/*/dri/*' \
         'path-exclude=/usr/lib/*/libvulkan_*' \
-        > /etc/dpkg/dpkg.cfg.d/mazzamurello-sandbox
+        > /etc/dpkg/dpkg.cfg.d/sibillo-sandbox
 
 # The toolbox for a household's files (SBX-021, ADR-0080): documents and
 # their fonts, images and media, data, and Node.js.
@@ -77,7 +77,7 @@ RUN python3 -m venv /opt/reader \
     && /opt/reader/bin/pip install --no-cache-dir --require-hashes --only-binary :all: \
         -r /opt/reader-requirements.txt \
     && rm /opt/reader-requirements.txt
-COPY --chmod=0755 deploy/images/sandbox/mzm-read-page /usr/local/bin/mzm-read-page
+COPY --chmod=0755 deploy/images/sandbox/sibillo-read-page /usr/local/bin/sibillo-read-page
 
 # Commands start in the scratch folder; only /workspace persists (ADR-0076).
 RUN mkdir -p /scratch /workspace

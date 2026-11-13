@@ -23,27 +23,27 @@ default credentials (AUTH-007), and how unsupported platforms are reported
    | Service | Runs | Reachable from |
    |---|---|---|
    | `postgres` | PostgreSQL 17, with the database contract's initialization | internal network |
-   | `migrate` | the migration command, once, as `mzm_owner` | — |
+   | `migrate` | the migration command, once, as `sibillo_owner` | — |
    | `api` | the API | the single published port |
    | `worker` | the worker | — |
    | `sandboxd` | the sandbox driver, the only service with the Docker socket | internal network |
-   | `netguard` | the network guard, host networking and `NET_ADMIN`, container `mazzamurello-netguard` | — |
+   | `netguard` | the network guard, host networking and `NET_ADMIN`, container `sibillo-netguard` | — |
    | `sandbox` | builds the sandbox image, then exits | — |
    | `init`, `setup` | the operator's one-time commands | — |
 
 2. **One published port.** Only `api` publishes a port, by default
-   `127.0.0.1:8080`, changed with `MZM_PUBLISH` in the `.env` file. HTTPS is
+   `127.0.0.1:8080`, changed with `SIBILLO_PUBLISH` in the `.env` file. HTTPS is
    the job of the reverse proxy the household already runs, declared in
-   `MZM_TRUSTED_PROXIES` (ADR-0050). A bundled proxy may come with the web
+   `SIBILLO_TRUSTED_PROXIES` (ADR-0050). A bundled proxy may come with the web
    client.
 3. **Secrets are generated, never shipped.**
    `docker compose run --rm --no-deps init` writes `deploy/.env` with random
-   database passwords, `MZM_SECRET_KEY` and the driver's token, and refuses to
+   database passwords, `SIBILLO_SECRET_KEY` and the driver's token, and refuses to
    overwrite an existing file. Every service reads its configuration from
    that file; a missing value stops the service with an error naming it.
 4. **The first administrator** is created by
    `docker compose run --rm setup`, which runs
-   `python -m mazzamurello_server setup` as `mzm_owner`. It asks for the
+   `python -m sibillo_server setup` as `sibillo_owner`. It asks for the
    tenant's name, the username, the display name and the password (twice,
    hidden; read from standard input when it is not a terminal), and calls
    `bootstrap_instance`. It refuses when any user exists (AUTH-007).

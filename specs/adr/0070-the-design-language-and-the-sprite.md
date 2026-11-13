@@ -15,10 +15,11 @@ nothing, without taking any other product's identity: no logos, colors,
 typefaces or illustrations of another product.
 
 The maintainer also wants the household to have a character: a small sprite
-that greets people and shows what the assistant is doing. Mazzamurello is
-named after the mazzamurello of central Italian folklore, a small house
-sprite known for knocking on walls. The maintainer chose the look from a
-folklore illustration, which is someone else's work and must not be copied.
+that greets people and shows what the assistant is doing. Sibillo is a
+mazzamurello, by name: the mazzamurello of central Italian folklore is a
+small house sprite known for knocking on walls. The maintainer chose the
+look from a folklore illustration, which is someone else's work and must not
+be copied.
 
 A clickable prototype of the main screens was built and approved before this
 record; it is kept as [`specs/design/web-prototype.html`](../design/web-prototype.html).
@@ -40,7 +41,7 @@ record; it is kept as [`specs/design/web-prototype.html`](../design/web-prototyp
    party (OBS-001) and the Content Security Policy needs no other origin.
 4. **One icon set.** Lucide's icons (ISC license), imported one by one, in
    place of placeholder characters.
-5. **The sprite is an original mazzamurello.** Small and lanky, with a big
+5. **The sprite is an original sibillo.** Small and lanky, with a big
    floppy red hat, pointy ears, straw-colored hair and eyes closed in a smile,
    in red stockings. It is drawn as SVG and animated with CSS: an animation
    runtime would add weight, and the policy blocks the WebAssembly some of

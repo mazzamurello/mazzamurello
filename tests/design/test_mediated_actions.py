@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic_ai.native_tools import AbstractNativeTool
 
-from mazzamurello_server import worker
+from sibillo_server import worker
 from tests.support.database import ROOT
 
 # Every capability of the agent: the gateway, the user's sandbox and the
@@ -18,10 +18,10 @@ ALLOWED_CAPABILITIES = {
     "pydantic_ai.capabilities._tool_search.ToolSearch",
     "pydantic_ai.capabilities._pending_messages.PendingMessageDrainCapability",
     "pydantic_ai.durable_exec._workspace.WorkspaceEnsurer",
-    "mazzamurello_server.gateway.Gateway",
-    "mazzamurello_server.sandbox.SandboxWorkspace",
+    "sibillo_server.gateway.Gateway",
+    "sibillo_server.sandbox.SandboxWorkspace",
     # Sandbox commands say what they are for; it changes their definitions and arguments only (ADR-0085).
-    "mazzamurello_server.sandbox.CommandPurposes",
+    "sibillo_server.sandbox.CommandPurposes",
     "pydantic_ai_harness.shell._capability.Shell",
     "pydantic_ai_harness.filesystem._capability.FileSystem",
     "pydantic_ai_harness.tool_output_limits._capability.ToolOutputLimits",
@@ -39,10 +39,10 @@ ALLOWED_OWN_TOOLS = {"web_search", "read_page", "offer_download"}
 # The only places a component runs a command on the host, by file and
 # enclosing function. None runs anything a user or the agent chose.
 ALLOWED_HOST_COMMANDS = {
-    ("src/netguard/mazzamurello_netguard/guard.py", "_nft"),
-    ("src/sandboxd/mazzamurello_sandboxd/isolation.py", "_runtime_release"),
+    ("src/netguard/sibillo_netguard/guard.py", "_nft"),
+    ("src/sandboxd/sibillo_sandboxd/isolation.py", "_runtime_release"),
     # The operator's backups: pg_dump, pg_restore and age, on files of their own (ADR-0077).
-    ("src/server/mazzamurello_server/backup.py", "_tool"),
+    ("src/server/sibillo_server/backup.py", "_tool"),
 }
 HOST_COMMANDS = {
     ("subprocess", "run"),

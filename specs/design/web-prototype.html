@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- The reference design of the web client (ADR-0070). Sample data and scripted answers; not part of the app. -->
-<title>Mazzamurello Prototype</title>
+<title>Sibillo Prototype</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
@@ -18,7 +18,7 @@
   --accent-l: #C2372A; --accent-d: #F07163; --accent-soft-l: #FBEAE7; --accent-soft-d: #3A2220;
   --accent: var(--accent-l); --accent-soft: var(--accent-soft-l); --on-accent: #FFFFFF;
   --ok: #2B7A4B; --danger: #B42318; --on-danger: #FFFFFF;
-  /* The mazzamurello keeps its colors in both themes. */
+  /* The sibillo keeps its colors in both themes. */
   --c-hat: #C8352A; --c-hat-shade: #992A21; --c-tunic: #B5302A; --c-skin: #F3D6B0; --c-hair: #E1B64C;
   --c-line: #3A2A22; --c-blush: #EE9682; --c-mouth: #7A2A22; --c-wood: #9C6B3E; --c-paper: #FBF6EA; --c-glass: rgba(150, 200, 235, .45);
   --font-ui: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -310,7 +310,7 @@ details.tool[open] .chev { transform: rotate(90deg); }
 .proto-card .btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .proto-card p { margin: 0; color: var(--faint); font-size: 12px; }
 
-/* The mazzamurello */
+/* The sibillo */
 .mz { display: block; overflow: visible; }
 .mz .pose { display: none; }
 .mz[data-state="idle"] .pose-idle, .mz[data-state="still"] .pose-idle, .mz[data-state="answering"] .pose-idle,
@@ -425,7 +425,7 @@ const ICONS = {
 };
 const icon = (name, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 
-/* The mazzamurello: one figure, a pose per state */
+/* The sibillo: one figure, a pose per state */
 const LN = "var(--c-line)", SK = "var(--c-skin)", RED = "var(--c-hat)", WOOD = "var(--c-wood)";
 const limb = (d, color, w = 3.6) =>
   `<path d="${d}" fill="none" stroke="${LN}" stroke-width="${w + 2.4}" stroke-linecap="round" stroke-linejoin="round"/>` +
@@ -633,7 +633,7 @@ function renderSidebar() {
   }
   $("#sidebar").innerHTML = `
     <div class="side-top">
-      <button class="brand" data-action="home">${creature("still", "52 12 96 118")}<span>Mazzamurello</span></button>
+      <button class="brand" data-action="home">${creature("still", "52 12 96 118")}<span>Sibillo</span></button>
       <button class="icon-btn only-phone" data-action="close-menu" aria-label="Close the conversation list">${icon("x")}</button>
     </div>
     <button class="new-chat" data-action="new"><span class="plus">${icon("plus")}</span>New chat</button>
@@ -656,7 +656,7 @@ function renderTopbar() {
   let title = "";
   if (S.view === "chat" && c) title = `${esc(c.title)}${c.forkedFrom ? `<small>Forked from “${esc(c.forkedFrom)}”</small>` : ""}`;
   if (S.view === "settings") title = "Settings";
-  if (S.view === "poses") title = "The mazzamurello";
+  if (S.view === "poses") title = "The sibillo";
   $("#topbar").innerHTML = `
     <button class="icon-btn only-phone" data-action="menu" aria-label="Open the conversation list">${icon("menu")}</button>
     <div class="top-title">${title}</div>
@@ -823,7 +823,7 @@ function posesHTML() {
     ["error", "Something went wrong", "Holding a sign, in the error toast"],
   ];
   return `<div class="page"><div class="page-inner" style="grid-template-columns:minmax(0,1fr)">
-    <h1>The mazzamurello</h1>
+    <h1>The sibillo</h1>
     <p class="hint" style="margin:-24px 0 0">Every state of the household's sprite. With reduced motion turned on in the system settings, it holds each pose still.</p>
     <div class="poses">${poses.map(([s, t, d]) => `<div class="pose-card">${creature(s)}<b>${t}</b><span>${d}</span></div>`).join("")}</div>
   </div></div>`;
@@ -899,7 +899,7 @@ function scrollDown() { const t = $("#thread"); if (t) t.scrollTop = t.scrollHei
 const ANSWER_TEXT = "This prototype makes up its answers, but the steps above are the real ones the assistant takes: it searched the web, read the pages, saved notes.md to your workspace and turned it into a PDF. Open any step to see what it did.";
 const ANSWER_HTML = `<p>This prototype makes up its answers, but the steps above are the real ones the assistant takes:</p>
 <ul><li>It <b>searched the web</b> and <b>read the pages</b> it found.</li><li>It <b>saved <code>notes.md</code></b> to your workspace and <b>turned it into a PDF</b>.</li></ul>
-<p>Open any step to see what it did. The mazzamurello below now waits for your next message.</p>`;
+<p>Open any step to see what it did. The sibillo below now waits for your next message.</p>`;
 
 async function startRun(c) {
   S.running = true; S.stopRequested = false; S.picker = false;

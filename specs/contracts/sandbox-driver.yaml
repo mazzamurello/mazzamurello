@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Mazzamurello sandbox driver API
+  title: Sibillo sandbox driver API
   version: 0.2.0-draft
   summary: Internal API between the control plane and the sandbox driver (ADR-0022).
   description: |

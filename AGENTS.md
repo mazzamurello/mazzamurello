@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Rules of engagement for AI agents (and humans) working on Mazzamurello.
+Rules of engagement for AI agents (and humans) working on Sibillo.
 These rules are not suggestions: CI enforces most of them, and a change that
 breaks them will be rejected.
 

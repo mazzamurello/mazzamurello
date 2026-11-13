@@ -3,7 +3,7 @@
 With `session_delivery: cookie`, sign-in sets the session as an `HttpOnly`,
 `Secure`, `SameSite=Lax` cookie instead of returning the token, and every
 state-changing request authenticated by that cookie needs the header
-`X-Mazzamurello-Request`.
+`X-Sibillo-Request`.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from tests.support.contract import response_hook
 from tests.support.database import Database
 from tests.support.server import Server, fresh_source
 
-COOKIE = "mzm_session"
-REQUEST_HEADER = "X-Mazzamurello-Request"
+COOKIE = "sibillo_session"
+REQUEST_HEADER = "X-Sibillo-Request"
 
 
 @pytest.fixture

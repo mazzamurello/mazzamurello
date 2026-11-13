@@ -233,7 +233,7 @@ Rationale: journey J13.
 Every invocation of a tool of a connected device (DEV-003) or of a remote MCP
 server (AGT-019) MUST require the user's explicit approval, whatever its
 capability classes, in addition to AGT-006. The run MUST wait for the answer.
-Tools of the sandbox and Mazzamurello's own tools follow AGT-006 alone
+Tools of the sandbox and Sibillo's own tools follow AGT-006 alone
 (ADR-0063, ADR-0064).
 
 ## AGT-019: Remote MCP servers of a household

@@ -25,7 +25,7 @@ easy to add, but:
   system cannot bound them (AGT-014), mark them as untrusted content
   (AGT-003) or show them as tool calls.
 
-Privacy is the reason a household runs Mazzamurello, and the sandbox already
+Privacy is the reason a household runs Sibillo, and the sandbox already
 reaches the public internet on the user's behalf (SBX-004).
 
 ## Decision

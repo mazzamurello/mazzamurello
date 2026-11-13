@@ -61,7 +61,7 @@ def test_the_api_and_the_worker_connect_only_to_declared_destinations(
         addresses = [str(row[0]) for row in conn.execute("SELECT base_url FROM connections").fetchall()]
     declared: set[str] = {"localhost", database.host}
     declared |= {urllib.parse.urlsplit(url).hostname or "" for url in addresses}
-    for url in (server.base_url, server.api_environment["MZM_SANDBOXD_URL"]):
+    for url in (server.base_url, server.api_environment["SIBILLO_SANDBOXD_URL"]):
         declared.add(urllib.parse.urlsplit(url).hostname or "")
     # The addresses of declared names, such as the database's, may be outside the loopback range.
     resolved = {address for name in declared if name for address in _addresses(name)}

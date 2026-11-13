@@ -18,7 +18,7 @@ import httpx
 import openai
 import pytest
 
-from mazzamurello_server.endpoints import Address, PublicEndpointTransport, is_public, tenant_http_client
+from sibillo_server.endpoints import Address, PublicEndpointTransport, is_public, tenant_http_client
 
 
 class _Server:

@@ -28,8 +28,8 @@ COMPOSE_FILE = ROOT / "deploy" / "compose.yaml"
 UP_TIMEOUT_SECONDS = 1800
 # CI builds the deployment's images with its build cache; `up` then uses them (ADR-0059).
 BUILD = [] if os.environ.get("TEST_DEPLOYMENT_IMAGES") == "built" else ["--build"]
-SANDBOX_LABEL = "dev.mazzamurello.sandbox"
-SANDBOX_NETWORK = "mazzamurello-sandboxes"
+SANDBOX_LABEL = "dev.sibillo.sandbox"
+SANDBOX_NETWORK = "sibillo-sandboxes"
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ def compose(
         text=True,
         timeout=timeout,
         check=False,
-        env={**os.environ, "MZM_CONFIG_DIR": str(config_dir)},
+        env={**os.environ, "SIBILLO_CONFIG_DIR": str(config_dir)},
     )
     if check and result.returncode != 0:
         raise RuntimeError(
@@ -112,8 +112,8 @@ def configure(deployment: Deployment, port: int) -> None:
     """Publish the API on `port`, and keep archives in the deployment's temporary directory."""
     (deployment.config_dir / "backups").mkdir(exist_ok=True)
     with deployment.env_file.open("a") as env:
-        env.write(f"MZM_PUBLISH=127.0.0.1:{port}\n")
-        env.write(f"MZM_BACKUP_DIR={deployment.config_dir / 'backups'}\n")
+        env.write(f"SIBILLO_PUBLISH=127.0.0.1:{port}\n")
+        env.write(f"SIBILLO_BACKUP_DIR={deployment.config_dir / 'backups'}\n")
 
 
 def env_values(deployment: Deployment) -> dict[str, str]:
@@ -155,7 +155,7 @@ def run_text(client: httpx.Client, conversation_id: str, text: str, parent: str 
 @contextlib.contextmanager
 def installed(config_dir: Path) -> Generator[Deployment]:
     """A deployment installed in `config_dir`, removed with its volumes and images at the end."""
-    project = f"mzm-e2e-{secrets.token_hex(3)}"
+    project = f"sibillo-e2e-{secrets.token_hex(3)}"
     port = free_port()
     username, password = f"admin-{secrets.token_hex(3)}", secrets.token_urlsafe(18)
     deployment = Deployment(

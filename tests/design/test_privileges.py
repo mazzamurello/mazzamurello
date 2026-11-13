@@ -28,7 +28,7 @@ class Columns:
 
 EVERY = Columns()
 
-# "Privileges of mzm_app" in the database contract. Table privileges such as
+# "Privileges of sibillo_app" in the database contract. Table privileges such as
 # DELETE cover the whole table and are listed with EVERY.
 GRANTS: dict[str, dict[str, Columns]] = {
     "tenants": {"SELECT": EVERY, "INSERT": EVERY},
@@ -106,7 +106,7 @@ def _expected_privileges(columns: dict[str, set[str]]) -> set[str]:
 
 
 def _effective_privileges(conn: psycopg.Connection) -> set[str]:
-    """Every privilege mzm_app holds in the application schema, granted to it or to PUBLIC."""
+    """Every privilege sibillo_app holds in the application schema, granted to it or to PUBLIC."""
     granted: set[str] = set()
     excluded = list(EXCLUDED_SCHEMAS)
     for privilege in COLUMN_PRIVILEGES:
@@ -117,7 +117,7 @@ def _effective_privileges(conn: psycopg.Connection) -> set[str]:
             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
             WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f') AND n.nspname <> ALL(%s)
               AND n.nspname NOT LIKE 'pg\\_temp\\_%%' AND n.nspname NOT LIKE 'pg\\_toast%%'
-              AND has_column_privilege('mzm_app', c.oid, a.attnum, %s)
+              AND has_column_privilege('sibillo_app', c.oid, a.attnum, %s)
             """,
             (excluded, privilege),
         ).fetchall()
@@ -128,7 +128,7 @@ def _effective_privileges(conn: psycopg.Connection) -> set[str]:
             SELECT n.nspname, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f') AND n.nspname <> ALL(%s)
               AND n.nspname NOT LIKE 'pg\\_temp\\_%%' AND n.nspname NOT LIKE 'pg\\_toast%%'
-              AND has_table_privilege('mzm_app', c.oid, %s)
+              AND has_table_privilege('sibillo_app', c.oid, %s)
             """,
             (excluded, privilege),
         ).fetchall()
@@ -138,7 +138,7 @@ def _effective_privileges(conn: psycopg.Connection) -> set[str]:
             """
             SELECT n.nspname, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind = 'S' AND n.nspname <> ALL(%s)
-              AND CASE WHEN c.relkind = 'S' THEN has_sequence_privilege('mzm_app', c.oid, %s) END
+              AND CASE WHEN c.relkind = 'S' THEN has_sequence_privilege('sibillo_app', c.oid, %s) END
             """,
             (excluded, privilege),
         ).fetchall()
@@ -147,13 +147,13 @@ def _effective_privileges(conn: psycopg.Connection) -> set[str]:
         """
         SELECT n.nspname, p.proname || '(' || oidvectortypes(p.proargtypes) || ')' FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname <> ALL(%s) AND has_function_privilege('mzm_app', p.oid, 'EXECUTE')
+        WHERE n.nspname <> ALL(%s) AND has_function_privilege('sibillo_app', p.oid, 'EXECUTE')
         """,
         (excluded,),
     ).fetchall()
     granted |= {f"function {_name(schema, signature)}: EXECUTE" for schema, signature in rows}
     rows = conn.execute(
-        "SELECT nspname FROM pg_namespace WHERE has_schema_privilege('mzm_app', oid, 'CREATE')"
+        "SELECT nspname FROM pg_namespace WHERE has_schema_privilege('sibillo_app', oid, 'CREATE')"
     ).fetchall()
     granted |= {f"schema {schema}: CREATE" for (schema,) in rows}
     return granted
@@ -169,8 +169,8 @@ def test_application_role_holds_exactly_the_listed_privileges(database: Database
         expected = _expected_privileges(_columns(conn))
         granted = _effective_privileges(conn)
     missing, extra = sorted(expected - granted), sorted(granted - expected)
-    assert not extra, f"mzm_app holds privileges the database contract does not list: {extra}"
-    assert not missing, f"mzm_app lacks privileges the database contract lists: {missing}"
+    assert not extra, f"sibillo_app holds privileges the database contract does not list: {extra}"
+    assert not missing, f"sibillo_app lacks privileges the database contract lists: {missing}"
 
 
 @pytest.mark.spec("TEN-003", "TEN-004")
@@ -185,8 +185,10 @@ def test_policies_are_for_the_application_except_the_owner_policies(database: Da
     owner_policies: dict[str, set[str]] = {}
     for schema, table, policy, command, roles, qual, with_check in rows:
         name = f"{_name(schema, table)}.{policy}"
-        assert roles in (["mzm_app"], ["mzm_owner"]), f"{name} applies to {roles}, not to mzm_app or mzm_owner alone"
-        if roles == ["mzm_owner"]:
+        assert roles in (["sibillo_app"], ["sibillo_owner"]), (
+            f"{name} applies to {roles}, not to sibillo_app or sibillo_owner alone"
+        )
+        if roles == ["sibillo_owner"]:
             owner_policies.setdefault(_name(schema, table), set()).add(command)
             assert qual in (None, "true"), f"{name} has a condition"
             assert with_check in (None, "true"), f"{name} has a condition"

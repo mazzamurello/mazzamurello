@@ -1,4 +1,4 @@
-"""Attempts to reach another user's or another tenant's rows as `mzm_app`.
+"""Attempts to reach another user's or another tenant's rows as `sibillo_app`.
 
 These tests act on the database directly, with the request context of the
 database contract; tests through the API endpoints come with the server
@@ -197,7 +197,7 @@ def test_own_private_rows_cannot_be_given_to_others(
     "table", [table for table in CONTRACT_TABLES if table not in ("login_attempts", "connections", "connection_models")]
 )
 def test_nothing_is_visible_without_a_request_context(database: Database, world: World, table: str) -> None:
-    # `users` is read through a column mzm_app may select; the others whole.
+    # `users` is read through a column sibillo_app may select; the others whole.
     column = "id" if table in ("tenants", "users") else "tenant_id"
     with app_transaction(database, None) as conn:
         select = sql.SQL("SELECT {} FROM {}").format(sql.Identifier(column), sql.Identifier(table))

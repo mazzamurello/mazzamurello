@@ -30,7 +30,7 @@ repository and how it is tested.
 3. **Cookie sessions for the browser.** The app signs in asking for the
    session in a cookie: the response sets it, `HttpOnly`, `Secure` and
    `SameSite=Lax`, and does not return the token. Every state-changing
-   request the app makes carries the header `X-Mazzamurello-Request`, which a
+   request the app makes carries the header `X-Sibillo-Request`, which a
    cross-site request cannot set; the server refuses a cookie-authenticated
    request without it (AUTH-005). `Secure` cookies need HTTPS, so the app is
    used through the household's reverse proxy, or on `localhost`.

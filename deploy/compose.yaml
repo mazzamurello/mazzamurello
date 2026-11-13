@@ -1,4 +1,4 @@
-# Mazzamurello on one host with Docker Compose (OPS-001, ADR-0054).
+# Sibillo on one host with Docker Compose (OPS-001, ADR-0054).
 #
 #   docker compose run --rm --no-deps init   # writes .env with fresh secrets
 #   docker compose up --detach --build --wait
@@ -7,10 +7,10 @@
 # Only the API is published (OPS-003). Every setting comes from .env; see
 # specs/contracts/configuration.md.
 
-name: mazzamurello
+name: sibillo
 
 x-server: &server
-  image: mazzamurello/server:local
+  image: sibillo/server:local
   build:
     context: ..
     dockerfile: deploy/images/server/Dockerfile
@@ -18,20 +18,20 @@ x-server: &server
   restart: unless-stopped
 
 x-app-database: &app-database
-  MZM_DATABASE_URL: postgresql://mzm_app:${MZM_APP_PASSWORD:-}@postgres:5432/mazzamurello
+  SIBILLO_DATABASE_URL: postgresql://sibillo_app:${SIBILLO_APP_PASSWORD:-}@postgres:5432/sibillo
 
 x-owner-database: &owner-database
-  MZM_DATABASE_URL: postgresql://mzm_owner:${MZM_OWNER_PASSWORD:-}@postgres:5432/mazzamurello
+  SIBILLO_DATABASE_URL: postgresql://sibillo_owner:${SIBILLO_OWNER_PASSWORD:-}@postgres:5432/sibillo
 
 # Backups and restores read the database as PostgreSQL's superuser (ADR-0077).
 x-backup-environment: &backup-environment
-  MZM_DATABASE_URL: postgresql://postgres:${MZM_POSTGRES_PASSWORD:-}@postgres:5432/mazzamurello
-  MZM_SECRET_KEY: ${MZM_SECRET_KEY:-}
-  MZM_BACKUP_KEY: ${MZM_BACKUP_KEY:-}
-  MZM_SANDBOXD_URL: http://sandboxd:8100/v1
-  MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
-  MZM_BACKUP_TIME: ${MZM_BACKUP_TIME:-03:00}
-  MZM_BACKUP_KEEP: ${MZM_BACKUP_KEEP:-14}
+  SIBILLO_DATABASE_URL: postgresql://postgres:${SIBILLO_POSTGRES_PASSWORD:-}@postgres:5432/sibillo
+  SIBILLO_SECRET_KEY: ${SIBILLO_SECRET_KEY:-}
+  SIBILLO_BACKUP_KEY: ${SIBILLO_BACKUP_KEY:-}
+  SIBILLO_SANDBOXD_URL: http://sandboxd:8100/v1
+  SIBILLO_SANDBOXD_TOKEN: ${SIBILLO_SANDBOXD_TOKEN:-}
+  SIBILLO_BACKUP_TIME: ${SIBILLO_BACKUP_TIME:-03:00}
+  SIBILLO_BACKUP_KEEP: ${SIBILLO_BACKUP_KEEP:-14}
 
 networks:
   internal: {}
@@ -45,14 +45,14 @@ services:
   postgres:
     image: postgres:17.6
     environment:
-      POSTGRES_PASSWORD: ${MZM_POSTGRES_PASSWORD:-}
-      MZM_OWNER_PASSWORD: ${MZM_OWNER_PASSWORD:-}
-      MZM_APP_PASSWORD: ${MZM_APP_PASSWORD:-}
+      POSTGRES_PASSWORD: ${SIBILLO_POSTGRES_PASSWORD:-}
+      SIBILLO_OWNER_PASSWORD: ${SIBILLO_OWNER_PASSWORD:-}
+      SIBILLO_APP_PASSWORD: ${SIBILLO_APP_PASSWORD:-}
     volumes:
       - postgres:/var/lib/postgresql/data
-      - ./postgres/initdb.sh:/docker-entrypoint-initdb.d/10-mazzamurello.sh:ro
+      - ./postgres/initdb.sh:/docker-entrypoint-initdb.d/10-sibillo.sh:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "--username", "postgres", "--dbname", "mazzamurello"]
+      test: ["CMD", "pg_isready", "--username", "postgres", "--dbname", "sibillo"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -70,22 +70,22 @@ services:
 
   api:
     <<: *server
-    command: ["mazzamurello_server", "api"]
+    command: ["sibillo_server", "api"]
     environment:
       <<: *app-database
-      MZM_HTTP_PORT: "8000"
-      MZM_SECRET_KEY: ${MZM_SECRET_KEY:-}
-      MZM_TRUSTED_PROXIES: ${MZM_TRUSTED_PROXIES:-}
-      MZM_UPLOAD_MAX_MB: ${MZM_UPLOAD_MAX_MB:-1024}
-      MZM_SANDBOXD_URL: http://sandboxd:8100/v1
-      MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
+      SIBILLO_HTTP_PORT: "8000"
+      SIBILLO_SECRET_KEY: ${SIBILLO_SECRET_KEY:-}
+      SIBILLO_TRUSTED_PROXIES: ${SIBILLO_TRUSTED_PROXIES:-}
+      SIBILLO_UPLOAD_MAX_MB: ${SIBILLO_UPLOAD_MAX_MB:-1024}
+      SIBILLO_SANDBOXD_URL: http://sandboxd:8100/v1
+      SIBILLO_SANDBOXD_TOKEN: ${SIBILLO_SANDBOXD_TOKEN:-}
       # A failing backup makes the health degraded (OPS-011).
-      MZM_BACKUP_STATUS: /backups/status.json
+      SIBILLO_BACKUP_STATUS: /backups/status.json
     volumes:
-      - ${MZM_BACKUP_DIR:-./backups}:/backups:ro
+      - ${SIBILLO_BACKUP_DIR:-./backups}:/backups:ro
     # The single entry point (OPS-003); HTTPS comes from a reverse proxy.
     ports:
-      - "${MZM_PUBLISH:-127.0.0.1:8080}:8000"
+      - "${SIBILLO_PUBLISH:-127.0.0.1:8080}:8000"
     depends_on:
       migrate: { condition: service_completed_successfully }
       sandboxd: { condition: service_healthy }
@@ -97,15 +97,15 @@ services:
 
   worker:
     <<: *server
-    command: ["mazzamurello_server", "worker"]
+    command: ["sibillo_server", "worker"]
     environment:
       <<: *app-database
-      MZM_SECRET_KEY: ${MZM_SECRET_KEY:-}
-      MZM_RUN_RETENTION_DAYS: ${MZM_RUN_RETENTION_DAYS:-30}
-      MZM_TEMPORARY_SWEEP_SECONDS: ${MZM_TEMPORARY_SWEEP_SECONDS:-600}
-      MZM_SANDBOXD_URL: http://sandboxd:8100/v1
-      MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
-      MZM_SEARCH_URL: http://search:8080
+      SIBILLO_SECRET_KEY: ${SIBILLO_SECRET_KEY:-}
+      SIBILLO_RUN_RETENTION_DAYS: ${SIBILLO_RUN_RETENTION_DAYS:-30}
+      SIBILLO_TEMPORARY_SWEEP_SECONDS: ${SIBILLO_TEMPORARY_SWEEP_SECONDS:-600}
+      SIBILLO_SANDBOXD_URL: http://sandboxd:8100/v1
+      SIBILLO_SANDBOXD_TOKEN: ${SIBILLO_SANDBOXD_TOKEN:-}
+      SIBILLO_SEARCH_URL: http://search:8080
     networks: [internal, search]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -113,22 +113,22 @@ services:
       search: { condition: service_healthy }
 
   sandboxd:
-    image: mazzamurello/sandboxd:local
+    image: sibillo/sandboxd:local
     build:
       context: ..
       dockerfile: deploy/images/sandboxd/Dockerfile
     environment:
-      MZM_SANDBOXD_TOKEN: ${MZM_SANDBOXD_TOKEN:-}
-      MZM_SANDBOX_IMAGE: mazzamurello/sandbox:local
-      MZM_NETGUARD_CONTAINER: mazzamurello-netguard
-      MZM_SANDBOX_MINIMUM_GVISOR_RELEASE: ${MZM_SANDBOX_MINIMUM_GVISOR_RELEASE:-}
-      MZM_SANDBOX_RESOLVER: ${MZM_SANDBOX_RESOLVER:-9.9.9.9}
-      MZM_SANDBOX_CPUS: ${MZM_SANDBOX_CPUS:-1}
-      MZM_SANDBOX_MEMORY_MB: ${MZM_SANDBOX_MEMORY_MB:-1024}
-      MZM_SANDBOX_PROCESSES: ${MZM_SANDBOX_PROCESSES:-512}
-      MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS: ${MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS:-300}
-      MZM_SANDBOX_MAX_OUTPUT_BYTES: ${MZM_SANDBOX_MAX_OUTPUT_BYTES:-1048576}
-      MZM_SANDBOX_IDLE_MINUTES: ${MZM_SANDBOX_IDLE_MINUTES:-5}
+      SIBILLO_SANDBOXD_TOKEN: ${SIBILLO_SANDBOXD_TOKEN:-}
+      SIBILLO_SANDBOX_IMAGE: sibillo/sandbox:local
+      SIBILLO_NETGUARD_CONTAINER: sibillo-netguard
+      SIBILLO_SANDBOX_MINIMUM_GVISOR_RELEASE: ${SIBILLO_SANDBOX_MINIMUM_GVISOR_RELEASE:-}
+      SIBILLO_SANDBOX_RESOLVER: ${SIBILLO_SANDBOX_RESOLVER:-9.9.9.9}
+      SIBILLO_SANDBOX_CPUS: ${SIBILLO_SANDBOX_CPUS:-1}
+      SIBILLO_SANDBOX_MEMORY_MB: ${SIBILLO_SANDBOX_MEMORY_MB:-1024}
+      SIBILLO_SANDBOX_PROCESSES: ${SIBILLO_SANDBOX_PROCESSES:-512}
+      SIBILLO_SANDBOX_COMMAND_TIMEOUT_SECONDS: ${SIBILLO_SANDBOX_COMMAND_TIMEOUT_SECONDS:-300}
+      SIBILLO_SANDBOX_MAX_OUTPUT_BYTES: ${SIBILLO_SANDBOX_MAX_OUTPUT_BYTES:-1048576}
+      SIBILLO_SANDBOX_IDLE_MINUTES: ${SIBILLO_SANDBOX_IDLE_MINUTES:-5}
     # The only service with the container runtime (SBX-009).
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -140,7 +140,7 @@ services:
         - CMD
         - python
         - -c
-        - "import os, urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8100/v1/health', headers={'Authorization': 'Bearer ' + os.environ['MZM_SANDBOXD_TOKEN']}), timeout=5)"
+        - "import os, urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8100/v1/health', headers={'Authorization': 'Bearer ' + os.environ['SIBILLO_SANDBOXD_TOKEN']}), timeout=5)"
       interval: 3s
       timeout: 10s
       retries: 60
@@ -150,13 +150,13 @@ services:
   # Backs the instance up every night, keeping the newest archives (OPS-010, ADR-0077).
   backup:
     <<: *server
-    command: ["mazzamurello_server", "backup", "--schedule"]
+    command: ["sibillo_server", "backup", "--schedule"]
     # Writes archives into the host's backup folder.
     user: "0:0"
     environment:
       <<: *backup-environment
     volumes:
-      - ${MZM_BACKUP_DIR:-./backups}:/backups
+      - ${SIBILLO_BACKUP_DIR:-./backups}:/backups
     depends_on:
       migrate: { condition: service_completed_successfully }
       sandboxd: { condition: service_healthy }
@@ -169,14 +169,14 @@ services:
   # Restores an archive: `docker compose run --rm restore /backups/FILE` (OPS-006).
   restore:
     <<: *server
-    entrypoint: ["python", "-m", "mazzamurello_server", "restore", "--config", "/config/.env"]
+    entrypoint: ["python", "-m", "sibillo_server", "restore", "--config", "/config/.env"]
     command: []
     user: "0:0"
     environment:
       <<: *backup-environment
     volumes:
-      - ${MZM_CONFIG_DIR:-.}:/config
-      - ${MZM_BACKUP_DIR:-./backups}:/backups
+      - ${SIBILLO_CONFIG_DIR:-.}:/config
+      - ${SIBILLO_BACKUP_DIR:-./backups}:/backups
     depends_on:
       postgres: { condition: service_healthy }
       sandboxd: { condition: service_healthy }
@@ -208,12 +208,12 @@ services:
     restart: unless-stopped
 
   netguard:
-    image: mazzamurello/netguard:local
+    image: sibillo/netguard:local
     build:
       context: ..
       dockerfile: deploy/images/netguard/Dockerfile
     # Host networking and NET_ADMIN, nothing else (ADR-0021).
-    container_name: mazzamurello-netguard
+    container_name: sibillo-netguard
     network_mode: host
     cap_add: [NET_ADMIN]
     stop_grace_period: 15s
@@ -221,7 +221,7 @@ services:
 
   # Builds the sandbox image for the driver, then exits.
   sandbox:
-    image: mazzamurello/sandbox:local
+    image: sibillo/sandbox:local
     build:
       context: ..
       dockerfile: deploy/images/sandbox/Dockerfile
@@ -231,10 +231,10 @@ services:
 
   init:
     <<: *server
-    command: ["mazzamurello_server", "init", "--output", "/config/.env"]
+    command: ["sibillo_server", "init", "--output", "/config/.env"]
     user: "0:0"
     volumes:
-      - ${MZM_CONFIG_DIR:-.}:/config
+      - ${SIBILLO_CONFIG_DIR:-.}:/config
     networks: []
     network_mode: none
     restart: "no"
@@ -242,7 +242,7 @@ services:
 
   setup:
     <<: *server
-    command: ["mazzamurello_server", "setup"]
+    command: ["sibillo_server", "setup"]
     environment:
       <<: *owner-database
     depends_on:

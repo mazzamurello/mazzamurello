@@ -11,7 +11,7 @@ The first tests of tenant isolation were run against a throwaway schema
 written from the database contract. Three gaps appeared:
 
 1. Row-level security is forced on every table, so it also applies to the
-   table owner. The pre-authentication functions run as `mzm_owner` before any
+   table owner. The pre-authentication functions run as `sibillo_owner` before any
    request context exists: as written, `auth_find_login` sees no users and
    `auth_record_login_attempt` cannot write to `login_attempts`, which has no
    policies.
@@ -24,18 +24,18 @@ written from the database contract. Three gaps appeared:
    conversation in the same tenant. Nothing leaks, since row-level security
    hides those rows from the other user, but the data is wrong.
 
-The contract also did not list the privileges of `mzm_app`, although TEN-004
+The contract also did not list the privileges of `sibillo_app`, although TEN-004
 requires it to hold only the listed ones.
 
 ## Decision
 
 1. **Owner policies.** The tables the pre-authentication functions use get
-   policies `TO mzm_owner` for exactly the operations those functions need,
-   with no condition. They are the only policies for `mzm_owner`; all others
-   are `TO mzm_app`. `mzm_owner` stays a role that no running service
+   policies `TO sibillo_owner` for exactly the operations those functions need,
+   with no condition. They are the only policies for `sibillo_owner`; all others
+   are `TO sibillo_app`. `sibillo_owner` stays a role that no running service
    connects as, so these policies open the tables only to the functions'
    code and to migrations.
-2. **Guarded user changes.** `mzm_app` may update only `display_name`,
+2. **Guarded user changes.** `sibillo_app` may update only `display_name`,
    `password_hash`, `role` and `disabled_at` of `users`. Changing `role` or
    `disabled_at` requires a tenant admin context, enforced by a
    `BEFORE UPDATE` trigger, since policies cannot compare old and new values.
@@ -43,7 +43,7 @@ requires it to hold only the listed ones.
 3. **Owner in private foreign keys.** Every foreign key between private tables
    includes the owner column next to `tenant_id`. Foreign keys that set null
    on delete name the column they clear.
-4. **Listed privileges.** The contract lists every privilege of `mzm_app`.
+4. **Listed privileges.** The contract lists every privilege of `sibillo_app`.
    Stored messages and cost ledger entries are insert-only for the
    application (ADR-0041, ADR-0042); rows removed or detached when a
    conversation is deleted are handled by foreign keys.
@@ -68,4 +68,4 @@ requires it to hold only the listed ones.
   moves ordinary updates of a user's own name out of plain SQL for a rule
   that a trigger states in a few lines.
 - **Column privileges alone:** cannot tell a tenant admin from a member,
-  since both connect as `mzm_app`.
+  since both connect as `sibillo_app`.

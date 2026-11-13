@@ -10,7 +10,7 @@
 ADR-0010 chose gVisor by default and left Kata Containers as an option behind
 a provider interface. Since then, two constraints became explicit:
 
-- **Mazzamurello must be self-hostable on a cloud VM.** Many VPS offerings
+- **Sibillo must be self-hostable on a cloud VM.** Many VPS offerings
   do not expose hardware virtualization (`/dev/kvm`) to their guests; nested
   virtualization is available only on some providers and instance types.
 - **The project ships one sandbox implementation.** Supporting several

@@ -31,7 +31,7 @@ prefers fixed behavior over settings.
    for the first message, in its language, and stores it, unless the user
    named the conversation meanwhile. The title does not wait for the answer:
    once stored, it is announced on the run's event stream with a `CUSTOM`
-   event named `mzm.title`, so clients name the conversation while it is
+   event named `sibillo.title`, so clients name the conversation while it is
    answered. The run finishes only after its title request did. The request is recorded in the cost ledger with the purpose
    `title`. A failed request leaves the conversation untitled.
 3. **Compaction** follows ADR-0041 points 1, 2 and 4 with a fixed strategy:
@@ -44,7 +44,7 @@ prefers fixed behavior over settings.
    tokens, that the admin can set, since the server decides it (Ollama's
    `num_ctx`); it is 8192 until set.
 5. **Usage is reported as the run goes.** After each model response, the run
-   emits an AG-UI `CUSTOM` event named `mzm.usage`, with the context window,
+   emits an AG-UI `CUSTOM` event named `sibillo.usage`, with the context window,
    the tokens the context uses, and the run's tokens and cost so far
    (MOD-007). Clients show a context gauge and the run's cost while it
    streams.

@@ -187,7 +187,7 @@ def test_the_driver_refuses_a_gvisor_release_older_than_its_minimum(sandboxes: D
     port = free_port()
     minimum = "release-29991231.0"
     environment = driver_environment(
-        sandboxes.token, sandboxes.image, sandboxes.netguard, port, MZM_SANDBOX_MINIMUM_GVISOR_RELEASE=minimum
+        sandboxes.token, sandboxes.image, sandboxes.netguard, port, SIBILLO_SANDBOX_MINIMUM_GVISOR_RELEASE=minimum
     )
     process = start_driver_process(environment)
     try:
@@ -217,7 +217,7 @@ def test_the_driver_refuses_a_gvisor_release_older_than_its_minimum(sandboxes: D
 
 @pytest.mark.spec("SBX-017")
 def test_the_gvisor_minimum_cannot_be_lowered(sandboxes: Driver) -> None:
-    variable = "MZM_SANDBOX_MINIMUM_GVISOR_RELEASE"
+    variable = "SIBILLO_SANDBOX_MINIMUM_GVISOR_RELEASE"
     environment = driver_environment(
         sandboxes.token, sandboxes.image, sandboxes.netguard, free_port(), **{variable: "release-20200101.0"}
     )

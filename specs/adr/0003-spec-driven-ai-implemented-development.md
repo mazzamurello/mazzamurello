@@ -7,7 +7,7 @@
 
 ## Context
 
-The code of Mazzamurello is written and reviewed by AI agents. This makes
+The code of Sibillo is written and reviewed by AI agents. This makes
 code cheap to produce and to regenerate, but raises three risks:
 
 - natural-language specs are ambiguous, and agents resolve ambiguity

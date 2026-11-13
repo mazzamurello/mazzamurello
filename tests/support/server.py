@@ -39,13 +39,13 @@ class Process:
         name: str,
         environment: Mapping[str, str],
         *,
-        module: str = "mazzamurello_server",
+        module: str = "sibillo_server",
         command: str | None = None,
     ) -> None:
         self.command = name
         self.argv = [sys.executable, "-m", module, *([] if command is None else [command])]
         self.environment = dict(environment)
-        self._log = tempfile.NamedTemporaryFile("w+", prefix=f"mzm-{name}-", suffix=".log", delete=False)  # noqa: SIM115
+        self._log = tempfile.NamedTemporaryFile("w+", prefix=f"sibillo-{name}-", suffix=".log", delete=False)  # noqa: SIM115
         self._process: subprocess.Popen[str] | None = None
         self.start()
 
@@ -116,7 +116,7 @@ class Server:
         Returns the process, already serving, and its origin; the caller closes it.
         """
         port = _free_port()
-        api = Process("api-twin", {**self.api_environment, "MZM_HTTP_PORT": str(port), **overrides}, command="api")
+        api = Process("api-twin", {**self.api_environment, "SIBILLO_HTTP_PORT": str(port), **overrides}, command="api")
         origin = f"http://127.0.0.1:{port}"
         deadline = time.monotonic() + 30
         while True:
@@ -178,10 +178,10 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
         return cached
 
     port = _free_port()
-    # Only the variables of the harness: the server refuses unknown MZM_* ones.
-    base = {name: value for name, value in os.environ.items() if not name.startswith("MZM_")}
+    # Only the variables of the harness: the server refuses unknown SIBILLO_* ones.
+    base = {name: value for name, value in os.environ.items() if not name.startswith("SIBILLO_")}
     # Record outbound connections (tests/support/outbound/sitecustomize.py).
-    outbound_log = Path(tempfile.mkstemp(prefix="mzm-outbound-", suffix=".jsonl")[1])
+    outbound_log = Path(tempfile.mkstemp(prefix="sibillo-outbound-", suffix=".jsonl")[1])
     config.add_cleanup(lambda: outbound_log.unlink(missing_ok=True))
     hook = str(ROOT / "tests" / "support" / "outbound")
     base |= {
@@ -190,21 +190,21 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
     }
     driver_url, driver_token = sandbox_driver
     shared = {
-        "MZM_DATABASE_URL": database.app_url,
-        "MZM_SECRET_KEY": secrets.token_urlsafe(32),
-        "MZM_SANDBOXD_URL": driver_url,
-        "MZM_SANDBOXD_TOKEN": driver_token,
+        "SIBILLO_DATABASE_URL": database.app_url,
+        "SIBILLO_SECRET_KEY": secrets.token_urlsafe(32),
+        "SIBILLO_SANDBOXD_URL": driver_url,
+        "SIBILLO_SANDBOXD_TOKEN": driver_token,
     }
     try:
         api_environment = (
             base
             | shared
-            | {"MZM_HTTP_HOST": "127.0.0.1", "MZM_HTTP_PORT": str(port), "MZM_TRUSTED_PROXIES": "127.0.0.1"}
+            | {"SIBILLO_HTTP_HOST": "127.0.0.1", "SIBILLO_HTTP_PORT": str(port), "SIBILLO_TRUSTED_PROXIES": "127.0.0.1"}
         )
         api = Process("api", api_environment, command="api")
         config.add_cleanup(api.close)
         # Temporary conversations are swept every second, so that their tests need not wait (ADR-0082).
-        worker_environment = {"MZM_SEARCH_URL": search_url, "MZM_TEMPORARY_SWEEP_SECONDS": "1"}
+        worker_environment = {"SIBILLO_SEARCH_URL": search_url, "SIBILLO_TEMPORARY_SWEEP_SECONDS": "1"}
         worker = Process("worker", base | shared | worker_environment, command="worker")
         config.add_cleanup(worker.close)
         server = Server(

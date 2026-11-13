@@ -454,9 +454,9 @@ TRIGGERS = [
     FOR EACH ROW EXECUTE FUNCTION connections_guard()
     """,
     # Disabling an account revokes its sessions (AUTH-009, ADR-0048). It runs
-    # as mzm_owner: row-level security keeps a tenant admin from reaching
+    # as sibillo_owner: row-level security keeps a tenant admin from reaching
     # other users' sessions, so the function works through the owner policies
-    # on device_sessions (ADR-0046). It is not executable by mzm_app; triggers
+    # on device_sessions (ADR-0046). It is not executable by sibillo_app; triggers
     # call it whatever the caller's privileges.
     """
     CREATE FUNCTION revoke_sessions_of_disabled_user() RETURNS trigger
@@ -602,7 +602,7 @@ PRE_AUTHENTICATION_FUNCTIONS = [
       source_limit_since timestamptz;
       retry_at timestamptz;
     BEGIN
-      PERFORM pg_advisory_xact_lock(hashtextextended('mzm.login_attempts:' || lower($1), 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('sibillo.login_attempts:' || lower($1), 0));
       DELETE FROM public.login_attempts a WHERE a.created_at < window_start;
       SELECT a.created_at INTO username_limit_since FROM public.login_attempts a
       WHERE NOT a.success AND lower(a.username) = lower($1)
@@ -660,30 +660,30 @@ ROW_LEVEL_SECURITY = [
 
 APPLICATION_POLICIES = [
     """
-    CREATE POLICY tenants_app_select ON tenants FOR SELECT TO mzm_app
+    CREATE POLICY tenants_app_select ON tenants FOR SELECT TO sibillo_app
     USING (id = app_tenant_id() OR app_is_instance_admin())
     """,
-    "CREATE POLICY tenants_app_insert ON tenants FOR INSERT TO mzm_app WITH CHECK (app_is_instance_admin())",
-    "CREATE POLICY users_app_select ON users FOR SELECT TO mzm_app USING (tenant_id = app_tenant_id())",
+    "CREATE POLICY tenants_app_insert ON tenants FOR INSERT TO sibillo_app WITH CHECK (app_is_instance_admin())",
+    "CREATE POLICY users_app_select ON users FOR SELECT TO sibillo_app USING (tenant_id = app_tenant_id())",
     # Only an instance admin creates instance admins (AUTH-008).
     """
-    CREATE POLICY users_app_insert ON users FOR INSERT TO mzm_app
+    CREATE POLICY users_app_insert ON users FOR INSERT TO sibillo_app
     WITH CHECK (
       (tenant_id = app_tenant_id() AND app_is_tenant_admin() AND NOT instance_admin) OR app_is_instance_admin()
     )
     """,
     """
-    CREATE POLICY users_app_update ON users FOR UPDATE TO mzm_app
+    CREATE POLICY users_app_update ON users FOR UPDATE TO sibillo_app
     USING (tenant_id = app_tenant_id() AND (id = app_user_id() OR app_is_tenant_admin()))
     """,
     """
-    CREATE POLICY device_sessions_app_own ON device_sessions TO mzm_app
+    CREATE POLICY device_sessions_app_own ON device_sessions TO sibillo_app
     USING (tenant_id = app_tenant_id() AND user_id = app_user_id())
     WITH CHECK (tenant_id = app_tenant_id() AND user_id = app_user_id())
     """,
     *(
         f"""
-        CREATE POLICY {table}_app_own ON {table} TO mzm_app
+        CREATE POLICY {table}_app_own ON {table} TO sibillo_app
         USING (tenant_id = app_tenant_id() AND owner_id = app_user_id())
         WITH CHECK (tenant_id = app_tenant_id() AND owner_id = app_user_id())
         """
@@ -693,18 +693,19 @@ APPLICATION_POLICIES = [
         statement
         for table in TENANT_TABLES
         for statement in (
-            f"CREATE POLICY {table}_app_select ON {table} FOR SELECT TO mzm_app USING (tenant_id = app_tenant_id())",
+            f"CREATE POLICY {table}_app_select ON {table} FOR SELECT TO sibillo_app"
+            " USING (tenant_id = app_tenant_id())",
             f"""
-            CREATE POLICY {table}_app_insert ON {table} FOR INSERT TO mzm_app
+            CREATE POLICY {table}_app_insert ON {table} FOR INSERT TO sibillo_app
             WITH CHECK (tenant_id = app_tenant_id() AND app_is_tenant_admin())
             """,
             f"""
-            CREATE POLICY {table}_app_update ON {table} FOR UPDATE TO mzm_app
+            CREATE POLICY {table}_app_update ON {table} FOR UPDATE TO sibillo_app
             USING (tenant_id = app_tenant_id() AND app_is_tenant_admin())
             WITH CHECK (tenant_id = app_tenant_id() AND app_is_tenant_admin())
             """,
             f"""
-            CREATE POLICY {table}_app_delete ON {table} FOR DELETE TO mzm_app
+            CREATE POLICY {table}_app_delete ON {table} FOR DELETE TO sibillo_app
             USING (tenant_id = app_tenant_id() AND app_is_tenant_admin())
             """,
         )
@@ -713,53 +714,53 @@ APPLICATION_POLICIES = [
 
 # Owner policies for the pre-authentication functions (ADR-0046).
 OWNER_POLICIES = [
-    "CREATE POLICY tenants_owner_select ON tenants FOR SELECT TO mzm_owner USING (true)",
-    "CREATE POLICY tenants_owner_insert ON tenants FOR INSERT TO mzm_owner WITH CHECK (true)",
-    "CREATE POLICY users_owner_select ON users FOR SELECT TO mzm_owner USING (true)",
-    "CREATE POLICY users_owner_insert ON users FOR INSERT TO mzm_owner WITH CHECK (true)",
-    "CREATE POLICY device_sessions_owner_select ON device_sessions FOR SELECT TO mzm_owner USING (true)",
-    "CREATE POLICY device_sessions_owner_update ON device_sessions FOR UPDATE TO mzm_owner USING (true)",
-    "CREATE POLICY login_attempts_owner_select ON login_attempts FOR SELECT TO mzm_owner USING (true)",
-    "CREATE POLICY login_attempts_owner_insert ON login_attempts FOR INSERT TO mzm_owner WITH CHECK (true)",
-    "CREATE POLICY login_attempts_owner_delete ON login_attempts FOR DELETE TO mzm_owner USING (true)",
-    "CREATE POLICY runs_owner_select ON runs FOR SELECT TO mzm_owner USING (true)",
-    "CREATE POLICY conversations_owner_select ON conversations FOR SELECT TO mzm_owner USING (true)",
-    "CREATE POLICY connections_owner_select ON connections FOR SELECT TO mzm_owner USING (true)",
+    "CREATE POLICY tenants_owner_select ON tenants FOR SELECT TO sibillo_owner USING (true)",
+    "CREATE POLICY tenants_owner_insert ON tenants FOR INSERT TO sibillo_owner WITH CHECK (true)",
+    "CREATE POLICY users_owner_select ON users FOR SELECT TO sibillo_owner USING (true)",
+    "CREATE POLICY users_owner_insert ON users FOR INSERT TO sibillo_owner WITH CHECK (true)",
+    "CREATE POLICY device_sessions_owner_select ON device_sessions FOR SELECT TO sibillo_owner USING (true)",
+    "CREATE POLICY device_sessions_owner_update ON device_sessions FOR UPDATE TO sibillo_owner USING (true)",
+    "CREATE POLICY login_attempts_owner_select ON login_attempts FOR SELECT TO sibillo_owner USING (true)",
+    "CREATE POLICY login_attempts_owner_insert ON login_attempts FOR INSERT TO sibillo_owner WITH CHECK (true)",
+    "CREATE POLICY login_attempts_owner_delete ON login_attempts FOR DELETE TO sibillo_owner USING (true)",
+    "CREATE POLICY runs_owner_select ON runs FOR SELECT TO sibillo_owner USING (true)",
+    "CREATE POLICY conversations_owner_select ON conversations FOR SELECT TO sibillo_owner USING (true)",
+    "CREATE POLICY connections_owner_select ON connections FOR SELECT TO sibillo_owner USING (true)",
 ]
 
-# "Privileges of mzm_app" in the database contract (TEN-004).
+# "Privileges of sibillo_app" in the database contract (TEN-004).
 PRIVILEGES = [
     "REVOKE CREATE ON SCHEMA public FROM PUBLIC",
     "REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC",
     "ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC",
-    "GRANT SELECT, INSERT ON tenants TO mzm_app",
+    "GRANT SELECT, INSERT ON tenants TO sibillo_app",
     """
     GRANT SELECT (id, tenant_id, username, display_name, role, instance_admin, created_at, disabled_at)
-    ON users TO mzm_app
+    ON users TO sibillo_app
     """,
-    "GRANT INSERT ON users TO mzm_app",
-    "GRANT UPDATE (display_name, password_hash, role, disabled_at) ON users TO mzm_app",
-    "GRANT SELECT, INSERT, DELETE ON device_sessions TO mzm_app",
-    "GRANT UPDATE (revoked_at) ON device_sessions TO mzm_app",
-    "GRANT SELECT, INSERT, UPDATE, DELETE ON folders TO mzm_app",
-    "GRANT SELECT, INSERT, UPDATE ON user_settings TO mzm_app",
-    "GRANT SELECT, INSERT, UPDATE ON conversation_plans TO mzm_app",
-    "GRANT SELECT, INSERT, UPDATE, DELETE ON conversations TO mzm_app",
-    "GRANT SELECT, INSERT ON compaction_checkpoints TO mzm_app",
-    "GRANT SELECT, INSERT ON conversation_messages TO mzm_app",
+    "GRANT INSERT ON users TO sibillo_app",
+    "GRANT UPDATE (display_name, password_hash, role, disabled_at) ON users TO sibillo_app",
+    "GRANT SELECT, INSERT, DELETE ON device_sessions TO sibillo_app",
+    "GRANT UPDATE (revoked_at) ON device_sessions TO sibillo_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON folders TO sibillo_app",
+    "GRANT SELECT, INSERT, UPDATE ON user_settings TO sibillo_app",
+    "GRANT SELECT, INSERT, UPDATE ON conversation_plans TO sibillo_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON conversations TO sibillo_app",
+    "GRANT SELECT, INSERT ON compaction_checkpoints TO sibillo_app",
+    "GRANT SELECT, INSERT ON conversation_messages TO sibillo_app",
     # Rewinding deletes runs (ADR-0068).
-    "GRANT SELECT, INSERT, UPDATE, DELETE ON runs TO mzm_app",
-    "GRANT SELECT, INSERT ON usage_ledger TO mzm_app",
-    "GRANT SELECT, INSERT, UPDATE, DELETE ON connections, connection_models TO mzm_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON runs TO sibillo_app",
+    "GRANT SELECT, INSERT ON usage_ledger TO sibillo_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON connections, connection_models TO sibillo_app",
     """
     GRANT EXECUTE ON FUNCTION app_tenant_id(), app_user_id(), app_is_tenant_admin(), app_is_instance_admin()
-      TO mzm_app
+      TO sibillo_app
     """,
     """
     GRANT EXECUTE ON FUNCTION auth_find_login(text), auth_find_session(bytea), auth_touch_session(uuid),
       auth_record_login_attempt(text, inet, boolean), retention_expired_runs(integer),
       expired_temporary_conversations(integer), default_model_configured()
-      TO mzm_app
+      TO sibillo_app
     """,
 ]
 

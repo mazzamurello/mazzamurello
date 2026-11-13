@@ -16,8 +16,8 @@ export default defineConfig({
       filename: "sw.js",
       includeAssets: ["icon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Mazzamurello",
-        short_name: "Mazzamurello",
+        name: "Sibillo",
+        short_name: "Sibillo",
         description: "A private assistant for the household",
         start_url: "/",
         scope: "/",

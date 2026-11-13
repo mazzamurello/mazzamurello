@@ -75,10 +75,10 @@ export function apply(run: LiveRun, event: RunEvent): LiveRun {
       break;
     }
     case "CUSTOM":
-      if (event.name === "mzm.usage" && typeof event.value === "object" && event.value !== null) {
+      if (event.name === "sibillo.usage" && typeof event.value === "object" && event.value !== null) {
         return { ...run, parts, usage: event.value as RunUsage };
       }
-      if (event.name === "mzm.plan" && typeof event.value === "object" && event.value !== null) {
+      if (event.name === "sibillo.plan" && typeof event.value === "object" && event.value !== null) {
         return { ...run, parts, plan: (event.value as { steps: PlanStep[] }).steps };
       }
       break;
@@ -123,7 +123,7 @@ export function useLiveRun(onEnd: () => Promise<void>) {
           current = apply(current, event);
           setLive(current);
           // The conversation got its title while it is answered (CNV-006).
-          if (event.type === "CUSTOM" && event.name === "mzm.title") {
+          if (event.type === "CUSTOM" && event.name === "sibillo.title") {
             void queries.invalidateQueries({ queryKey: CONVERSATIONS });
             void queries.invalidateQueries({ queryKey: ["conversation"] });
           }

@@ -33,7 +33,7 @@ test cannot install one without changing the host's Docker configuration.
 
    The deny-list grows as such packages come to light.
 3. **The gVisor minimum can be raised.**
-   `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE` lets the instance admin require a
+   `SIBILLO_SANDBOX_MINIMUM_GVISOR_RELEASE` lets the instance admin require a
    newer release than the minimum built into the driver, for example after a
    gVisor security fix. A value older than the built-in minimum stops the
    driver with a configuration error: the minimum can never be lowered. The

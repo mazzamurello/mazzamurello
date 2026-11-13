@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 
 export type Theme = "system" | "light" | "dark";
 
-const KEY = "mazzamurello.theme";
+const KEY = "sibillo.theme";
 
 function stored(): Theme {
   try {

@@ -36,7 +36,7 @@ memory (measured on 2026-11-06).
    conversation's sandbox; the next answer gets a new one with the same
    workspace (SBX-018). A program started in a sandbox outlives neither the
    answer that started it nor the sandbox.
-3. **Safety nets.** A sandbox without commands for `MZM_SANDBOX_IDLE_MINUTES`,
+3. **Safety nets.** A sandbox without commands for `SIBILLO_SANDBOX_IDLE_MINUTES`,
    now 5 by default, is removed, for a run that ended without telling the
    driver. The driver removes every sandbox when it starts, so none is left
    untracked.

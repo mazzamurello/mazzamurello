@@ -26,12 +26,12 @@ def test_init_writes_fresh_secrets_once(deployment: Deployment) -> None:
         line.split("=", 1) for line in deployment.env_file.read_text().splitlines() if line and not line.startswith("#")
     )
     secrets_written = (
-        "MZM_POSTGRES_PASSWORD",
-        "MZM_OWNER_PASSWORD",
-        "MZM_APP_PASSWORD",
-        "MZM_SECRET_KEY",
-        "MZM_SANDBOXD_TOKEN",
-        "MZM_BACKUP_KEY",
+        "SIBILLO_POSTGRES_PASSWORD",
+        "SIBILLO_OWNER_PASSWORD",
+        "SIBILLO_APP_PASSWORD",
+        "SIBILLO_SECRET_KEY",
+        "SIBILLO_SANDBOXD_TOKEN",
+        "SIBILLO_BACKUP_KEY",
     )
     for name in secrets_written:
         assert len(values.get(name, "")) >= 32, name
@@ -91,7 +91,7 @@ def test_the_first_administrator_is_created_once_and_no_default_works(deployment
         ("admin", "admin"),
         ("admin", "password"),
         ("root", "root"),
-        ("mazzamurello", "mazzamurello"),
+        ("sibillo", "sibillo"),
     ):
         assert log_in(deployment, username, password).status_code == 401
 

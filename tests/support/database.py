@@ -2,7 +2,7 @@
 
 See specs/contracts/test-harness.md: PostgreSQL 17 in a container, the
 initialization of the database contract run as superuser, migrations run as
-`mzm_owner`, assertions made as `mzm_app`.
+`sibillo_owner`, assertions made as `sibillo_app`.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from psycopg import sql
 
 ROOT = Path(__file__).resolve().parents[2]
 POSTGRES_IMAGE = "postgres:17.6"
-DATABASE_NAME = "mazzamurello"
+DATABASE_NAME = "sibillo"
 MIGRATION_TIMEOUT_SECONDS = 300
 
 # Tables of the database contract, by kind.
@@ -71,7 +71,7 @@ class Database:
     app_url: str
 
     def superuser(self) -> psycopg.Connection:
-        """Connection for catalog inspection and arranging data, never for assertions on `mzm_app`."""
+        """Connection for catalog inspection and arranging data, never for assertions on `sibillo_app`."""
         return psycopg.connect(self.superuser_url, autocommit=True)
 
     def app(self) -> psycopg.Connection:
@@ -91,25 +91,25 @@ def _initialize(superuser_url: str, owner_password: str, app_password: str) -> N
     # The initialization of specs/contracts/database.md, with test passwords.
     with psycopg.connect(superuser_url, autocommit=True) as conn:
         conn.execute(
-            sql.SQL("CREATE ROLE mzm_owner LOGIN PASSWORD {} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE").format(
-                sql.Literal(owner_password)
-            )
+            sql.SQL(
+                "CREATE ROLE sibillo_owner LOGIN PASSWORD {} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"
+            ).format(sql.Literal(owner_password))
         )
         conn.execute(
             sql.SQL(
-                "CREATE ROLE mzm_app LOGIN PASSWORD {} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT"
+                "CREATE ROLE sibillo_app LOGIN PASSWORD {} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT"
             ).format(sql.Literal(app_password))
         )
-        conn.execute(f"CREATE DATABASE {DATABASE_NAME} OWNER mzm_owner")
+        conn.execute(f"CREATE DATABASE {DATABASE_NAME} OWNER sibillo_owner")
         conn.execute(f"REVOKE ALL ON DATABASE {DATABASE_NAME} FROM PUBLIC")
-        conn.execute(f"GRANT CONNECT ON DATABASE {DATABASE_NAME} TO mzm_app")
+        conn.execute(f"GRANT CONNECT ON DATABASE {DATABASE_NAME} TO sibillo_app")
 
 
 def _migrate(owner_url: str) -> None:
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "-c", "migrations/alembic.ini", "upgrade", "head"],
         cwd=ROOT,
-        env={**os.environ, "MZM_DATABASE_URL": owner_url},
+        env={**os.environ, "SIBILLO_DATABASE_URL": owner_url},
         capture_output=True,
         text=True,
         timeout=MIGRATION_TIMEOUT_SECONDS,
@@ -141,12 +141,12 @@ def start_database(config: pytest.Config) -> Database:
         superuser_url = container.get_connection_url()
         owner_password, app_password = secrets.token_hex(16), secrets.token_hex(16)
         _initialize(superuser_url, owner_password, app_password)
-        _migrate(f"postgresql://mzm_owner:{owner_password}@{host}:{port}/{DATABASE_NAME}")
+        _migrate(f"postgresql://sibillo_owner:{owner_password}@{host}:{port}/{DATABASE_NAME}")
         database = Database(
             host=host,
             port=port,
             superuser_url=f"postgresql://{container.username}:{container.password}@{host}:{port}/{DATABASE_NAME}",
-            app_url=f"postgresql://mzm_app:{app_password}@{host}:{port}/{DATABASE_NAME}",
+            app_url=f"postgresql://sibillo_app:{app_password}@{host}:{port}/{DATABASE_NAME}",
         )
     except BaseException as exc:
         config.stash[_DATABASE] = exc
@@ -167,7 +167,7 @@ class Context:
 
 @contextmanager
 def app_transaction(database: Database, context: Context | None) -> Generator[psycopg.Connection]:
-    """A transaction as `mzm_app` with the given request context, rolled back at the end."""
+    """A transaction as `sibillo_app` with the given request context, rolled back at the end."""
     with database.app() as conn:
         if context is not None:
             conn.execute(

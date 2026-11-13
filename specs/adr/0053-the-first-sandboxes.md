@@ -28,9 +28,9 @@ tested.
    after every recovery. It must run under `runsc`, reach no address of the
    host through the sandbox bridge, and fail to connect to `10.0.0.1`
    (SBX-003). The driver accepts requests only after it passes.
-3. **The sandbox bridge** is the Docker network `mazzamurello-sandboxes`, with
-   the interface `mzmsbx0`, inter-container communication and IPv6 disabled,
-   created by the driver. The network guard's table matches `mzmsbx0`.
+3. **The sandbox bridge** is the Docker network `sibillo-sandboxes`, with
+   the interface `sibillosbx0`, inter-container communication and IPv6 disabled,
+   created by the driver. The network guard's table matches `sibillosbx0`.
 4. **Defaults**, all configurable by the instance admin
    ([configuration contract](../contracts/configuration.md)): 1 CPU, 1 GiB of
    memory, 512 processes (`RLIMIT_NPROC`), 300 seconds per command, 1 MiB of

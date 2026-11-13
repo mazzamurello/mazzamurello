@@ -10,7 +10,7 @@
 Running capable models at home needs hardware many households cannot
 afford, so many will use a remote provider such as OpenRouter for some or all
 conversations. That is a choice the household can make knowingly only if
-Mazzamurello tells them, every time, whether their words stay in the house.
+Sibillo tells them, every time, whether their words stay in the house.
 
 ## Decision
 

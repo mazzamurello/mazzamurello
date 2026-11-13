@@ -37,8 +37,8 @@ class PullRequestPathsTest(unittest.TestCase):
         self.assertRejected("test/sandbox-egress", "src/sandbox.py")
 
     def test_impl_pull_request_cannot_touch_tests(self) -> None:
-        self.assertAllowed("impl/sandbox-egress", "src/mazzamurello/sandbox.py", "migrations/0001.py", "pyproject.toml")
-        self.assertRejected("impl/sandbox-egress", "src/mazzamurello/sandbox.py", "tests/test_sandbox.py")
+        self.assertAllowed("impl/sandbox-egress", "src/sibillo/sandbox.py", "migrations/0001.py", "pyproject.toml")
+        self.assertRejected("impl/sandbox-egress", "src/sibillo/sandbox.py", "tests/test_sandbox.py")
         self.assertRejected("impl/sandbox-egress", "specs/requirements/sandbox.md")
 
     def test_docs_pull_request(self) -> None:

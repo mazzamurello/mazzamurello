@@ -15,7 +15,7 @@ import { Sprite } from "./Sprite";
 export function Shell({ me }: { me: User }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const list = usePanelWidth("mzm.listWidth", 268, 220, 440);
+  const list = usePanelWidth("sibillo.listWidth", 268, 220, 440);
   const signOut = useSignOut();
   const location = useLocation();
   useLeavingTemporary();

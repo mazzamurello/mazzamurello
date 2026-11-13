@@ -27,15 +27,15 @@ COPY pyproject.toml uv.lock ./
 COPY src/server/pyproject.toml src/server/pyproject.toml
 COPY src/sandboxd/pyproject.toml src/sandboxd/pyproject.toml
 COPY src/netguard/pyproject.toml src/netguard/pyproject.toml
-RUN uv sync --frozen --no-dev --package mazzamurello-server --no-install-workspace
+RUN uv sync --frozen --no-dev --package sibillo-server --no-install-workspace
 COPY src/server src/server
 COPY migrations migrations
-RUN uv sync --frozen --no-dev --package mazzamurello-server --no-editable
+RUN uv sync --frozen --no-dev --package sibillo-server --no-editable
 
 ENV PATH=/opt/venv/bin:$PATH
-# Served at `/` by the API (MZM_WEB_ROOT's default).
-COPY --from=web /build/src/web/dist /opt/mazzamurello/web
-RUN useradd --system --uid 10001 --no-create-home mazzamurello
-USER mazzamurello
+# Served at `/` by the API (SIBILLO_WEB_ROOT's default).
+COPY --from=web /build/src/web/dist /opt/sibillo/web
+RUN useradd --system --uid 10001 --no-create-home sibillo
+USER sibillo
 ENTRYPOINT ["python", "-m"]
-CMD ["mazzamurello_server", "api"]
+CMD ["sibillo_server", "api"]

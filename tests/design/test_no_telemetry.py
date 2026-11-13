@@ -20,7 +20,7 @@ DENIED_PACKAGES = re.compile(
     r"|rollbar|bugsnag|honeybadger|analytics-python|segment-analytics-python|mixpanel|amplitude-analytics)$"
 )
 SOURCES = ROOT / "src"
-WORKER = SOURCES / "server" / "mazzamurello_server" / "worker.py"
+WORKER = SOURCES / "server" / "sibillo_server" / "worker.py"
 # DBOS settings that would send data to a service.
 DENIED_DBOS_SETTINGS = {"conductor_key", "conductor_url", "enable_otlp", "otlp_traces_endpoints", "otlp_logs_endpoints"}
 

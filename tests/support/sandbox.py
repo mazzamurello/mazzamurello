@@ -26,20 +26,20 @@ from tests.support.server import Process
 
 READY_TIMEOUT_SECONDS = 120
 BUILD_TIMEOUT_SECONDS = 900
-SANDBOX_NETWORK = "mazzamurello-sandboxes"
-EGRESS_TABLE = "inet mazzamurello"
+SANDBOX_NETWORK = "sibillo-sandboxes"
+EGRESS_TABLE = "inet sibillo"
 # Small limits, so that tests can reach them (SBX-011).
 TEST_LIMITS = {
-    "MZM_SANDBOX_CPUS": "0.5",
-    "MZM_SANDBOX_MEMORY_MB": "256",
-    "MZM_SANDBOX_PROCESSES": "64",
-    "MZM_SANDBOX_COMMAND_TIMEOUT_SECONDS": "8",
-    "MZM_SANDBOX_MAX_OUTPUT_BYTES": "65536",
-    "MZM_SANDBOX_IDLE_MINUTES": "30",
-    "MZM_SANDBOX_WORKSPACE_QUOTA_MB": "8",
+    "SIBILLO_SANDBOX_CPUS": "0.5",
+    "SIBILLO_SANDBOX_MEMORY_MB": "256",
+    "SIBILLO_SANDBOX_PROCESSES": "64",
+    "SIBILLO_SANDBOX_COMMAND_TIMEOUT_SECONDS": "8",
+    "SIBILLO_SANDBOX_MAX_OUTPUT_BYTES": "65536",
+    "SIBILLO_SANDBOX_IDLE_MINUTES": "30",
+    "SIBILLO_SANDBOX_WORKSPACE_QUOTA_MB": "8",
 }
 # The label the driver gives its sandboxes, with the tenant, the user and the conversation.
-SANDBOX_LABEL = "dev.mazzamurello.sandbox"
+SANDBOX_LABEL = "dev.sibillo.sandbox"
 # The workspace quota above, in bytes (SBX-019).
 WORKSPACE_QUOTA_BYTES = 8 * 1024 * 1024
 
@@ -181,17 +181,17 @@ def _wait_healthy(container: str, timeout: float = 60) -> None:
 
 
 def start_driver_process(environment: Mapping[str, str]) -> Process:
-    base = {name: value for name, value in os.environ.items() if not name.startswith("MZM_")}
-    return Process("sandboxd", base | dict(environment), module="mazzamurello_sandboxd", command=None)
+    base = {name: value for name, value in os.environ.items() if not name.startswith("SIBILLO_")}
+    return Process("sandboxd", base | dict(environment), module="sibillo_sandboxd", command=None)
 
 
 def driver_environment(token: str, image: str, netguard: str, port: int, **overrides: str) -> dict[str, str]:
     return {
-        "MZM_SANDBOXD_HOST": "127.0.0.1",
-        "MZM_SANDBOXD_PORT": str(port),
-        "MZM_SANDBOXD_TOKEN": token,
-        "MZM_SANDBOX_IMAGE": image,
-        "MZM_NETGUARD_CONTAINER": netguard,
+        "SIBILLO_SANDBOXD_HOST": "127.0.0.1",
+        "SIBILLO_SANDBOXD_PORT": str(port),
+        "SIBILLO_SANDBOXD_TOKEN": token,
+        "SIBILLO_SANDBOX_IMAGE": image,
+        "SIBILLO_NETGUARD_CONTAINER": netguard,
         **TEST_LIMITS,
         **overrides,
     }
@@ -238,9 +238,9 @@ def start_sandboxes(config: pytest.Config) -> Driver:
     suffix = secrets.token_hex(4)
     # Images CI built with its build cache are used as they are, and kept (ADR-0059).
     prebuilt = os.environ.get("TEST_SANDBOX_IMAGE"), os.environ.get("TEST_NETGUARD_IMAGE")
-    image = prebuilt[0] or f"mazzamurello-test/sandbox:{suffix}"
-    guard_image = prebuilt[1] or f"mazzamurello-test/netguard:{suffix}"
-    netguard = f"mazzamurello-test-netguard-{suffix}"
+    image = prebuilt[0] or f"sibillo-test/sandbox:{suffix}"
+    guard_image = prebuilt[1] or f"sibillo-test/netguard:{suffix}"
+    netguard = f"sibillo-test-netguard-{suffix}"
     holder: dict[str, Process] = {}
     removed = tuple(name for name, given in zip((image, guard_image), prebuilt, strict=True) if not given)
     config.add_cleanup(lambda: _cleanup(image, removed, netguard, holder.get("driver")))

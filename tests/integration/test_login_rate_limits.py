@@ -1,7 +1,7 @@
 """Login rate limits (AUTH-006, ADR-0047).
 
 Each attempt is recorded as the server records it after verifying a
-password: through `auth_record_login_attempt`, as `mzm_app`, with no request
+password: through `auth_record_login_attempt`, as `sibillo_app`, with no request
 context. Earlier attempts are arranged as superuser when their time matters.
 Every test uses fresh usernames and source addresses, so the limits of one
 test never count attempts of another.

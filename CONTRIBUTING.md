@@ -1,6 +1,6 @@
-# Contributing to Mazzamurello
+# Contributing to Sibillo
 
-Thank you for your interest. Mazzamurello is a young project with a strict,
+Thank you for your interest. Sibillo is a young project with a strict,
 spec-driven process. Reading this page first will save you time.
 
 ## Ground rules

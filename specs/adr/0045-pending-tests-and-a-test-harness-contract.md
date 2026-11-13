@@ -55,7 +55,7 @@ privilege than migrations should have (TEN-004).
    `spec/*` pull requests. It starts with the database: PostgreSQL 17 started
    by the test suite with testcontainers (ADR-0008), roles and database
    created by the initialization in the [database contract](../contracts/database.md),
-   migrations run with Alembic as `mzm_owner`, behavior tested as `mzm_app`.
+   migrations run with Alembic as `sibillo_owner`, behavior tested as `sibillo_app`.
    Interfaces to the server application are added before the first tests
    that need them.
 4. Libraries that only tests use are added to the `dev` dependency group by

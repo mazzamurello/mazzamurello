@@ -4,7 +4,7 @@ version = 1
 [[annotations]]
 path = "**"
 precedence = "aggregate"
-SPDX-FileCopyrightText = "The Mazzamurello contributors"
+SPDX-FileCopyrightText = "The Sibillo contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 # Specifications, documentation and prose are CC-BY-4.0.
@@ -25,5 +25,5 @@ path = [
   "CODE_OF_CONDUCT.md",
 ]
 precedence = "aggregate"
-SPDX-FileCopyrightText = "The Mazzamurello contributors"
+SPDX-FileCopyrightText = "The Sibillo contributors"
 SPDX-License-Identifier = "CC-BY-4.0"

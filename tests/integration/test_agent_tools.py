@@ -318,7 +318,7 @@ def test_the_task_list_lasts_from_run_to_run(server: Server, token: str, default
     run_id, events = start_run(server, token, conversation["id"], f"tool:write_plan {json.dumps({'items': steps})}")
     assert wait_for_run(server, token, run_id)["status"] == "completed"
     # It is streamed as it changes, and kept with the conversation.
-    (announced,) = [e for e in events if e.type == "CUSTOM" and e.data.get("name") == "mzm.plan"]
+    (announced,) = [e for e in events if e.type == "CUSTOM" and e.data.get("name") == "sibillo.plan"]
     shown = [(step["id"], step["content"], step["status"]) for step in announced.data["value"]["steps"]]
     assert shown == [("find", "Find the file", "in_progress"), ("sum", "Summarize it", "pending")]
     kept = _conversation(server, token, conversation["id"])["plan"]

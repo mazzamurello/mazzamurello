@@ -11,7 +11,7 @@ The database contract changes with every milestone, and `migrations/` has
 grown one Alembic revision per change since phase 0. Phases 0 and 1 change
 the schema in ways that would need data conversions: message versions
 removed (ADR-0068), model configurations replaced by connections
-(ADR-0069). Mazzamurello has not been released: the only databases are the
+(ADR-0069). Sibillo has not been released: the only databases are the
 maintainers' own installations and the test suite's. OPS-005 requires
 upgrades only between released versions.
 

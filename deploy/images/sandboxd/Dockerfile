@@ -11,10 +11,10 @@ COPY pyproject.toml uv.lock ./
 COPY src/server/pyproject.toml src/server/pyproject.toml
 COPY src/sandboxd/pyproject.toml src/sandboxd/pyproject.toml
 COPY src/netguard/pyproject.toml src/netguard/pyproject.toml
-RUN uv sync --frozen --no-dev --package mazzamurello-sandboxd --no-install-workspace
+RUN uv sync --frozen --no-dev --package sibillo-sandboxd --no-install-workspace
 COPY src/sandboxd src/sandboxd
-RUN uv sync --frozen --no-dev --package mazzamurello-sandboxd --no-editable
+RUN uv sync --frozen --no-dev --package sibillo-sandboxd --no-editable
 
 ENV PATH=/opt/venv/bin:$PATH
 # The Docker socket is root's; the driver holds it alone (SBX-009).
-ENTRYPOINT ["python", "-m", "mazzamurello_sandboxd"]
+ENTRYPOINT ["python", "-m", "sibillo_sandboxd"]

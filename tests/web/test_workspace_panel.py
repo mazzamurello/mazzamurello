@@ -125,7 +125,7 @@ def test_an_html_file_never_runs_in_the_app(page: Page, member: Account) -> None
     response = page.request.put(
         f"/v1/conversations/{conversation}/workspace/file?path=page.html",
         data=b"<h1>Hello</h1><script>document.title='pwned'</script>",
-        headers={"Content-Type": "application/octet-stream", "X-Mazzamurello-Request": "1"},
+        headers={"Content-Type": "application/octet-stream", "X-Sibillo-Request": "1"},
     )
     assert response.status == 201, response.text()
     _open_panel(page)

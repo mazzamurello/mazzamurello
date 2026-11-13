@@ -31,7 +31,7 @@ instance holds (MOD-002).
 3. **Credentials are write-only and encrypted.** An API key is accepted when a
    configuration is created or updated and never returned; responses only say
    whether one is set. Keys are encrypted with AES-256-GCM under a key that
-   the control plane reads from `MZM_SECRET_KEY`, so a database dump or backup
+   the control plane reads from `SIBILLO_SECRET_KEY`, so a database dump or backup
    alone does not reveal them. The model gateway decrypts a key only to make
    a request (MOD-002).
 4. **Endpoints of tenant models are restricted.** The model gateway makes
@@ -50,7 +50,7 @@ instance holds (MOD-002).
 
 - Phase 0 has no settings screen; the API is the settings, and the web client
   uses it in phase 1.
-- Losing `MZM_SECRET_KEY` makes stored API keys unusable; admins enter them
+- Losing `SIBILLO_SECRET_KEY` makes stored API keys unusable; admins enter them
   again. Rotating the key needs a migration of the stored keys, planned later.
 - Tenant admins cannot use a provider on the household's network unless the
   instance admin configures it as an instance model.

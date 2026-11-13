@@ -30,7 +30,7 @@ export const API_BASE = "/v1";
 
 // Every request carries this header: the session cookie authenticates a change
 // only with it, and a cross-site request cannot set it (AUTH-005).
-export const REQUEST_HEADER = { "X-Mazzamurello-Request": "1" };
+export const REQUEST_HEADER = { "X-Sibillo-Request": "1" };
 
 export const api = createClient<paths>({
   baseUrl: API_BASE,

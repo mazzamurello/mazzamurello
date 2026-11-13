@@ -213,7 +213,7 @@ def test_sandboxes_hold_no_credentials(sandboxes: Driver) -> None:
     tenant_id, user_id, conversation_id = _sandbox()
     environment = sandboxes.sh(tenant_id, user_id, conversation_id, "env").stdout
     assert sandboxes.token not in environment
-    assert "MZM_" not in environment
+    assert "SIBILLO_" not in environment
     assert "DOCKER" not in environment
     assert sandboxes.sh(tenant_id, user_id, conversation_id, "test -e /var/run/docker.sock").exit_code != 0
     for container in sandboxes.sandbox_containers():
@@ -294,7 +294,7 @@ def _refused_the_runtime(health: dict[str, Any] | None) -> bool:
 def test_the_driver_refuses_sandboxes_without_gvisor(sandboxes: Driver, runtime: str) -> None:
     port = free_port()
     environment = driver_environment(
-        sandboxes.token, sandboxes.image, sandboxes.netguard, port, MZM_SANDBOX_RUNTIME=runtime
+        sandboxes.token, sandboxes.image, sandboxes.netguard, port, SIBILLO_SANDBOX_RUNTIME=runtime
     )
     process = start_driver_process(environment)
     try:
@@ -335,7 +335,7 @@ def test_sandboxes_stop_when_the_egress_rules_disappear(sandboxes: Driver) -> No
     sandboxes.sh(tenant_id, user_id, conversation_id, "true")
     running = [c for c in sandboxes.sandbox_containers() if c["State"]["Running"]]
     assert running
-    docker("exec", sandboxes.netguard, "nft", "delete", "table", "inet", "mazzamurello")
+    docker("exec", sandboxes.netguard, "nft", "delete", "table", "inet", "sibillo")
     deadline = time.monotonic() + 30
     while any(c["State"]["Running"] for c in sandboxes.sandbox_containers()):
         assert time.monotonic() < deadline, "sandboxes kept running without egress rules"

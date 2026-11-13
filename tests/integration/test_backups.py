@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 import pytest
 
-from mazzamurello_server.backup import next_backup, prune_archives
+from sibillo_server.backup import next_backup, prune_archives
 from tests.support.accounts import Account, create_account, create_tenant, login
 from tests.support.database import Database
 from tests.support.fixtures import HarnessModel
@@ -39,7 +39,7 @@ def test_backups_run_every_day_at_the_chosen_time(now: datetime, at: str, expect
 
 @pytest.mark.spec("OPS-010")
 def test_only_the_newest_archives_are_kept(tmp_path: Path) -> None:
-    names = [f"mazzamurello-2026110{day}T030000Z.tar.age" for day in range(1, 8)]
+    names = [f"sibillo-2026110{day}T030000Z.tar.age" for day in range(1, 8)]
     for name in names:
         (tmp_path / name).write_bytes(b"archive")
     (tmp_path / "status.json").write_text("{}")
@@ -101,7 +101,7 @@ def test_backups_that_fail_or_stop_make_the_instance_degraded(
     if status is not None:
         path.write_text(json.dumps(status))
     token = login(server, instance_admin)
-    api, origin = server.start_twin_api(MZM_BACKUP_STATUS=str(path))
+    api, origin = server.start_twin_api(SIBILLO_BACKUP_STATUS=str(path))
     try:
         headers = {"Authorization": f"Bearer {token}", "X-Forwarded-For": fresh_source()}
         health = httpx.get(f"{origin}/v1/health", headers=headers, timeout=30).json()

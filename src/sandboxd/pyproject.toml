@@ -1,7 +1,7 @@
 [project]
-name = "mazzamurello-sandboxd"
+name = "sibillo-sandboxd"
 version = "0.0.0"
-description = "Mazzamurello sandbox driver: sole holder of container runtime access (ADR-0022)."
+description = "Sibillo sandbox driver: sole holder of container runtime access (ADR-0022)."
 requires-python = "==3.13.*"
 license = "AGPL-3.0-or-later"
 dependencies = [
@@ -15,5 +15,5 @@ requires = ["uv_build==0.13.6"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "mazzamurello_sandboxd"
+module-name = "sibillo_sandboxd"
 module-root = ""

@@ -52,7 +52,7 @@ def test_each_model_response_reports_the_context_and_the_cost_so_far(server: Ser
     run_id, events = start_run(server, member.token, conversation["id"], "run:echo $((6*7))")
     assert wait_for_run(server, member.token, run_id)["status"] == "completed"
     usage = [
-        event.data["value"] for event in events if event.type == "CUSTOM" and event.data.get("name") == "mzm.usage"
+        event.data["value"] for event in events if event.type == "CUSTOM" and event.data.get("name") == "sibillo.usage"
     ]
     # One after each model response: the tool call, then the answer.
     assert len(usage) == 2
@@ -73,7 +73,7 @@ def test_costs_of_answers_conversations_and_periods(database: Database, server: 
     run_id, events = start_run(server, member.token, conversation["id"], "priced")
     assert wait_for_run(server, member.token, run_id)["status"] == "completed"
     usage = [
-        event.data["value"] for event in events if event.type == "CUSTOM" and event.data.get("name") == "mzm.usage"
+        event.data["value"] for event in events if event.type == "CUSTOM" and event.data.get("name") == "sibillo.usage"
     ]
     assert Decimal(usage[-1]["cost"]["amount"]) == Decimal(str(OPENROUTER_COST))
     page = messages(server, member.token, conversation["id"])

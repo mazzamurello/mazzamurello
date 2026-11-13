@@ -1,6 +1,6 @@
 # Product: personas and journeys
 
-Who Mazzamurello is for, and what they do with it. Requirements about the
+Who Sibillo is for, and what they do with it. Requirements about the
 user experience are justified by these personas and journeys; a feature that
 serves none of them needs a new persona or journey here first.
 

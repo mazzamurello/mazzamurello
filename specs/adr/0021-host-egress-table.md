@@ -37,7 +37,7 @@ We will enforce sandbox egress **in the host kernel**, with a dedicated
 1. All sandboxes attach to one **sandbox bridge** with a fixed interface name,
    created by the sandbox driver, with inter-container communication and
    IPv6 disabled.
-2. A **network guard** container installs the table `inet mazzamurello` on the
+2. A **network guard** container installs the table `inet sibillo` on the
    host. It runs only project code, with host networking and the
    `NET_ADMIN` capability, and no other privileges or mounts.
 3. The table matches **only traffic entering from the sandbox bridge**:
@@ -51,7 +51,7 @@ We will enforce sandbox egress **in the host kernel**, with a dedicated
    as firewalld or ufw, and never modifies them. In `nftables` a drop in any
    table is final, so other tables cannot override it.
 5. The rules live only in kernel memory: the network guard installs them at
-   startup and reinstalls them if they disappear; uninstalling Mazzamurello
+   startup and reinstalls them if they disappear; uninstalling Sibillo
    removes them.
 6. The sandbox driver starts a sandbox only after verifying that the table is
    in place, and stops running sandboxes if it disappears (SBX-015).
@@ -63,7 +63,7 @@ We will enforce sandbox egress **in the host kernel**, with a dedicated
 
 - Egress restrictions hold even if the sandbox kernel is compromised: they are
   outside the attacker's reach.
-- Mazzamurello adds state to the host firewall, limited to one clearly named
+- Sibillo adds state to the host firewall, limited to one clearly named
   table. Docker itself already manages host firewall rules; installing gVisor
   is a host change in any case.
 - The network guard is a privileged infrastructure component and becomes

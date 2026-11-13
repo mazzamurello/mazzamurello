@@ -11,26 +11,26 @@ from typing import Any, cast
 import pytest
 from fastapi.routing import APIRoute, iter_route_contexts
 
-from mazzamurello_server.app import create_app
-from mazzamurello_server.config import ApiConfiguration, load_api_configuration
+from sibillo_server.app import create_app
+from sibillo_server.config import ApiConfiguration, load_api_configuration
 from tests.support.contract import contract
 from tests.support.database import ROOT
 
-SERVER = ROOT / "src" / "server" / "mazzamurello_server"
+SERVER = ROOT / "src" / "server" / "sibillo_server"
 HTTP_METHODS = ("get", "put", "post", "delete", "patch")
 # Dotted names in the server that are not error codes: names of its own, and file names.
 # Names and file names, such as the entries of a backup archive (ADR-0077), are not error codes.
-NOT_ERROR_CODES = re.compile(r"^(mazzamurello|mzm)\.|\.(html|js|css|json|webmanifest|tar|dump)$")
+NOT_ERROR_CODES = re.compile(r"^(sibillo|sibillo)\.|\.(html|js|css|json|webmanifest|tar|dump)$")
 DOTTED = re.compile(r"^[a-z]+\.[a-z_]+$")
 
 
 def _configuration() -> ApiConfiguration:
     return load_api_configuration(
         {
-            "MZM_DATABASE_URL": "postgresql://mzm_app:unused@127.0.0.1:1/unused",
-            "MZM_SECRET_KEY": base64.urlsafe_b64encode(bytes(32)).decode(),
-            "MZM_SANDBOXD_URL": "http://127.0.0.1:1/v1",
-            "MZM_SANDBOXD_TOKEN": "t" * 43,
+            "SIBILLO_DATABASE_URL": "postgresql://sibillo_app:unused@127.0.0.1:1/unused",
+            "SIBILLO_SECRET_KEY": base64.urlsafe_b64encode(bytes(32)).decode(),
+            "SIBILLO_SANDBOXD_URL": "http://127.0.0.1:1/v1",
+            "SIBILLO_SANDBOXD_TOKEN": "t" * 43,
         }
     )
 

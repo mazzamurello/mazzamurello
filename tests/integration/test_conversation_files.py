@@ -196,7 +196,7 @@ def test_uploads_are_limited_by_size_and_quota(server: Server, token: str) -> No
         over_quota = _upload(client, conversation, "huge.bin", b"x" * (WORKSPACE_QUOTA_BYTES + 1024))
     assert over_quota.status_code == 413
     assert over_quota.json()["code"] == "workspace.quota_exceeded"
-    api, origin = server.start_twin_api(MZM_UPLOAD_MAX_MB="1")
+    api, origin = server.start_twin_api(SIBILLO_UPLOAD_MAX_MB="1")
     try:
         too_large = httpx.post(
             f"{origin}/v1{_workspace(conversation)}/uploads",

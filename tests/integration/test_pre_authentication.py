@@ -1,8 +1,8 @@
 """The pre-authentication functions work before any request context exists.
 
-They run as `mzm_owner` under forced row-level security, through the owner
+They run as `sibillo_owner` under forced row-level security, through the owner
 policies of specs/contracts/database.md (ADR-0046). Each call is made as
-`mzm_app` with no request context, as the server makes it at login and on
+`sibillo_app` with no request context, as the server makes it at login and on
 every request.
 """
 

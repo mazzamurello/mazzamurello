@@ -20,7 +20,7 @@ the whole family.
 
 We will:
 
-1. Run Mazzamurello **only as containers on a Linux server**, deployed with
+1. Run Sibillo **only as containers on a Linux server**, deployed with
    Docker Compose. Kubernetes support may follow for operators who need it.
 2. Support Linux on x86_64 and arm64 with Docker Engine. Other environments
    (Docker Desktop on macOS or Windows, NAS platforms without the required

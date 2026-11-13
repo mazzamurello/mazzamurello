@@ -1,6 +1,6 @@
 # Roadmap
 
-Mazzamurello is built in phases. Each phase has a goal and exit criteria;
+Sibillo is built in phases. Each phase has a goal and exit criteria;
 the requirements of a phase are those with the matching `Phase` field in
 [`specs/requirements/`](specs/requirements/). Dates are deliberately absent:
 this is a personal, best-effort project.
@@ -11,7 +11,7 @@ ADRs written before then call the release phase 2 and opening up phase 3.
 ## Phase 0 — Walking skeleton
 
 **Status:** complete. Every phase 0 requirement is `implemented`, the security
-tests pass, and the end-to-end test installs Mazzamurello by following the
+tests pass, and the end-to-end test installs Sibillo by following the
 README. Known limits are recorded in the specs, such as the workspace disk
 limit, which comes with SBX-016 in phase 1.
 
@@ -81,7 +81,7 @@ devices (DEV-005), device status (DEV-006), least privilege by default
 Windows may follow (DEV-009).
 
 **Exit criteria:** the maintainer administers their own servers through
-Mazzamurello for a month, with every device call approved and none surprising.
+Sibillo for a month, with every device call approved and none surprising.
 
 ## Phase 3 — A real assistant, and a first release
 
@@ -112,5 +112,5 @@ Ideas kept for after these phases, not planned yet:
 
 - personal remote MCP servers that a user adds for themselves, with per-user
   credentials and OAuth sign-in (ADR-0064);
-- sessions of external coding agents shown as Mazzamurello conversations.
+- sessions of external coding agents shown as Sibillo conversations.
 

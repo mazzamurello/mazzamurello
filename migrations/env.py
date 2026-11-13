@@ -1,9 +1,9 @@
-"""Alembic environment: migrations run as `mzm_owner`, never as the application role (TEN-004).
+"""Alembic environment: migrations run as `sibillo_owner`, never as the application role (TEN-004).
 
 After the Alembic revisions, the DBOS system migrations run in the `dbos`
 schema (ADR-0052).
 
-The database URL comes only from `MZM_DATABASE_URL`, in the form
+The database URL comes only from `SIBILLO_DATABASE_URL`, in the form
 `postgresql://USER:PASSWORD@HOST:PORT/DATABASE`; the driver is chosen here
 (specs/contracts/test-harness.md).
 """
@@ -19,8 +19,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-URL_VARIABLE = "MZM_DATABASE_URL"
-APPLICATION_ROLE = "mzm_app"
+URL_VARIABLE = "SIBILLO_DATABASE_URL"
+APPLICATION_ROLE = "sibillo_app"
 DURABLE_EXECUTION_SCHEMA = "dbos"
 
 
@@ -56,6 +56,6 @@ if context.is_offline_mode():
     raise RuntimeError("offline migrations are not supported: run them against the database")
 asyncio.run(_main())
 # The durable execution engine's tables follow the installed DBOS version and
-# are created here, as the owner, never by processes running as mzm_app
-# (ADR-0052). DBOS grants mzm_app the access it needs.
+# are created here, as the owner, never by processes running as sibillo_app
+# (ADR-0052). DBOS grants sibillo_app the access it needs.
 DBOS.migrate(os.environ[URL_VARIABLE], schema=DURABLE_EXECUTION_SCHEMA, application_role=APPLICATION_ROLE)

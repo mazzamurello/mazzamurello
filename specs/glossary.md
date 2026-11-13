@@ -1,6 +1,6 @@
 # Glossary
 
-The canonical vocabulary of Mazzamurello (its *ubiquitous language*). Code,
+The canonical vocabulary of Sibillo (its *ubiquitous language*). Code,
 specs, docs and UI use exactly these terms. A new domain concept requires a
 new entry here first (ADR-0005).
 
@@ -8,7 +8,7 @@ new entry here first (ADR-0005).
 
 | Term | Definition |
 |---|---|
-| Instance | One installation of Mazzamurello, on one server. |
+| Instance | One installation of Sibillo, on one server. |
 | Instance admin | The person who operates the instance (host, containers, configuration). Trusted (ADR-0011). |
 | Tenant | An isolated group of users with its own data: typically a household, possibly a small organization. |
 | Tenant admin | A user who manages a tenant's users, shared spaces and tool permissions. |
@@ -81,7 +81,7 @@ new entry here first (ADR-0005).
 
 | Term | Definition |
 |---|---|
-| Sprite | The animated character of the clients: a mazzamurello, the house sprite of folklore the project is named after, who greets the user and acts out what a run is doing (ADR-0070). |
+| Sprite | The animated character of the clients: Sibillo, a mazzamurello, the house sprite of folklore, who greets the user and acts out what a run is doing (ADR-0070). |
 
 ## Execution
 
@@ -125,7 +125,7 @@ new entry here first (ADR-0005).
 |---|---|
 | Requirement | A numbered, normative statement in `specs/requirements/`. |
 | Persona | One of the kinds of user described in the product description (`specs/product.md`), used to justify user-experience requirements. |
-| Journey | A task a persona accomplishes with Mazzamurello, described in the product description. |
+| Journey | A task a persona accomplishes with Sibillo, described in the product description. |
 | ADR | Architecture decision record in `specs/adr/`. |
 | Contract | An interface that outlives the code: public API, database schema, on-disk formats. |
 | Pending test | A test whose requirements are all `accepted` and not yet `implemented`; its failures are reported as expected (ADR-0045). |

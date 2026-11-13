@@ -1,7 +1,7 @@
 # The sandbox image is built from nothing in the repository ...
 *
 # ... and the page reader.
-!deploy/images/sandbox/mzm-read-page
+!deploy/images/sandbox/sibillo-read-page
 !deploy/images/sandbox/reader-requirements.txt
 # ... and the pins of the tools' Python environment (ADR-0080).
 !deploy/images/sandbox/tools-requirements.txt

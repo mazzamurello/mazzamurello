@@ -1,6 +1,6 @@
 # Threat model
 
-This document describes what Mazzamurello protects, from whom, and how. Every
+This document describes what Sibillo protects, from whom, and how. Every
 mitigation points to the requirements that implement it. It is reviewed
 whenever a requirement in the security-relevant areas changes.
 
@@ -111,7 +111,7 @@ beyond keeping them configurable and updatable.
 | T-32 | A dependency or an asset of the web app contacts a third party at run time, telling it who uses the instance and when, or making the instance depend on it | X5 | OBS-001, OBS-006 |
 | T-33 | Injected instructions plant files or programs in a sandbox that steer or attack later runs, and are carried into backups | X1 | SBX-001, SBX-018, SBX-019, OPS-006, AGT-003, AGT-022 |
 
-## The lethal trifecta in Mazzamurello
+## The lethal trifecta in Sibillo
 
 The assistant necessarily combines all three elements: it reads private data,
 it reads untrusted content, and some tools communicate externally. The

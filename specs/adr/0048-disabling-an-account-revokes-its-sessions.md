@@ -21,8 +21,8 @@ database, in the same transaction:
 
 - An `AFTER UPDATE` trigger on `users` sets `revoked_at` on every unrevoked
   session of the user when `disabled_at` changes from null to a value.
-- Its function is `SECURITY DEFINER`, owned by `mzm_owner`, with a fixed
-  `search_path`, and not executable by `mzm_app`. It works through the
+- Its function is `SECURITY DEFINER`, owned by `sibillo_owner`, with a fixed
+  `search_path`, and not executable by `sibillo_app`. It works through the
   existing owner policies on `device_sessions` (ADR-0046).
 - Re-enabling an account leaves its sessions revoked; the user signs in again.
 

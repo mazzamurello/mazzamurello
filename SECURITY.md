@@ -1,6 +1,6 @@
 # Security Policy
 
-Mazzamurello is meant to hold a family's private data and to execute code on
+Sibillo is meant to hold a family's private data and to execute code on
 its behalf. Security is a core requirement, and reports are taken seriously.
 
 ## Supported versions
@@ -45,5 +45,5 @@ Especially relevant are issues that break the security model described in the
 Out of scope: attacks that require a malicious instance administrator
 (the administrator is trusted, see
 [ADR-0011](specs/adr/0011-instance-admin-is-trusted.md)), and vulnerabilities
-in third-party dependencies that are not exploitable through Mazzamurello
+in third-party dependencies that are not exploitable through Sibillo
 (please report those upstream).

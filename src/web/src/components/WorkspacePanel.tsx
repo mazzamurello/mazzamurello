@@ -76,7 +76,7 @@ export function WorkspacePanel(props: { conversationId: string; open: boolean; o
   const { t } = useTranslation();
   const wide = useWide();
   const title = useId();
-  const panel = usePanelWidth("mzm.filesWidth", 400, 300, 760);
+  const panel = usePanelWidth("sibillo.filesWidth", 400, 300, 760);
   if (wide) {
     if (!props.open) return null;
     return (

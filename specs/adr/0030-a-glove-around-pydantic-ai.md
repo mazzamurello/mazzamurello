@@ -1,4 +1,4 @@
-# ADR-0030: Shape Mazzamurello as a glove around Pydantic AI
+# ADR-0030: Shape Sibillo as a glove around Pydantic AI
 
 - **Status:** Accepted
 - **Date:** 2026-10-31
@@ -20,7 +20,7 @@ friction with every framework upgrade.
 
 ## Decision
 
-We will shape Mazzamurello **as a glove around Pydantic AI**:
+We will shape Sibillo **as a glove around Pydantic AI**:
 
 1. **Prefer native concepts.** When Pydantic AI (or its harness) provides a
    concept we need — messages, conversations, events, tools, toolsets,

@@ -15,15 +15,15 @@ event streams are kept.
 
 ## Decision
 
-1. **The worker** runs as `python -m mazzamurello_server worker`, connected as
-   `mzm_app`, with the configuration of the
+1. **The worker** runs as `python -m sibillo_server worker`, connected as
+   `sibillo_app`, with the configuration of the
    [configuration contract](../contracts/configuration.md). API processes
    enqueue runs and read their streams with a DBOS client; only workers
    execute them.
 2. **DBOS tables are created by the migration command.** After the Alembic
    revisions, the migration command runs the DBOS system migrations in the
-   `dbos` schema as `mzm_owner`, granting `mzm_app` the access DBOS needs.
-   Processes connected as `mzm_app` never create or alter tables.
+   `dbos` schema as `sibillo_owner`, granting `sibillo_app` the access DBOS needs.
+   Processes connected as `sibillo_app` never create or alter tables.
 3. **A run is one workflow**, with the run's ID, on the queue partitioned by
    conversation (ADR-0034). The workflow sets the request context from the
    tenant and user IDs of its input, marks the run `running`, runs the agent
@@ -45,7 +45,7 @@ event streams are kept.
 8. **Instructions** are a short built-in text naming the assistant and its
    role, until instructions and skills arrive (ADR-0044).
 9. **Retention.** When it starts, and then every hour, the worker deletes the
-   workflows of runs whose `finished_at` is more than `MZM_RUN_RETENTION_DAYS`
+   workflows of runs whose `finished_at` is more than `SIBILLO_RUN_RETENTION_DAYS`
    days ago (default 30), with their streams (TEN-009). It finds them with
    `retention_expired_runs`, a `SECURITY DEFINER` function that returns only
    run identifiers, since row-level security limits it to one user at a
@@ -68,7 +68,7 @@ event streams are kept.
 ## Alternatives considered
 
 - **Letting DBOS create its tables at worker start:** needs `CREATE` on the
-  database for `mzm_app`, which TEN-004 rules out.
+  database for `sibillo_app`, which TEN-004 rules out.
 - **Storing messages only when a run ends:** simpler, but a cancelled or
   crashed run would lose everything it said.
 - **The first words of the first message as title:** no model call, but the

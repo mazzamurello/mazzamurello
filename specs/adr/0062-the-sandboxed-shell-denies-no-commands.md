@@ -9,7 +9,7 @@
 
 The harness's shell refuses some commands by name by default, such as `rm`,
 `rmdir` and `dd`, as a safety net for agents that run on a real machine. In
-Mazzamurello every command runs in the user's own gVisor sandbox, under the
+Sibillo every command runs in the user's own gVisor sandbox, under the
 driver's fixed policy, so the list protects nothing: the sandbox and its
 workspace are the user's to change. It only stops the agent from doing
 ordinary work, such as deleting a file it created, and a determined command

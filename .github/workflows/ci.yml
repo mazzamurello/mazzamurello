@@ -194,7 +194,7 @@ jobs:
           context: .
           file: deploy/images/sandbox/Dockerfile
           load: true
-          tags: mazzamurello-test/sandbox:ci,mazzamurello/sandbox:local
+          tags: sibillo-test/sandbox:ci,sibillo/sandbox:local
           cache-from: type=gha,scope=sandbox
           cache-to: type=gha,mode=max,scope=sandbox
       - name: Build the network guard image
@@ -203,7 +203,7 @@ jobs:
           context: .
           file: deploy/images/netguard/Dockerfile
           load: true
-          tags: mazzamurello-test/netguard:ci,mazzamurello/netguard:local
+          tags: sibillo-test/netguard:ci,sibillo/netguard:local
           cache-from: type=gha,scope=netguard
           cache-to: type=gha,mode=max,scope=netguard
       - name: Build the server image
@@ -213,7 +213,7 @@ jobs:
           context: .
           file: deploy/images/server/Dockerfile
           load: true
-          tags: mazzamurello/server:local
+          tags: sibillo/server:local
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
       - name: Build the sandbox driver image
@@ -223,7 +223,7 @@ jobs:
           context: .
           file: deploy/images/sandboxd/Dockerfile
           load: true
-          tags: mazzamurello/sandboxd:local
+          tags: sibillo/sandboxd:local
           cache-from: type=gha,scope=sandboxd
           cache-to: type=gha,mode=max,scope=sandboxd
       - name: Tests
@@ -233,8 +233,8 @@ jobs:
           TEST_PATHS: ${{ matrix.paths }}
           # Built above: the tests use them instead of building their own
           # (specs/contracts/test-harness.md).
-          TEST_SANDBOX_IMAGE: mazzamurello-test/sandbox:ci
-          TEST_NETGUARD_IMAGE: mazzamurello-test/netguard:ci
+          TEST_SANDBOX_IMAGE: sibillo-test/sandbox:ci
+          TEST_NETGUARD_IMAGE: sibillo-test/netguard:ci
           TEST_DEPLOYMENT_IMAGES: built
         # TEST_PATHS is word-split on purpose: it lists paths and options. Listed
         # test files a branch does not have yet are left out, so that a rules

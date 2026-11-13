@@ -1,6 +1,6 @@
 """Disabling an account ends its sessions (AUTH-009, ADR-0048).
 
-The tenant admin disables the account as `mzm_app`; whether a session is
+The tenant admin disables the account as `sibillo_app`; whether a session is
 revoked is read as the server reads it on every request, through
 `auth_find_session`.
 """

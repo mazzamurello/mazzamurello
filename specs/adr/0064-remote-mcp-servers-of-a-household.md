@@ -8,7 +8,7 @@
 ## Context
 
 Services such as error trackers and home automation publish MCP servers over
-HTTP. Connecting Mazzamurello to them gives the assistant their tools without
+HTTP. Connecting Sibillo to them gives the assistant their tools without
 writing a connector for each. AGT-013 keeps MCP servers out of the control
 plane, because a program started there, or a connection to an arbitrary
 address, could reach the host and the household's network (T-21). Calling a
@@ -16,7 +16,7 @@ remote endpoint as a client, at a checked address, does neither.
 
 ## Decision
 
-1. **Remote servers over HTTP only.** Mazzamurello is an MCP client of
+1. **Remote servers over HTTP only.** Sibillo is an MCP client of
    servers reached over HTTP. It never starts MCP programs.
 2. **They belong to a tenant,** added by its tenant admin, and are available
    to every user of the tenant. There is nothing to configure per user and no
@@ -26,7 +26,7 @@ remote endpoint as a client, at a checked address, does neither.
 4. **Where a server may be,** decided by who adds it: a tenant admin who is
    also the instance admin, trusted (ADR-0011), may use any address, such as
    Home Assistant on the household's network or a container next to
-   Mazzamurello; any other tenant admin only public `https` addresses, checked
+   Sibillo; any other tenant admin only public `https` addresses, checked
    at connection time as for tenant models (ADR-0061).
 5. **Every call is approved** with a button (AGT-018). MCP's tool annotations,
    such as `readOnlyHint`, are hints from the server and grant nothing.

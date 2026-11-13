@@ -98,7 +98,7 @@ addresses only when the tenant admin is also the instance admin.
    (ADR-0057); a `local` connection costs nothing; for other remote servers
    the catalog applies (ADR-0042), and a price that is unknown is shown as
    such.
-9. **No conversion of model configurations.** Mazzamurello has not been
+9. **No conversion of model configurations.** Sibillo has not been
    released, so the schema is rewritten rather than migrated (ADR-0071).
 
 ## Consequences

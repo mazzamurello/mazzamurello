@@ -5,7 +5,7 @@
 // Unit and design tests run here; integration and security tests that need
 // Docker and gVisor run in CI or, deliberately, on the maintainer's host.
 {
-  "name": "Mazzamurello",
+  "name": "Sibillo",
   "image": "mcr.microsoft.com/devcontainers/python:3.13-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}

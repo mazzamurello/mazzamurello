@@ -10,15 +10,15 @@ ADR-0052, ADR-0068, ADR-0069, ADR-0071, ADR-0073.
 
 | Role | Used by | Properties |
 |---|---|---|
-| `mzm_owner` | Migrations, and the pre-authentication functions it owns | Owns every table and function. Never used by running services to connect. |
-| `mzm_app` | API and worker | `NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE`; owns nothing; granted only the privileges listed below (TEN-004). |
+| `sibillo_owner` | Migrations, and the pre-authentication functions it owns | Owns every table and function. Never used by running services to connect. |
+| `sibillo_app` | API and worker | `NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE`; owns nothing; granted only the privileges listed below (TEN-004). |
 
 Every table below has row-level security **enabled and forced** (TEN-003),
 including tables that are not tenant-scoped, so that no table is readable by
-`mzm_app` without an explicit policy. Forced row-level security applies to the
-table owner too: `mzm_owner` reaches rows only through the owner policies of
+`sibillo_app` without an explicit policy. Forced row-level security applies to the
+table owner too: `sibillo_owner` reaches rows only through the owner policies of
 the pre-authentication functions. The policies of each table below are
-created `TO mzm_app`.
+created `TO sibillo_app`.
 
 ## Initialization
 
@@ -28,17 +28,17 @@ initialization and by the test harness ([test-harness.md](test-harness.md)).
 Migrations never create roles, and the superuser is not used afterwards.
 
 ```sql
-CREATE ROLE mzm_owner LOGIN PASSWORD '...'
+CREATE ROLE sibillo_owner LOGIN PASSWORD '...'
   NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-CREATE ROLE mzm_app LOGIN PASSWORD '...'
+CREATE ROLE sibillo_app LOGIN PASSWORD '...'
   NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT;
-CREATE DATABASE mazzamurello OWNER mzm_owner;
-REVOKE ALL ON DATABASE mazzamurello FROM PUBLIC;
-GRANT CONNECT ON DATABASE mazzamurello TO mzm_app;
+CREATE DATABASE sibillo OWNER sibillo_owner;
+REVOKE ALL ON DATABASE sibillo FROM PUBLIC;
+GRANT CONNECT ON DATABASE sibillo TO sibillo_app;
 ```
 
-Migrations, run as `mzm_owner`, create every schema object and grant
-`mzm_app` exactly the privileges this contract lists.
+Migrations, run as `sibillo_owner`, create every schema object and grant
+`sibillo_app` exactly the privileges this contract lists.
 
 ## Request context
 
@@ -70,8 +70,8 @@ app_is_instance_admin() -> current_setting('app.instance_admin', true) = 'true'
 ## Pre-authentication functions
 
 Login and token verification happen before any context exists. Instead of
-weakening policies, `mzm_app` may call exactly these `SECURITY DEFINER`
-functions, owned by `mzm_owner`, with a fixed `search_path`. They return the
+weakening policies, `sibillo_app` may call exactly these `SECURITY DEFINER`
+functions, owned by `sibillo_owner`, with a fixed `search_path`. They return the
 minimum needed and nothing else.
 
 | Function | Returns | Purpose |
@@ -83,7 +83,7 @@ minimum needed and nothing else.
 | `default_model_configured()` | `boolean` | Whether any tenant has a default model, for `/health` before any sign-in (OPS-002, ADR-0054, ADR-0069) |
 | `expired_temporary_conversations(hours integer)` | `conversation_id, tenant_id, owner_id` for every temporary conversation whose `updated_at` is more than `hours` hours ago and that has no `queued` or `running` run | Deletion of temporary conversations (CNV-011, ADR-0082): only identifiers, so the worker can delete each one under its owner's request context |
 | `retention_expired_runs(days integer)` | `run_id` for every run whose `finished_at` is more than `days` days ago | Retention of durable workflows (TEN-009, ADR-0052): only identifiers, so the worker can delete their workflows across tenants |
-| `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `mzm_owner`, run by the setup command |
+| `bootstrap_instance(tenant_name text, username text, display_name text, password_hash text)` | `tenant_id, user_id` | Creates the first tenant and its first user, who is instance admin and tenant admin; fails if any user exists (AUTH-007). Executable only by `sibillo_owner`, run by the setup command |
 
 Rate limiting (ADR-0047): `auth_record_login_attempt` is called once per
 login attempt, after the password is verified, with its outcome. It counts
@@ -96,11 +96,11 @@ the time, rounded up to whole seconds, until the oldest failure counted toward
 a reached limit leaves the window (the longer, when both are reached); when
 allowed, it is 0. Each call deletes attempts older than the window.
 
-These functions run as `mzm_owner`, which forced row-level security does not
-exempt. They work through **owner policies**, created `TO mzm_owner`, and
+These functions run as `sibillo_owner`, which forced row-level security does not
+exempt. They work through **owner policies**, created `TO sibillo_owner`, and
 these are the only policies for that role:
 
-| Table | Operations for `mzm_owner` | Used by |
+| Table | Operations for `sibillo_owner` | Used by |
 |---|---|---|
 | `tenants` | `SELECT`, `INSERT` | `bootstrap_instance` |
 | `users` | `SELECT`, `INSERT` | `auth_find_login`, `auth_find_session`, `bootstrap_instance` |
@@ -110,7 +110,7 @@ these are the only policies for that role:
 | `conversations` | `SELECT` | `expired_temporary_conversations` |
 | `connections` | `SELECT` | `default_model_configured` |
 
-Owner policies have no condition (`USING (true)`): `mzm_owner` is never used
+Owner policies have no condition (`USING (true)`): `sibillo_owner` is never used
 by running services, so they open these tables only to the code of the
 `SECURITY DEFINER` functions of this contract and to migrations.
 
@@ -159,8 +159,8 @@ Policies:
 - `UPDATE` where `tenant_id = app_tenant_id()` and (`id = app_user_id()` or
   `app_is_tenant_admin()`).
 
-Column privileges: `mzm_app` cannot `SELECT` `password_hash`; only
-`auth_find_login` reads it. `mzm_app` may `UPDATE` only `display_name`,
+Column privileges: `sibillo_app` cannot `SELECT` `password_hash`; only
+`auth_find_login` reads it. `sibillo_app` may `UPDATE` only `display_name`,
 `password_hash`, `role` and `disabled_at`; identifiers, `username` and
 `instance_admin` never change through the application.
 
@@ -174,7 +174,7 @@ Disabling an account revokes its sessions (AUTH-009, ADR-0048). When
 `users` sets `revoked_at` to the current time on every session of that user
 that is not yet revoked, in the same transaction. Its function,
 `revoke_sessions_of_disabled_user()`, is `SECURITY DEFINER`, owned by
-`mzm_owner`, with a fixed `search_path`, and not executable by `mzm_app`; it
+`sibillo_owner`, with a fixed `search_path`, and not executable by `sibillo_app`; it
 changes `device_sessions` through the owner policies. Re-enabling an account
 leaves its sessions revoked.
 
@@ -206,7 +206,7 @@ from the verified credentials.
 | `success` | boolean | not null |
 | `created_at` | timestamptz | not null |
 
-No policies for `mzm_app`: accessed only through
+No policies for `sibillo_app`: accessed only through
 `auth_record_login_attempt`. Rows older than the rate-limit window are deleted.
 
 ### `folders` (private)
@@ -367,7 +367,7 @@ A household's access to one provider (MOD-008, ADR-0069).
 | `kind` | text | not null; `openrouter` or `openai` |
 | `base_url` | text | not null; the address of the API |
 | `location` | text | not null; `local` or `remote`, always `remote` for `openrouter` (MOD-010) |
-| `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `MZM_SECRET_KEY` (ADR-0051); null when the server needs no key |
+| `api_key_ciphertext` | bytea | the API key, encrypted with AES-256-GCM under `SIBILLO_SECRET_KEY` (ADR-0051); null when the server needs no key |
 | `private_network` | boolean | not null, default false; true when `base_url` was set by a user who is the instance admin (MOD-009) |
 | `default_model` | text | the model of this connection that new conversations start with; at most one connection per tenant has one (MOD-012) |
 | `context_window` | integer | for `openai`, the context window of its models in tokens, at least 512, 8192 unless set; null for `openrouter` (ADR-0073) |
@@ -417,11 +417,11 @@ WITH CHECK (tenant_id = app_tenant_id() AND owner_id = app_user_id())
 
 (`device_sessions` uses `user_id` in place of `owner_id`.)
 
-## Privileges of `mzm_app`
+## Privileges of `sibillo_app`
 
-`mzm_app` holds exactly these privileges, and nothing else (TEN-004). Rows
+`sibillo_app` holds exactly these privileges, and nothing else (TEN-004). Rows
 that a conversation's deletion removes or detaches are handled by the foreign
-keys, not by privileges of `mzm_app`.
+keys, not by privileges of `sibillo_app`.
 
 | Object | Privileges |
 |---|---|
@@ -448,7 +448,7 @@ keys, not by privileges of `mzm_app`.
 
 DBOS (ADR-0034) keeps its own tables in the `dbos` schema, created and
 migrated by the DBOS system migrations, which the migration command runs as
-`mzm_owner` after the Alembic revisions, granting `mzm_app` the access DBOS
+`sibillo_owner` after the Alembic revisions, granting `sibillo_app` the access DBOS
 needs (ADR-0052): workflow status, inputs and outputs, step outputs,
 notifications and streams. They hold user content (prompts, model responses,
 run events) **without row-level security**, which DBOS cannot apply. Rules
@@ -458,12 +458,12 @@ run events) **without row-level security**, which DBOS cannot apply. Rules
   run IDs obtained from the row-level-secured `runs` table in the same
   request.
 - Deleting a conversation deletes the DBOS workflows of its runs.
-- Workflows of runs whose `finished_at` is more than `MZM_RUN_RETENTION_DAYS`
+- Workflows of runs whose `finished_at` is more than `SIBILLO_RUN_RETENTION_DAYS`
   days ago (default 30) are deleted by the worker, when it starts and then
   every hour (ADR-0052).
 - Temporary conversations whose last activity is more than 24 hours ago
   are deleted by the worker, with their workflows, every
-  `MZM_TEMPORARY_SWEEP_SECONDS` (CNV-011, ADR-0082).
+  `SIBILLO_TEMPORARY_SWEEP_SECONDS` (CNV-011, ADR-0082).
 - Workflow inputs carry the tenant and user IDs of the run; the worker sets
   the request context from them.
 
@@ -490,15 +490,15 @@ are only added, and upgrade every released version (OPS-005).
   forced (TEN-003); the `dbos` schema is the documented exception (TEN-009).
 - Every table holding user data has `tenant_id`, and private tables have an
   owner column (TEN-002).
-- `mzm_app` is not a superuser, lacks `BYPASSRLS` and owns no table or
+- `sibillo_app` is not a superuser, lacks `BYPASSRLS` and owns no table or
   function (TEN-004).
 - Every `SECURITY DEFINER` function is a pre-authentication function or
-  `revoke_sessions_of_disabled_user()`, is owned by `mzm_owner` and has a fixed
+  `revoke_sessions_of_disabled_user()`, is owned by `sibillo_owner` and has a fixed
   `search_path`.
-- `mzm_app` holds exactly the privileges listed in "Privileges of `mzm_app`"
+- `sibillo_app` holds exactly the privileges listed in "Privileges of `sibillo_app`"
   (TEN-004).
-- Policies for `mzm_owner` are exactly the owner policies listed with the
-  pre-authentication functions; every other policy is for `mzm_app`.
+- Policies for `sibillo_owner` are exactly the owner policies listed with the
+  pre-authentication functions; every other policy is for `sibillo_app`.
 - Every foreign key between tenant-scoped tables includes `tenant_id`, and
   every foreign key between private tables also includes the owner column.
 - Users cannot change their own `role` or `disabled_at`, and only instance

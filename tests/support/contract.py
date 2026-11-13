@@ -23,7 +23,7 @@ from referencing.jsonschema import DRAFT202012
 from tests.support.database import ROOT
 
 CONTRACT = ROOT / "specs" / "contracts" / "openapi.yaml"
-CONTRACT_URI = "urn:mazzamurello:openapi"
+CONTRACT_URI = "urn:sibillo:openapi"
 METHODS = ("get", "put", "post", "delete", "patch", "head", "options")
 JSON_TYPES = ("application/json", "application/problem+json")
 

@@ -17,19 +17,19 @@ hidden behind the reverse proxy that publishes the single entry point
 
 ## Decision
 
-1. **Entry point.** The API runs as `python -m mazzamurello_server api`, an
+1. **Entry point.** The API runs as `python -m sibillo_server api`, an
    ASGI application served by Uvicorn. The worker gets its own subcommand
    when it is implemented.
 2. **Configuration from the environment.** The server reads its
-   configuration only from `MZM_*` environment variables, listed in the
+   configuration only from `SIBILLO_*` environment variables, listed in the
    [configuration contract](../contracts/configuration.md). The deployment
    sets them in the Compose file or an env file, which is the documented
-   configuration file of OPS-001. A missing or invalid value, or an `MZM_*`
+   configuration file of OPS-001. A missing or invalid value, or an `SIBILLO_*`
    variable the contract does not list, stops the process before it listens,
    with a message naming the variable.
 3. **Source address.** The source address of a request is the connecting
    peer's address. When the peer is a trusted proxy, listed in
-   `MZM_TRUSTED_PROXIES`, it is the rightmost address of `X-Forwarded-For`
+   `SIBILLO_TRUSTED_PROXIES`, it is the rightmost address of `X-Forwarded-For`
    that is not itself a trusted proxy. Without trusted proxies the header is
    ignored, so clients cannot choose their own address.
 4. **Tests reach the server as a black box.** The test harness starts the

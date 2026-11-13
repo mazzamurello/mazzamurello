@@ -15,14 +15,14 @@ Tests that need a database use this procedure, once per test session:
 2. As the image's superuser, run the initialization of the
    [database contract](database.md#initialization), with passwords chosen by
    the test suite.
-3. From the repository root, run the migrations as `mzm_owner`:
+3. From the repository root, run the migrations as `sibillo_owner`:
 
    ```
    python -m alembic -c migrations/alembic.ini upgrade head
    ```
 
-   with the environment variable `MZM_DATABASE_URL` set to a URL of the form
-   `postgresql://mzm_owner:PASSWORD@HOST:PORT/mazzamurello`. The migration
+   with the environment variable `SIBILLO_DATABASE_URL` set to a URL of the form
+   `postgresql://sibillo_owner:PASSWORD@HOST:PORT/sibillo`. The migration
    environment reads only this variable and chooses its own driver. A failing
    migration fails the session.
 
@@ -30,9 +30,9 @@ Tests that need a database use this procedure, once per test session:
 
 | Role | Used for |
 |---|---|
-| `mzm_app` | Every assertion about what the application may read or write. Tests set the request context of the database contract themselves, with `set_config(name, value, true)` inside the transaction. |
-| `mzm_owner` | Nothing. Running services never use it either (TEN-004). |
-| Superuser | Inspecting the catalogs in design tests, and arranging test data that the application would otherwise create through flows not under test. Never for an assertion about what `mzm_app` can do. |
+| `sibillo_app` | Every assertion about what the application may read or write. Tests set the request context of the database contract themselves, with `set_config(name, value, true)` inside the transaction. |
+| `sibillo_owner` | Nothing. Running services never use it either (TEN-004). |
+| Superuser | Inspecting the catalogs in design tests, and arranging test data that the application would otherwise create through flows not under test. Never for an assertion about what `sibillo_app` can do. |
 
 Tests use psycopg 3. Each test creates its own tenants and users with fresh
 identifiers, so tests do not depend on each other or on their order, and the
@@ -44,25 +44,25 @@ Tests that need the API use this procedure, once per test session, after the
 database procedure (ADR-0050):
 
 1. From the repository root, start the API process,
-   `python -m mazzamurello_server api`, with this environment
+   `python -m sibillo_server api`, with this environment
    ([configuration](configuration.md)):
 
    | Variable | Value |
    |---|---|
-   | `MZM_DATABASE_URL` | The database of the test session, as `mzm_app` |
-   | `MZM_HTTP_HOST` | `127.0.0.1` |
-   | `MZM_HTTP_PORT` | A free port chosen by the test suite |
-   | `MZM_TRUSTED_PROXIES` | `127.0.0.1` |
-   | `MZM_SECRET_KEY` | A random key chosen by the test suite |
-   | `MZM_SANDBOXD_URL`, `MZM_SANDBOXD_TOKEN` | Those of the sandbox driver below |
+   | `SIBILLO_DATABASE_URL` | The database of the test session, as `sibillo_app` |
+   | `SIBILLO_HTTP_HOST` | `127.0.0.1` |
+   | `SIBILLO_HTTP_PORT` | A free port chosen by the test suite |
+   | `SIBILLO_TRUSTED_PROXIES` | `127.0.0.1` |
+   | `SIBILLO_SECRET_KEY` | A random key chosen by the test suite |
+   | `SIBILLO_SANDBOXD_URL`, `SIBILLO_SANDBOXD_TOKEN` | Those of the sandbox driver below |
 
 2. The server is ready when `GET /v1/me` without a token answers `401`. A
    server that is not ready within 30 seconds, or exits, fails the session,
    with its output in the failure.
-3. Start the worker, `python -m mazzamurello_server worker`, from the
-   repository root, with `MZM_DATABASE_URL` and `MZM_SECRET_KEY` as for the
-   API (ADR-0052), `MZM_SANDBOXD_URL` and `MZM_SANDBOXD_TOKEN` of the
-   sandbox driver below, and `MZM_TEMPORARY_SWEEP_SECONDS` set to `1`, so
+3. Start the worker, `python -m sibillo_server worker`, from the
+   repository root, with `SIBILLO_DATABASE_URL` and `SIBILLO_SECRET_KEY` as for the
+   API (ADR-0052), `SIBILLO_SANDBOXD_URL` and `SIBILLO_SANDBOXD_TOKEN` of the
+   sandbox driver below, and `SIBILLO_TEMPORARY_SWEEP_SECONDS` set to `1`, so
    that tests of temporary conversations need not wait (ADR-0082). The worker has no readiness signal: tests wait for the
    outcome of runs, with a timeout.
 4. Tests call the API over HTTP at `http://127.0.0.1:PORT/v1` and stop both
@@ -81,7 +81,7 @@ The harness also records the outbound connections of the API and the worker
 (OBS-006, ADR-0072): it starts both with an audit hook, through Python's
 `sitecustomize` on `PYTHONPATH`, that appends every connection and name
 lookup to a file named by `TEST_OUTBOUND_LOG`. The server needs no code for
-it, and the variable is not an `MZM_*` one.
+it, and the variable is not an `SIBILLO_*` one.
 
 Tests choose the source address of each request with `X-Forwarded-For`, so
 that rate limits (ADR-0047) count only the attempts of the test that made
@@ -116,7 +116,7 @@ tests can check what the gateway sends.
 Tests never reach a real search engine. The test suite serves its own search
 service on `127.0.0.1`: SearXNG's JSON API, `GET /search?q=…&format=json`,
 whose results the tests script by the query, and gives its address to the
-worker as `MZM_SEARCH_URL` (ADR-0075). It records each query, so that tests
+worker as `SIBILLO_SEARCH_URL` (ADR-0075). It records each query, so that tests
 can check what left the worker. Pages for the reader are served from inside
 the sandbox, on its own loopback address.
 
@@ -127,7 +127,7 @@ before starting the API:
 
 1. From `src/web/`, install its dependencies from the lock file and build the
    app.
-2. Start the API with `MZM_WEB_ROOT` set to the build's directory, as for the
+2. Start the API with `SIBILLO_WEB_ROOT` set to the build's directory, as for the
    other tests; the app is served at `http://127.0.0.1:PORT/`.
 3. Drive Chromium with Playwright against that address, signing in through the
    app's own screen with accounts arranged as for the server's tests, and the
@@ -160,9 +160,9 @@ where it is missing, these tests fail; they never skip.
    test suite, with `--network host` and `--cap-add NET_ADMIN`, and nothing
    else. Wait until Docker reports it healthy.
 3. From the repository root, start the sandbox driver,
-   `python -m mazzamurello_sandboxd`, with `MZM_SANDBOXD_HOST` `127.0.0.1`, a
-   free port, a random `MZM_SANDBOXD_TOKEN`, `MZM_SANDBOX_IMAGE` and
-   `MZM_NETGUARD_CONTAINER` from the steps above, and limits small enough for
+   `python -m sibillo_sandboxd`, with `SIBILLO_SANDBOXD_HOST` `127.0.0.1`, a
+   free port, a random `SIBILLO_SANDBOXD_TOKEN`, `SIBILLO_SANDBOX_IMAGE` and
+   `SIBILLO_NETGUARD_CONTAINER` from the steps above, and limits small enough for
    tests to reach them. It is ready when `GET /v1/health` with the token
    answers `200`, within 120 seconds.
 4. At the end of the session, stop the driver, then the network guard, which
@@ -170,7 +170,7 @@ where it is missing, these tests fail; they never skip.
    driver created, and the sandbox bridge.
 
 To check the gVisor minimum (SBX-017), a test starts a second driver, with
-the same environment, its own port, and `MZM_SANDBOX_MINIMUM_GVISOR_RELEASE`
+the same environment, its own port, and `SIBILLO_SANDBOX_MINIMUM_GVISOR_RELEASE`
 newer than the installed release (ADR-0058).
 
 Security tests check isolation from inside sandboxes, through the driver's
@@ -183,14 +183,14 @@ The end-to-end test follows the README on a fresh deployment (ADR-0054).
 It runs before the tests that use the procedures above, because the
 deployment's network guard and sandbox bridge are those of the host. For the
 same reason, and because it removes the deployment's images when it ends, it
-must not run on a host where Mazzamurello is deployed: one deployment per
+must not run on a host where Sibillo is deployed: one deployment per
 host (ADR-0054).
 
 1. Run the README's commands on `deploy/compose.yaml`, with a Compose project
    name chosen by the test suite and an env file in a temporary directory, so
    that an operator's own `deploy/.env` is never used: `init` with
-   `MZM_CONFIG_DIR` set to that directory, then `docker compose up` with
-   `--env-file` and `MZM_PUBLISH` set to a free port of `127.0.0.1`, then
+   `SIBILLO_CONFIG_DIR` set to that directory, then `docker compose up` with
+   `--env-file` and `SIBILLO_PUBLISH` set to a free port of `127.0.0.1`, then
    `setup`, with the answers on standard input. When `TEST_DEPLOYMENT_IMAGES`
    is `built`, CI has built the deployment's images with its build cache, and
    `up` runs without `--build`.

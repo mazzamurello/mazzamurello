@@ -15,7 +15,7 @@ the product, on 2026-10-31.
 
 Several capabilities have a local mode that runs on the machine of the agent
 process: local web search and page fetching, browsers, code interpreters,
-local sandboxes and workspaces. In Mazzamurello that machine is the control
+local sandboxes and workspaces. In Sibillo that machine is the control
 plane, which can reach the household's network.
 
 ## Decision

@@ -46,8 +46,10 @@ def _tables(conn: psycopg.Connection) -> dict[str, Table]:
     rows = conn.execute(
         """
         SELECT n.nspname, c.relname, c.relrowsecurity, c.relforcerowsecurity,
-               has_table_privilege('mzm_app', c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
-               OR has_any_column_privilege('mzm_app', c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'),
+               has_table_privilege(
+                   'sibillo_app', c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'
+               )
+               OR has_any_column_privilege('sibillo_app', c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'),
                coalesce(
                  (SELECT jsonb_object_agg(a.attname, a.attnotnull) FROM pg_attribute a
                   WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped),
@@ -108,7 +110,7 @@ def test_every_table_the_application_reaches_carries_its_tenant(tables: dict[str
     }
     assert set(PRIVATE_TABLES) <= set(reachable)
     offenders = sorted(name for name, table in reachable.items() if table.columns.get("tenant_id") is not True)
-    assert not offenders, f"tables reachable by mzm_app without a NOT NULL tenant_id: {offenders}"
+    assert not offenders, f"tables reachable by sibillo_app without a NOT NULL tenant_id: {offenders}"
 
 
 @dataclass(frozen=True)
@@ -214,4 +216,4 @@ def test_every_table_the_application_reaches_has_forced_row_level_security(table
     offenders = sorted(
         name for name, table in reachable.items() if not (table.row_security and table.forced_row_security)
     )
-    assert not offenders, f"tables reachable by mzm_app without enabled and forced row-level security: {offenders}"
+    assert not offenders, f"tables reachable by sibillo_app without enabled and forced row-level security: {offenders}"
