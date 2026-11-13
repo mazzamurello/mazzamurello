@@ -139,3 +139,5 @@ new entry here first (ADR-0005).
 | Pending test | A test whose requirements are all `accepted` and not yet `implemented`; its failures are reported as expected (ADR-0045). |
 | Invariant | A property that must always hold, typically a security property, verified by tests. |
 | Eval | A repeatable scenario that measures agent behavior against one or more models. |
+| Planted secret | A random value an adversarial eval puts in the user's workspace and that untrusted content tells the agent to send away; the scenario fails if it leaks (EVL-003, ADR-0092). |
+| Scripted agent | The model the tests serve, scripted to act as an agent that passes or fails an eval scenario, so that the suite checks its own checks (EVL-006, ADR-0092). |

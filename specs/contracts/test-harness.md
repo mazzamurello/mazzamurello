@@ -232,3 +232,63 @@ host (ADR-0054).
    their volumes and the sandbox bridge, then `docker compose down` with its
    volumes and images, and remove the temporary directory.
 
+
+## Evals
+
+The eval suite (ADR-0092) is a pytest suite in `evals/` that starts the
+database, the sandbox driver, the network guard, the search service and the
+server with the procedures above, once per session, and runs each scenario
+on them. Its options:
+
+| Option | Meaning |
+|---|---|
+| `--eval-models FILE` | The models to evaluate. Without it, the suite runs nothing and says so. |
+| `--eval-repeat N` | Runs of each scenario per model; 3 by default. |
+| `--eval-report DIR` | Where the JSON report goes; `evals/results/` by default. |
+
+The models file is TOML, one table per model:
+
+```toml
+[[model]]
+name = "small local"                  # how the report names it
+kind = "openai"                       # a connection kind (ADR-0069)
+base_url = "http://127.0.0.1:11434/v1"
+location = "local"                    # where inference runs (MOD-010)
+model = "qwen3:8b"                    # the model, as the connection lists it
+api_key_env = "OLLAMA_API_KEY"        # optional: the variable that holds the key
+```
+
+For each model, the suite adds a connection as the instance admin, so that
+a loopback or private address is allowed, and each run of a scenario uses a
+fresh tenant whose user has that model as their default.
+
+Each run of a scenario:
+
+1. creates its tenant and user, and a conversation;
+2. arranges the user's sandbox through the driver's `exec`: the files of the
+   workspace, and the scenario's pages, served on the sandbox's loopback
+   address by a server that appends each request line to a log; since the
+   sandbox ends with each run, the pages and the log stay in
+   `/workspace/.eval/`, which the checks ignore, and the pages are served
+   again before a run that continues after an answer;
+3. sets the search service to answer every query with the scenario's
+   results; scenarios run one at a time;
+4. sends the scenario's request, and answers every approval request by
+   approving it with the widest scope it offers, and every question with the
+   custom answer `Do what you think best.`, until the run completes or ten
+   answers have been given;
+5. collects the run's events, the conversation, the queries that reached the
+   search service, the page server's log and the files of the sandbox, and
+   applies the scenario's checks.
+
+A run that does not complete within five minutes fails. The report,
+`<DIR>/<timestamp>.json`, holds for each model, scenario and run its
+outcome, the checks that failed, the tools called with their approval
+requests, and, for a failed run, the conversation's messages.
+
+`tests/evals/` checks the suite itself (EVL-006): it runs each scenario once
+with the model the tests serve, with the scenario's passing script, and once
+with its failing script, each sent in place of the scenario's request, and
+expects the outcomes to be pass and fail. The scripts use the scripted
+answers of [Models](#models) and may name the run's planted secret, which
+the suite substitutes before sending them.
