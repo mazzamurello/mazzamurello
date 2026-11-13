@@ -95,7 +95,9 @@ QUEUE_POLLING_SECONDS = 0.2
 REASON_CHARS = 500
 # The sandbox, not a list of command names, decides what a command can do (ADR-0062).
 SHELL = Shell(max_output_chars=SHELL_OUTPUT_CHARS, denied_commands=())
-FILE_SYSTEM = FileSystem()
+# The file tools reach the whole sandbox, /workspace included, as commands do: the sandbox is the boundary,
+# not the tools' root, which would otherwise be the working directory, /scratch (AGT-011, ADR-0076).
+FILE_SYSTEM = FileSystem(root_dir="/")
 
 
 def _tool_names(capability: AbstractCapability[Any]) -> frozenset[str]:
