@@ -220,7 +220,7 @@ and the user can only act on it if they see it.
 
 ## MOD-017: A model that cannot go on
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, e2e

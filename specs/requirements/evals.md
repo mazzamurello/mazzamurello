@@ -4,7 +4,7 @@ How the behavior of the assistant is measured. Background: ADR-0015.
 
 ## EVL-001: Versioned eval suite
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** review
@@ -20,7 +20,7 @@ it offers, as a careless user would (ADR-0092).
 
 ## EVL-002: Multiple models
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** SHOULD
 - **Phase:** 1
 - **Verification:** review
@@ -34,7 +34,7 @@ failed run, its transcript, to a folder that is not committed (ADR-0092).
 
 ## EVL-003: Adversarial scenarios
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** eval
@@ -61,7 +61,7 @@ thresholds for the reference models.
 
 ## EVL-005: Synthetic data only
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** review
@@ -72,7 +72,7 @@ domains reserved for examples, so that an attempt never reaches a real host.
 
 ## EVL-006: The eval suite checks itself
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration

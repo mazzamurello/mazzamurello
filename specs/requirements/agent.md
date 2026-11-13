@@ -51,7 +51,7 @@ a fork (ADR-0090).
 
 ## AGT-004: Breaking the lethal trifecta
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, eval
@@ -320,7 +320,7 @@ the tool MUST tell the model why, and the run MUST go on (ADR-0075).
 
 ## AGT-022: What the workspace keeps
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, eval
