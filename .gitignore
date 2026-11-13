@@ -16,6 +16,10 @@ build/
 .env.*
 !.env.example
 
+# The eval suite's reports, and the models file with the user's own models (ADR-0092)
+evals/results/
+evals/models.toml
+
 # Editors and OS
 .idea/
 .vscode/

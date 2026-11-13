@@ -121,6 +121,11 @@ jobs:
           - part: restore
             paths: tests/e2e/test_restore.py
             budget: 360
+          # The eval suite checks itself with the scripted model, without a
+          # real one (EVL-006, ADR-0092): each scenario starts sandboxes.
+          - part: evals
+            paths: tests/evals
+            budget: 180
           # The web client in Chromium, and its unit tests (ADR-0067). Its
           # browser tests grew with the daily-use conversations (ADR-0073).
           - part: web
