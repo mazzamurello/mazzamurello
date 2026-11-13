@@ -61,6 +61,8 @@ If, at any step, the spec is missing, ambiguous or contradictory, the agent
 | Security | Attempts to break invariants | Reaching the LAN from a sandbox (SBX-005), cross-tenant reads (TEN-006) |
 | Eval | Agent behavior against models | Injection must not exfiltrate (EVL-003) |
 
+Evals run against real models, by hand: see [Running the evals](evals.md).
+
 Tests reference requirements with a marker, e.g.
 `@pytest.mark.spec("SBX-005")`, which feeds the traceability check
 (REPO-004).
