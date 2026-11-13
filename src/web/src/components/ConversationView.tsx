@@ -416,7 +416,7 @@ export function ConversationView() {
 
 function codeKey(error: unknown): string {
   const code = error instanceof ApiError ? error.code : "internal.error";
-  return ["model.unavailable", "model.request_failed", "model.refused", "model.egress_refused", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
+  return ["model.unavailable", "model.request_failed", "model.refused", "model.egress_refused", "model.tool_misuse", "model.context_exceeded", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
 }
 
 /** Why a run failed, where its answer would be, with what the model said (UX-014, MOD-015). */

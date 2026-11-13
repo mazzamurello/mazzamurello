@@ -12,6 +12,7 @@ import asyncio
 import datetime
 import json
 import logging
+import re
 import signal
 import uuid
 from collections.abc import AsyncIterable, Callable
@@ -22,7 +23,14 @@ from dbos import DBOS, DBOSClient, DBOSConfig
 from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, RunContext, ToolDenied
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.durable_exec.dbos import DBOSDurability
-from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, ModelHTTPError
+from pydantic_ai.exceptions import (
+    ContentFilterError,
+    IncompleteToolCall,
+    ModelAPIError,
+    ModelContextWindowExceededError,
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+)
 from pydantic_ai.messages import (
     AgentStreamEvent,
     FunctionToolResultEvent,
@@ -98,6 +106,11 @@ SHELL = Shell(max_output_chars=SHELL_OUTPUT_CHARS, denied_commands=())
 # The file tools reach the whole sandbox, /workspace included, as commands do: the sandbox is the boundary,
 # not the tools' root, which would otherwise be the working directory, /scratch (AGT-011, ADR-0076).
 FILE_SYSTEM = FileSystem(root_dir="/")
+# Consecutive retries of each tool, each with the error the failed call caused, before a run gives up (MOD-017).
+TOOL_RETRIES = 3
+# How Pydantic AI says that a tool's retries ran out, and that an answer stopped at the token limit.
+_TOOL_RETRIES_EXCEEDED = re.compile(r"Tool '[^']+' exceeded max retries count of \d+")
+_TOKEN_LIMIT_EXCEEDED = "Model token limit"  # noqa: S105 - a message, not a secret
 
 
 def _tool_names(capability: AbstractCapability[Any]) -> frozenset[str]:
@@ -277,6 +290,7 @@ agent = Agent[RunDeps, str | DeferredToolRequests](
     model_reference(str(uuid.UUID(int=0)), "unset"),
     name="sibillo",
     deps_type=RunDeps,
+    retries={"tools": TOOL_RETRIES},
     # A run may end to ask the user (AGT-015, ADR-0083).
     output_type=[str, DeferredToolRequests],
     instructions=instructions,
@@ -368,6 +382,15 @@ async def _history(
 def _error_code(error: BaseException) -> str:
     if isinstance(error, EgressRefusedError):
         return "model.egress_refused"
+    # A model that cannot go on is not a fault of Sibillo (MOD-017). Pydantic AI raises the same class for
+    # both, so its messages tell them apart.
+    if isinstance(error, IncompleteToolCall | ModelContextWindowExceededError):
+        return "model.context_exceeded"
+    if isinstance(error, UnexpectedModelBehavior) and not isinstance(error, ContentFilterError):
+        if _TOOL_RETRIES_EXCEEDED.match(error.message):
+            return "model.tool_misuse"
+        if error.message.startswith(_TOKEN_LIMIT_EXCEEDED):
+            return "model.context_exceeded"
     if isinstance(error, ModelUnavailableError):
         return "model.unavailable"
     if isinstance(error, ContentFilterError):
