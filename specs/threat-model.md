@@ -86,7 +86,7 @@ beyond keeping them configurable and updatable.
 | T-08 | **Lethal trifecta:** injected instructions make the agent send private data to an attacker (e.g. "forward the last invoices to …") | X1 | AGT-001, AGT-003, AGT-004, AGT-005, EVL-003 |
 | T-09 | Injected instructions trigger irreversible or physical actions (delete files, buy, open the gate) | X1 | AGT-005, AGT-006, AGT-007, AGT-002 |
 | T-10 | A user's actions on their behalf are not visible, so abuse goes unnoticed | X1, X2 | AGT-008 |
-| T-11 | Private data is sent to a remote model against the household's wishes | X1, X2 | MOD-003, MOD-005 |
+| T-11 | Private data is sent to a remote model against the household's wishes | X1, X2 | MOD-003, MOD-005, MOD-010, MOD-016 |
 | T-12 | Personal data leaks through logs, traces or telemetry | X4, X5 | OBS-001, OBS-002, OBS-003, OBS-004, OBS-005 |
 | T-13 | A user cannot see or remove what the assistant retained about them | — | MEM-001, MEM-002, MEM-003, MEM-004 |
 | T-14 | Unauthenticated access or account takeover through the exposed endpoint | X4 | AUTH-001, AUTH-002, AUTH-004, AUTH-005, AUTH-006, AUTH-007, OPS-003 |

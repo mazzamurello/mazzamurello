@@ -134,3 +134,10 @@ may use, starting from good defaults. Edits the assistant's base instructions
 or adds instructions of their own, for all conversations or for one. Writes
 skills, or imports skills others have written, and uses them in any
 conversation.
+
+### J14 — Keep it in the house (P1, P2)
+
+Decides that their words never leave the household: the admin for the whole
+household or for one member, any member for themself. Remote models are
+then shown as unavailable, with the reason, and the assistant answers only
+with models that run at home (MOD-003, UX-024).

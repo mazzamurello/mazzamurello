@@ -381,6 +381,31 @@ Policies:
 - `INSERT`, `UPDATE`, `DELETE` where `tenant_id = app_tenant_id()` and
   `app_is_tenant_admin()`.
 
+### `egress_policies`
+
+Data egress policies stricter than `any` (MOD-003, ADR-0091): the
+household's, the one a tenant admin set for a user, and a user's own. No row
+means `any`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id` | uuid | not null, references `tenants` |
+| `user_id` | uuid | null for the household's policy; (`tenant_id`, `user_id`) references `users` on delete cascade |
+| `set_by` | text | not null; `admin`, or `user` for a user's own choice, which needs `user_id` |
+| `policy` | text | not null; `local_only` |
+| `updated_at` | timestamptz | not null |
+
+Unique (`tenant_id`, `user_id`, `set_by`), with nulls not distinct.
+
+Policies:
+- `SELECT` where `tenant_id = app_tenant_id()` and (`user_id` is null or
+  `user_id = app_user_id()` or (`set_by = 'admin'` and
+  `app_is_tenant_admin()`)): every user reads the household's policy and
+  their own, and tenant admins read what they set, never a user's own choice.
+- `INSERT`, `UPDATE`, `DELETE` where `tenant_id = app_tenant_id()` and
+  ((`set_by = 'admin'` and `app_is_tenant_admin()`) or (`set_by = 'user'`
+  and `user_id = app_user_id()`)).
+
 ### `audit_events` (private)
 
 One entry per tool call (AGT-008, ADR-0090). It never contains content: no
@@ -489,6 +514,7 @@ keys, not by privileges of `sibillo_app`.
 | `runs` | `SELECT`, `INSERT`, `UPDATE`, `DELETE`: rewinding deletes runs (ADR-0068) |
 | `usage_ledger` | `SELECT`, `INSERT`: entries never change (ADR-0042) |
 | `tool_permissions` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `egress_policies` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `audit_events` | `SELECT`, `INSERT`; `UPDATE` of `outcome`, `scope`, `reason` and `attempts`: an event is written when the call is decided and completed as it runs |
 | `connections` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `connection_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
@@ -559,3 +585,5 @@ are only added, and upgrade every released version (OPS-005).
   admins create instance admins (AUTH-008).
 - Only a user who is the instance admin can set a connection's address while
   keeping `private_network` true (MOD-009).
+- A tenant admin can neither read nor change a user's own data egress policy,
+  and a user can change only their own (MOD-003).

@@ -1,7 +1,7 @@
 # MOD — Models and data egress
 
 How the assistant reaches language models, and what may leave the house.
-Background: ADR-0017, ADR-0036, ADR-0042, ADR-0057, ADR-0066, ADR-0069.
+Background: ADR-0017, ADR-0036, ADR-0042, ADR-0057, ADR-0066, ADR-0069, ADR-0091.
 
 ## MOD-001: Provider-agnostic model gateway
 
@@ -26,15 +26,27 @@ NOT be exposed to sandboxes, clients or logs.
 
 ## MOD-003: Data egress policy
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
-The model gateway MUST enforce a data egress policy configurable per tenant,
-per user and per shared space, including at least a "local models only"
-setting. A request that violates the policy MUST be refused before any data
-leaves the instance.
+The model gateway MUST enforce a data egress policy, which allows any model
+(`any`) or only models whose inference runs locally (`local_only`, MOD-010).
+A tenant admin MUST be able to set the policy of the household and of each
+user, and each user MUST be able to choose `local_only` for themself; the
+policy that applies to a user MUST be the strictest of the three, `any` when
+none is set. A tenant admin MUST NOT be able to read or change a user's own
+choice.
+
+Every model request the gateway makes for a user, for any purpose (MOD-006),
+MUST be checked against the policy that applies to them just before it is
+sent, so that a change applies from the next request, also during a run. A
+request the policy refuses, or one whose policy cannot be read, MUST be
+refused before any data leaves the instance, with the code
+`model.egress_refused`: a run fails with it, and the server MUST NOT use
+another model instead (MOD-012). The policy of a shared space is MOD-016
+(ADR-0017, ADR-0091).
 
 ## MOD-004: Budgets for paid providers
 
@@ -154,7 +166,10 @@ used free model that can call tools; for another server, the first model it
 lists. A user MUST be able to choose, for a conversation, any model offered by the connections
 of their tenant; the choice applies from the conversation's next run. When
 the conversation's model is no longer offered, a run MUST fail instead of
-using another model (ADR-0069).
+using another model. For a user, a model their data egress policy refuses
+MUST count as not offered when a new conversation chooses its model, and the
+conversation MUST start without a model when both defaults are refused
+(ADR-0069, ADR-0091).
 
 ## MOD-013: Testing a connection
 
@@ -202,3 +217,15 @@ message or choose another model.
 
 Rationale: a refusal is the model's decision, not a fault of the system,
 and the user can only act on it if they see it.
+
+## MOD-016: Data egress policy of a shared space
+
+- **Status:** draft
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** integration
+
+A tenant admin MUST be able to set the data egress policy of a shared space
+(TEN-007), and a model request carrying data of a shared space MUST follow
+the strictest of the space's policy and the policy that applies to the user
+(MOD-003, ADR-0091).

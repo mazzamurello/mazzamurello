@@ -380,3 +380,26 @@ capability class, showing what applies to each tool and why.
 
 Rationale: journey J7; persona P1 checks what the assistant did, and the
 household's admin decides what each member's assistant may do.
+
+## UX-024: Local models only
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST let each user choose, among their own settings, to use only
+local models (MOD-003), and say when the household or a tenant admin has
+already chosen it for them. Among the household's settings (UX-015), they
+MUST let tenant admins choose it for the household and for each user.
+
+When the data egress policy that applies to the user refuses remote models,
+the model picker (UX-015) MUST show remote models as unavailable, saying
+why; a conversation whose model is refused MUST say so before the user
+sends a message, and a run refused with `model.egress_refused` MUST say why
+and let the user choose a local model. Spoken turns and reading aloud MUST
+be shown as unavailable, saying why, when the policy refuses the household's
+speech models (ADR-0091).
+
+Rationale: journey J14; the household decides what may leave the house, and
+each member sees what that means for them.

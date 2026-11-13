@@ -125,7 +125,7 @@ new entry here first (ADR-0005).
 | Local model | A model served from inside the instance or the household's network. |
 | Remote model | A model served by a third party over the internet. |
 | Cost ledger | The record of every model request made for a user, with tokens and cost but no content (MOD-006, ADR-0042). |
-| Data egress policy | The rules that decide which data may be sent to remote models, per tenant, user and shared space. |
+| Data egress policy | The rule that decides whether a user's data may be sent to remote models: any model, or local models only. Set for the household and for each user by a tenant admin, and by each user for themself; the strictest applies (MOD-003, ADR-0091). Shared spaces will have their own (MOD-016). |
 
 ## Process
 

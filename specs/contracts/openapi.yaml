@@ -140,6 +140,45 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /me/egress-policy:
+    get:
+      tags: [models]
+      operationId: getMyEgressPolicy
+      summary: The data egress policies that apply to the user.
+      description: |
+        The household's, the one a tenant admin set for the user, the user's
+        own, and the strictest of them, which applies (MOD-003, ADR-0091).
+      x-requirements: [MOD-003, UX-024, TEN-006]
+      responses:
+        "200":
+          description: The user's policies.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EgressPolicies" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    put:
+      tags: [models]
+      operationId: setMyEgressPolicy
+      summary: Choose the user's own data egress policy.
+      description: |
+        Applies from the user's next model request, also during a run. It
+        cannot loosen the household's policy or the one a tenant admin set
+        (MOD-003, ADR-0091).
+      x-requirements: [MOD-003, UX-024, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EgressPolicySetting" }
+      responses:
+        "200":
+          description: The user's policies.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EgressPolicies" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /me/sessions:
     get:
       tags: [auth]
@@ -287,6 +326,74 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /tenant/users/{user_id}/egress-policy:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    get:
+      tags: [administration]
+      operationId: getUserEgressPolicy
+      summary: The data egress policy a tenant admin set for a user (tenant admin only).
+      description: |
+        Not the user's own choice, which only they see (MOD-003, ADR-0091).
+      x-requirements: [MOD-003, UX-024, TEN-006]
+      responses:
+        "200":
+          description: The policy set for the user; `any` when none is set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EgressPolicySetting" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [administration]
+      operationId: setUserEgressPolicy
+      summary: Set a user's data egress policy (tenant admin only).
+      description: |
+        Applies from the user's next model request, also during a run
+        (MOD-003, ADR-0091).
+      x-requirements: [MOD-003, UX-024, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EgressPolicySetting" }
+      responses:
+        "200":
+          description: The policy set for the user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EgressPolicySetting" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /tenant/egress-policy:
+    put:
+      tags: [administration]
+      operationId: setHouseholdEgressPolicy
+      summary: Set the household's data egress policy (tenant admin only).
+      description: |
+        Applies to every user of the household from their next model
+        request, also during a run. Users read it in `GET /me/egress-policy`
+        (MOD-003, ADR-0091).
+      x-requirements: [MOD-003, UX-024, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EgressPolicySetting" }
+      responses:
+        "200":
+          description: The household's policy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EgressPolicySetting" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /tenant/connections:
@@ -451,8 +558,10 @@ paths:
         For every user of the tenant. Grouped by connection, connections by
         name; within one, in the provider's order: for OpenRouter, most used
         in the past week first (MOD-011). Lists older than a day are
-        refreshed in the background (ADR-0069).
-      x-requirements: [MOD-010, MOD-011, MOD-012, MOD-014, UX-015, TEN-006]
+        refreshed in the background (ADR-0069). Models the user's data
+        egress policy refuses are listed too; `egress` lets clients show
+        them as unavailable (MOD-003, ADR-0091).
+      x-requirements: [MOD-003, MOD-010, MOD-011, MOD-012, MOD-014, UX-015, UX-024, TEN-006]
       responses:
         "200":
           description: The models of the tenant.
@@ -460,7 +569,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, default, speech]
+                required: [items, default, speech, egress]
                 properties:
                   items:
                     type: array
@@ -469,6 +578,7 @@ paths:
                     description: The tenant's default model, or `null` when it has none.
                     oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
                   speech: { $ref: "#/components/schemas/SpeechSettings" }
+                  egress: { $ref: "#/components/schemas/EgressPolicies" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
   /tenant/speech:
@@ -506,7 +616,7 @@ paths:
         this request only and never kept; its language is detected
         (API-006, ADR-0088). The cost, when the provider reports it, is
         recorded with the purpose `speech`.
-      x-requirements: [API-006, UX-005, MOD-006]
+      x-requirements: [API-006, UX-005, MOD-003, MOD-006]
       requestBody:
         required: true
         content:
@@ -532,7 +642,10 @@ paths:
                   text: { type: string }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409":
-          description: The household has no transcription model (`speech.unavailable`).
+          description: |
+            The household has no transcription model (`speech.unavailable`),
+            or the user's data egress policy refuses it
+            (`model.egress_refused`, MOD-003).
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -560,7 +673,7 @@ paths:
         in pieces of at most 4,000 characters, made speakable first
         (ADR-0088). The cost is recorded with the purpose `speech`, as
         OpenRouter reports it for the generation once the audio is sent.
-      x-requirements: [API-006, UX-005, MOD-006]
+      x-requirements: [API-006, UX-005, MOD-003, MOD-006]
       requestBody:
         required: true
         content:
@@ -579,7 +692,10 @@ paths:
               schema: { type: string, format: binary }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409":
-          description: The household has no speech model (`speech.unavailable`).
+          description: |
+            The household has no speech model (`speech.unavailable`), or the
+            user's data egress policy refuses it (`model.egress_refused`,
+            MOD-003).
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1225,7 +1341,7 @@ paths:
         are refused with `approval.invalid` (AGT-012, AGT-015, ADR-0083,
         ADR-0090). A run whose tool calls need approval ends with an
         `approval` interrupt for each (AGT-004, AGT-006, AGT-007).
-      x-requirements: [AGT-004, AGT-006, AGT-007, AGT-009, AGT-010, AGT-012, AGT-015, API-003, API-004, CNV-002, TEN-006]
+      x-requirements: [AGT-004, AGT-006, AGT-007, AGT-009, AGT-010, AGT-012, AGT-015, API-003, API-004, CNV-002, MOD-003, TEN-006]
       requestBody:
         required: true
         content:
@@ -1248,7 +1364,8 @@ paths:
             (`run.interrupt_pending`), `parentRunId` is not the active run
             (`resource.conflict`), or the conversation's model is not offered
             by a connection of the tenant, or it has none and the tenant has no
-            default model (`model.unavailable`, MOD-012).
+            default model (`model.unavailable`, MOD-012), or the user's data
+            egress policy refuses it (`model.egress_refused`, MOD-003).
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1548,6 +1665,7 @@ components:
         - model.unavailable
         - model.request_failed
         - model.refused
+        - model.egress_refused
         - speech.unavailable
         - file.too_large
         - file.not_previewable
@@ -1705,6 +1823,39 @@ components:
       type: string
       description: Where inference runs (MOD-010, ADR-0066).
       enum: [local, remote]
+
+    EgressPolicy:
+      type: string
+      description: |
+        A data egress policy: every model, or only models whose inference
+        runs locally (MOD-003, MOD-010, ADR-0091).
+      enum: [any, local_only]
+
+    EgressPolicySetting:
+      type: object
+      required: [policy]
+      additionalProperties: false
+      properties:
+        policy: { $ref: "#/components/schemas/EgressPolicy" }
+
+    EgressPolicies:
+      type: object
+      description: |
+        The data egress policies that apply to the requesting user; `any`
+        where none is set. `effective`, the strictest, is the one the model
+        gateway enforces (MOD-003, ADR-0091).
+      required: [household, admin, own, effective]
+      additionalProperties: false
+      properties:
+        household: { $ref: "#/components/schemas/EgressPolicy" }
+        admin:
+          allOf: [{ $ref: "#/components/schemas/EgressPolicy" }]
+          description: The policy a tenant admin set for the user.
+        own:
+          allOf: [{ $ref: "#/components/schemas/EgressPolicy" }]
+          description: The user's own choice.
+        effective: { $ref: "#/components/schemas/EgressPolicy" }
+
     Connection:
       type: object
       description: |
@@ -2630,7 +2781,9 @@ components:
         `value` `{title}`, before the run finishes (CNV-006, ADR-0073).
         `RUN_ERROR` carries the error's `code` and a `message`, which ends
         with the reason the model or its provider gave, when there is one;
-        a request the model refuses fails with `model.refused` (MOD-015).
+        a request the model refuses fails with `model.refused` (MOD-015),
+        and a request the user's data egress policy refuses, checked before
+        each model request, with `model.egress_refused` (MOD-003).
         A run that asks the user a question, or whose tool calls need
         approval, ends with `RUN_FINISHED` whose `outcome` is
         `{type: "interrupt", interrupts}`, each an `Interrupt` (AGT-015,
