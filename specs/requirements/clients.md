@@ -343,7 +343,7 @@ long answer needs a narrower one.
 
 ## UX-022: Approval prompts
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
@@ -363,7 +363,7 @@ model, so a prompt must be rare and say what is at stake.
 
 ## UX-023: Seeing and governing what tools do
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e

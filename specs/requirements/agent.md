@@ -16,7 +16,7 @@ world.
 
 ## AGT-002: Per-user tool permissions
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -34,7 +34,7 @@ AGT-006 for the `irreversible` and `physical` classes, and AGT-018
 
 ## AGT-003: Content provenance
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** unit
@@ -66,7 +66,7 @@ approved one by one (ADR-0090).
 
 ## AGT-005: Capability classes
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** design
@@ -79,7 +79,7 @@ declarations of the tools listed in ADR-0090.
 
 ## AGT-006: Approval for consequential actions
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -96,7 +96,7 @@ user, and MUST NOT be copied into a fork (ADR-0090).
 
 ## AGT-007: Approvals fail closed
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -111,7 +111,7 @@ approval (ADR-0090).
 
 ## AGT-008: Audit events visible to the user
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
@@ -161,7 +161,7 @@ NOT be able to target any other conversation's sandbox.
 
 ## AGT-012: Approvals verified against stored requests
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security
