@@ -18,7 +18,7 @@ spec-driven process. Reading this page first will save you time.
 
 | You want to… | Do this |
 |---|---|
-| Ask a question or discuss an idea | Open a [Discussion](https://github.com/mazzamurello/mazzamurello/discussions) |
+| Ask a question or discuss an idea | Open a [Discussion](https://github.com/sibillo-ai/sibillo/discussions) |
 | Report a bug | Open an issue using the bug report form |
 | Propose a feature or behavior change | Open a spec proposal issue, then a `spec/*` pull request |
 | Fix a bug covered by an existing requirement | `test/*` pull request reproducing it, then `impl/*` |

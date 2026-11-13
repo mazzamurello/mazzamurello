@@ -15,7 +15,7 @@ exist, security fixes will be provided for the latest minor version.
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Report privately through GitHub's
-[private vulnerability reporting](https://github.com/mazzamurello/mazzamurello/security/advisories/new).
+[private vulnerability reporting](https://github.com/sibillo-ai/sibillo/security/advisories/new).
 
 Please include:
 

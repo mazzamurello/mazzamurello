@@ -30,9 +30,8 @@ does not already know it.
 4. **No migration.** Until the first release the schema is rewritten rather
    than migrated (ADR-0071): an installation is set up again, with its
    `.env` variables renamed.
-5. **The repository keeps its address until it moves.** Links to the
-   GitHub organization and repository change when they are renamed; GitHub
-   keeps the old address working.
+5. **The repository moves with the name:** it is `sibillo-ai/sibillo` on
+   GitHub, and its links say so; GitHub keeps the old address working.
 
 ## Consequences
 

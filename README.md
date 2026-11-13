@@ -81,7 +81,7 @@ Hardware virtualization is not needed (OPS-009).
 **Install**
 
 ```bash
-git clone https://github.com/mazzamurello/mazzamurello.git
+git clone https://github.com/sibillo-ai/sibillo.git
 cd sibillo/deploy
 docker compose run --rm --no-deps init
 docker compose up --detach --build --wait

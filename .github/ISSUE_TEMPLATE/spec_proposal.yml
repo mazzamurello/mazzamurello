@@ -7,7 +7,7 @@ body:
       value: |
         In Sibillo, every feature starts as a spec. Describe the need
         first; requirements and ADRs follow in a `spec/*` pull request.
-        Please check [VISION.md](https://github.com/mazzamurello/mazzamurello/blob/master/VISION.md) for the project's scope.
+        Please check [VISION.md](https://github.com/sibillo-ai/sibillo/blob/master/VISION.md) for the project's scope.
   - type: textarea
     id: user-story
     attributes:
