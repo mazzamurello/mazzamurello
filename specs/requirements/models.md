@@ -26,7 +26,7 @@ NOT be exposed to sandboxes, clients or logs.
 
 ## MOD-003: Data egress policy
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration

@@ -383,7 +383,7 @@ household's admin decides what each member's assistant may do.
 
 ## UX-024: Local models only
 
-- **Status:** accepted
+- **Status:** implemented
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** e2e
