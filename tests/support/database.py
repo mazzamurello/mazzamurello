@@ -43,7 +43,7 @@ PRIVATE_TABLES = (
 # Configuration of the instance, without a tenant.
 INSTANCE_TABLES = ("tenants",)
 # Tables of a tenant that are not private to one user (ADR-0069).
-TENANT_TABLES = ("users", "connections", "connection_models", "tool_permissions")
+TENANT_TABLES = ("users", "connections", "connection_models", "tool_permissions", "egress_policies")
 CONTRACT_TABLES = ("tenants", "login_attempts", *TENANT_TABLES, *PRIVATE_TABLES)
 # Column holding the owning user of each private table.
 OWNER_COLUMN = {table: "user_id" if table == "device_sessions" else "owner_id" for table in PRIVATE_TABLES}
