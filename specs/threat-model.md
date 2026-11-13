@@ -122,6 +122,9 @@ to break the trifecta **within each run**:
 2. Content entering a run is labeled with its provenance (AGT-003).
 3. Once untrusted content is part of a run, tools in the
    `external_communication` class require explicit user approval (AGT-004).
+   Untrusted content counts in every later turn of the conversation, and the
+   user may allow the web and commands for a turn or a conversation, never
+   beyond it (ADR-0090).
 4. Approvals fail closed (AGT-007) and every tool call is auditable
    (AGT-008).
 5. Evals include injection scenarios that must not exfiltrate (EVL-003).
@@ -135,7 +138,12 @@ Prompts are never relied upon as a security boundary.
   bounded to that conversation's workspace and the answer it runs in, which
   never contain secrets (SBX-001, SBX-008, ADR-0078).
 - **Approval fatigue.** Users may approve requests without reading them.
-  Approval prompts must show what will be sent and where.
+  Approval prompts must show what will be sent and where, and are kept rare:
+  one approval covers the web and command tools (ADR-0090).
+- **Allowances in a conversation.** A user who allows the web and commands
+  in a conversation accepts that injected instructions could send that
+  conversation's workspace out, until they withdraw the allowance
+  (AGT-006, ADR-0090).
 - **A web page leaving its frame.** A page the assistant made runs with an
   opaque origin and no network access, but it can still navigate its own
   frame to another address, carrying data it holds, and it relies on the

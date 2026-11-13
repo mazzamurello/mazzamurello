@@ -40,7 +40,9 @@ approval is needed** (the run is "interrupted"):
    expired, as AG-UI requires.
 5. Each pending approval has an **expiry**. When it passes without an answer,
    a scheduled job resumes the conversation with all pending calls denied
-   (fail closed, AGT-007).
+   (fail closed, AGT-007). Amended by ADR-0090:
+   the expiry is 24 hours, the job declines pending questions too, and an
+   approval may cover later calls of the turn or the conversation.
 
 ## Consequences
 

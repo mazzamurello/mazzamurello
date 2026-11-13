@@ -248,6 +248,47 @@ paths:
               schema: { $ref: "#/components/schemas/UserPage" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /tenant/users/{user_id}/tool-permissions:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    get:
+      tags: [administration]
+      operationId: getToolPermissions
+      summary: A user's tool permissions (tenant admin only).
+      x-requirements: [AGT-002, UX-023, TEN-006]
+      responses:
+        "200":
+          description: The user's settings, per tool and per capability class.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ToolPermissions" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [administration]
+      operationId: setToolPermissions
+      summary: Replace a user's tool permissions (tenant admin only).
+      description: |
+        Applies from the user's next run. A tool or class left out follows
+        its approval default (AGT-002, ADR-0090).
+      x-requirements: [AGT-002, UX-023, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ToolPermissions" }
+      responses:
+        "200":
+          description: The user's settings, as stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ToolPermissions" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /tenant/connections:
     post:
       tags: [models]
@@ -1082,6 +1123,56 @@ paths:
               schema: { $ref: "#/components/schemas/Usage" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
+  /tools:
+    get:
+      tags: [conversations]
+      operationId: listTools
+      summary: Every tool of the assistant, and what applies to it for the user.
+      description: |
+        In the order of `ToolName`. Clients list the user's tool switches
+        from it, and show a tool denied by a tool permission switched off
+        and locked (CNV-013, ADR-0090).
+      x-requirements: [AGT-002, AGT-005, CNV-013, UX-023]
+      responses:
+        "200":
+          description: The tools.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ToolInfo" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /me/activity:
+    get:
+      tags: [conversations]
+      operationId: listActivity
+      summary: The user's audit events, newest first.
+      x-requirements: [AGT-008, UX-023, TEN-006]
+      parameters:
+        - name: conversation_id
+          in: query
+          description: Only the events of this conversation, also once it is deleted.
+          schema: { $ref: "#/components/schemas/Id" }
+        - name: tool
+          in: query
+          description: Only the events of this tool.
+          schema: { $ref: "#/components/schemas/ToolName" }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of audit events.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActivityPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /conversations/{conversation_id}/messages:
     parameters:
       - $ref: "#/components/parameters/ConversationId"
@@ -1129,9 +1220,12 @@ paths:
         so the conversation accepts new runs. A run with `resume` answers
         every pending interrupt of the conversation, continues the
         interrupted run and has kind `resume`; answers to interrupts that are
-        not pending, a missing answer, or one that does not fit its question
-        are refused with `approval.invalid` (AGT-015, ADR-0083).
-      x-requirements: [AGT-009, AGT-010, AGT-015, API-003, API-004, CNV-002, TEN-006]
+        not pending or have expired, a missing answer, one that does not fit
+        its question, or an approval with a scope its request did not offer
+        are refused with `approval.invalid` (AGT-012, AGT-015, ADR-0083,
+        ADR-0090). A run whose tool calls need approval ends with an
+        `approval` interrupt for each (AGT-004, AGT-006, AGT-007).
+      x-requirements: [AGT-004, AGT-006, AGT-007, AGT-009, AGT-010, AGT-012, AGT-015, API-003, API-004, CNV-002, TEN-006]
       requestBody:
         required: true
         content:
@@ -1290,6 +1384,11 @@ components:
       schema: { type: string, maxLength: 4096 }
     SessionId:
       name: session_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    UserId:
+      name: user_id
       in: path
       required: true
       schema: { $ref: "#/components/schemas/Id" }
@@ -1793,6 +1892,143 @@ components:
       uniqueItems: true
       items: { $ref: "#/components/schemas/ToolName" }
 
+    CapabilityClass:
+      type: string
+      description: A declared property of a tool used for safety decisions (AGT-005, ADR-0012).
+      enum: [reads_private_data, ingests_untrusted, external_communication, irreversible, physical]
+
+    PermissionSetting:
+      type: string
+      description: |
+        A tool permission (AGT-002, ADR-0090): `allow` lifts the tool's
+        default approval, `ask` needs approval for every call, `deny` takes
+        the tool away.
+      enum: [allow, ask, deny]
+
+    ToolPermissions:
+      type: object
+      description: |
+        A user's tool permissions; a tool or class left out follows its
+        approval default. A tool's setting wins over its classes'; among its
+        classes the strictest wins (AGT-002, ADR-0090).
+      required: [tools, classes]
+      additionalProperties: false
+      properties:
+        tools:
+          type: object
+          propertyNames: { $ref: "#/components/schemas/ToolName" }
+          additionalProperties: { $ref: "#/components/schemas/PermissionSetting" }
+        classes:
+          type: object
+          propertyNames: { $ref: "#/components/schemas/CapabilityClass" }
+          additionalProperties: { $ref: "#/components/schemas/PermissionSetting" }
+
+    ToolInfo:
+      type: object
+      required: [name, classes, approval_default, effective, permission]
+      properties:
+        name: { $ref: "#/components/schemas/ToolName" }
+        classes:
+          type: array
+          items: { $ref: "#/components/schemas/CapabilityClass" }
+        approval_default:
+          type: string
+          enum: [allow, ask]
+          description: Whether the tool is asked when no tool permission says otherwise (AGT-005, AGT-006).
+        effective:
+          allOf: [{ $ref: "#/components/schemas/PermissionSetting" }]
+          description: What applies to the tool for this user, before the trifecta rule (AGT-004).
+        permission:
+          description: |
+            Where `effective` comes from: the tool permission of the tool or
+            of one of its classes, or `null` for the tool's default.
+          oneOf:
+            - type: object
+              required: [setting, subject]
+              properties:
+                setting: { $ref: "#/components/schemas/PermissionSetting" }
+                subject:
+                  description: The tool's name, or the capability class whose setting applies.
+                  type: string
+            - type: "null"
+
+    ApprovalScope:
+      type: string
+      description: |
+        What an approval covers (ADR-0090): this call; the web and command
+        tools for the rest of the turn; or the tool, or the web and command
+        tools, in this conversation.
+      enum: [once, turn, conversation]
+
+    ApprovalOutcome:
+      type: string
+      description: |
+        How a tool call was decided (AGT-008): it needed no approval, an
+        allowance covered it, the user approved or denied it, its request
+        expired, or a tool permission refused it.
+      enum: [not_needed, allowed, approved, denied, expired, refused]
+
+    ApprovalReason:
+      type: string
+      description: |
+        Why a call needs approval: untrusted content in the run (AGT-004), the
+        tool's default or a tool permission (AGT-006, AGT-002), its
+        `irreversible` or `physical` class, or a device or MCP server
+        (AGT-018).
+      enum: [untrusted_content, tool_default, permission, consequential, device]
+
+    Allowances:
+      type: object
+      description: |
+        What the user allowed in this conversation by answering approval
+        requests (AGT-006, ADR-0090). Never copied into a fork.
+      required: [web_and_commands, tools]
+      properties:
+        web_and_commands:
+          type: boolean
+          description: Whether `web_search`, `read_page`, `run_command` and `start_command` are allowed despite untrusted content (AGT-004).
+        tools:
+          type: array
+          description: The tools whose approval, by default or by a tool permission, is lifted in this conversation.
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/ToolName" }
+
+    AuditEvent:
+      type: object
+      description: |
+        A content-free record of one tool call (AGT-008, ADR-0090): no
+        arguments and no results.
+      required: [id, tool, conversation_id, conversation_title, run_id, tool_call_id, outcome, scope, reason, repeated, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        tool: { $ref: "#/components/schemas/ToolName" }
+        conversation_id: { $ref: "#/components/schemas/Id" }
+        conversation_title:
+          type: [string, "null"]
+          description: The conversation's title while it exists; `null` once deleted.
+        run_id: { $ref: "#/components/schemas/Id" }
+        tool_call_id: { type: string }
+        outcome: { $ref: "#/components/schemas/ApprovalOutcome" }
+        scope:
+          description: The scope of the approval or allowance that let the call run, else `null`.
+          oneOf: [{ $ref: "#/components/schemas/ApprovalScope" }, { type: "null" }]
+        reason:
+          description: Why the call needed approval, or `null` when it did not.
+          oneOf: [{ $ref: "#/components/schemas/ApprovalReason" }, { type: "null" }]
+        repeated:
+          type: boolean
+          description: The call was started more than once, after a crash, so it may have run twice (ADR-0034).
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+
+    ActivityPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEvent" }
+        next_cursor: { type: [string, "null"] }
+
     Instructions:
       type: [string, "null"]
       maxLength: 20000
@@ -1839,7 +2075,7 @@ components:
 
     Conversation:
       type: object
-      required: [id, title, archived, temporary, active_run_id, model, reasoning, disabled_tools, base_instructions, additional_instructions, folder_id, pinned, forked_from, interrupts, plan, cost, last_message_at, created_at, updated_at]
+      required: [id, title, archived, temporary, active_run_id, model, reasoning, disabled_tools, allowances, base_instructions, additional_instructions, folder_id, pinned, forked_from, interrupts, plan, cost, last_message_at, created_at, updated_at]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         temporary:
@@ -1866,6 +2102,7 @@ components:
         disabled_tools:
           allOf: [{ $ref: "#/components/schemas/DisabledTools" }]
           description: The tools its next run does without, copied from its user's defaults when it was created (CNV-013).
+        allowances: { $ref: "#/components/schemas/Allowances" }
         base_instructions:
           allOf: [{ $ref: "#/components/schemas/Instructions" }]
           description: Its own base instructions; `null` to use its user's default ones as they are at each run (CNV-014).
@@ -1878,8 +2115,9 @@ components:
           type: array
           description: |
             The pending interrupts of its last run, as its `RUN_FINISHED`
-            carried them; empty when none is pending. While one is, the
-            conversation takes no new message (AGT-015, ADR-0083).
+            carried them: questions and approval requests; empty when none
+            is pending. While one is, the conversation takes no new message
+            (AGT-015, ADR-0083, ADR-0090).
           items: { $ref: "#/components/schemas/Interrupt" }
         plan:
           type: array
@@ -1917,13 +2155,19 @@ components:
         An AG-UI interrupt, with AG-UI's field names. A question to the user
         has `reason` `ask_user`, the ID `int-` followed by its `toolCallId`,
         and `metadata.questions`; it is answered by a run whose `resume`
-        names it (AGT-015, ADR-0083).
+        names it (AGT-015, ADR-0083). An approval request has `reason`
+        `approval`, the ID `apr-` followed by its `toolCallId`, and
+        `metadata.approval`, built by the server from the stored call
+        (AGT-007, AGT-012, ADR-0090).
       required: [id, reason]
       additionalProperties: true
       properties:
         id: { type: string }
-        reason: { type: string, enum: [ask_user] }
+        reason: { type: string, enum: [ask_user, approval] }
         toolCallId: { type: string }
+        expiresAt:
+          description: For an approval request, when it is denied unless answered (AGT-007).
+          allOf: [{ $ref: "#/components/schemas/Timestamp" }]
         metadata:
           type: object
           properties:
@@ -1931,6 +2175,33 @@ components:
               type: array
               minItems: 1
               items: { $ref: "#/components/schemas/Question" }
+            approval: { $ref: "#/components/schemas/ApprovalRequest" }
+
+    ApprovalRequest:
+      type: object
+      description: What a tool call will do, for the user to approve (AGT-007, ADR-0090).
+      required: [tool, arguments, action, data, destination, reason, scopes]
+      properties:
+        tool: { $ref: "#/components/schemas/ToolName" }
+        arguments:
+          type: object
+          additionalProperties: true
+          description: The call's arguments, in full, as the model gave them.
+        action:
+          type: string
+          description: What the call does, in a few words.
+        data:
+          type: string
+          description: The data the call sends, such as the query, the address or the command.
+        destination:
+          type: string
+          description: Where the data goes, such as the search service, a web address's host, or the internet from the sandbox.
+        reason: { $ref: "#/components/schemas/ApprovalReason" }
+        scopes:
+          type: array
+          description: The scopes the user may approve with, `once` first.
+          minItems: 1
+          items: { $ref: "#/components/schemas/ApprovalScope" }
 
     Question:
       type: object
@@ -1992,6 +2263,13 @@ components:
         disabled_tools:
           allOf: [{ $ref: "#/components/schemas/DisabledTools" }]
           description: Used from the next run (CNV-013).
+        allowances:
+          allOf: [{ $ref: "#/components/schemas/Allowances" }]
+          description: |
+            Withdraws allowances: `web_and_commands` may only become false,
+            and `tools` may only lose tools. An allowance it would add is
+            refused with `request.validation_failed`; allowances are created
+            only by answering approval requests (AGT-006, AGT-012).
         base_instructions:
           allOf: [{ $ref: "#/components/schemas/Instructions" }]
           description: Its own base instructions, or `null` to restore its user's defaults (CNV-014).
@@ -2182,7 +2460,7 @@ components:
         One run of the conversation (ADR-0037). A client rewinds to before a
         user message by naming the parent of the run that holds it
         (ADR-0068).
-      required: [run_id, parent_run_id, kind, message_ids, cost, error]
+      required: [run_id, parent_run_id, kind, message_ids, cost, error, approvals]
       properties:
         run_id: { $ref: "#/components/schemas/Id" }
         parent_run_id: { oneOf: [{ $ref: "#/components/schemas/Id" }, { type: "null" }] }
@@ -2208,6 +2486,20 @@ components:
           description: What the run's model requests cost, per currency, which clients show beside its answer (UX-008).
           type: array
           items: { $ref: "#/components/schemas/Money" }
+        approvals:
+          description: |
+            How each tool call of the run that needed approval, or that a tool
+            permission refused, was decided, which clients show on the call
+            (UX-023).
+          type: array
+          items:
+            type: object
+            required: [tool_call_id, outcome, scope, reason]
+            properties:
+              tool_call_id: { type: string }
+              outcome: { $ref: "#/components/schemas/ApprovalOutcome" }
+              scope: { oneOf: [{ $ref: "#/components/schemas/ApprovalScope" }, { type: "null" }] }
+              reason: { oneOf: [{ $ref: "#/components/schemas/ApprovalReason" }, { type: "null" }] }
 
     RunAgentInput:
       type: object
@@ -2246,7 +2538,10 @@ components:
               status: { type: string, enum: [resolved, cancelled] }
               payload:
                 description: |
-                  For approvals, `{"approved": true|false}`. For a question
+                  For an approval (`approval`), with `status` `resolved`:
+                  `{"approved": true|false, "scope"}`, where `scope` is one
+                  of the request's `scopes` and is required when approved;
+                  `cancelled` denies it (AGT-012, ADR-0090). For a question
                   (`ask_user`), with `status` `resolved`: `{"answers": [...]}`,
                   one per question, each `{"header", "selected": [labels]}`
                   or `{"header", "custom_answer"}` with the user's own words,
@@ -2334,9 +2629,10 @@ components:
         `RUN_ERROR` carries the error's `code` and a `message`, which ends
         with the reason the model or its provider gave, when there is one;
         a request the model refuses fails with `model.refused` (MOD-015).
-        A run that asks the user a question ends with `RUN_FINISHED` whose
-        `outcome` is `{type: "interrupt", interrupts}`, each an `Interrupt`
-        (AGT-015, ADR-0083). After a planning tool changes the task list, a
+        A run that asks the user a question, or whose tool calls need
+        approval, ends with `RUN_FINISHED` whose `outcome` is
+        `{type: "interrupt", interrupts}`, each an `Interrupt` (AGT-015,
+        ADR-0083, ADR-0090). After a planning tool changes the task list, a
         `CUSTOM` event named `sibillo.plan` carries as `value` `{steps}`, each a
         `PlanStep` (UX-009).
       required: [type]

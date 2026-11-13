@@ -36,7 +36,8 @@ AI's AG-UI stream turns only approvals into interrupts, not deferred calls.
    `{type: interrupt, interrupts}`. Each interrupt has the ID `int-` followed
    by the tool call's ID, `reason` `ask_user`, the `toolCallId`, and
    `metadata.questions`: the questions as the model asked them. Questions
-   do not expire.
+   do not expire. Amended by ADR-0090: questions pending with an approval
+   are declined when the approval expires.
 2. **Answering:** the client starts a run with `resume`, one entry per
    pending interrupt. `status: resolved` with `payload.answers`, one per
    question: `{header, selected}` with the labels picked, or

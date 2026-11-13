@@ -1,7 +1,7 @@
 # AGT — Agent and tools
 
-How the agent acts, and the controls around it. Background: ADR-0012, threat
-model T-08 to T-10.
+How the agent acts, and the controls around it. Background: ADR-0012,
+ADR-0033, ADR-0090, threat model T-08 to T-10.
 
 ## AGT-001: All actions through mediated tools
 
@@ -16,81 +16,114 @@ world.
 
 ## AGT-002: Per-user tool permissions
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
-A tenant admin MUST be able to allow or deny each tool, or tool capability
-class, for each user of the tenant. A denied tool MUST NOT be offered to the
-model for that user.
+A tenant admin MUST be able to set each tool, or each tool capability class,
+to allowed, asked or denied for each user of the tenant; without a setting, a
+tool follows its approval default (AGT-006). A setting for a tool MUST win
+over the settings of its classes, and among its classes the strictest MUST
+win. A denied tool MUST NOT be offered to the model for that user, a call to
+it MUST be refused, and the user MUST NOT be able to switch it on
+(CNV-013). An asked tool MUST require approval for every call. An allowed
+tool MUST NOT require approval by default, but MUST still follow AGT-004,
+AGT-006 for the `irreversible` and `physical` classes, and AGT-018
+(ADR-0090).
 
 ## AGT-003: Content provenance
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** unit
 
 Every piece of content entering a run MUST be labeled as trusted (written by
 the user or the system) or untrusted (web content, received messages,
-external files, sandbox output, connector data from third parties).
+external files, sandbox output, connector data from third parties). The
+results of tools in the `ingests_untrusted` class, and attachments and files
+of the file library given to a run, MUST be untrusted; the user's messages,
+their answers to questions (AGT-015) and the instructions MUST be trusted. A
+run MUST count as having untrusted content when the conversation's active
+path, up to and including that run, holds any, also after compaction and in
+a fork (ADR-0090).
 
 ## AGT-004: Breaking the lethal trifecta
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration, eval
 
-Once untrusted content is part of a run, every invocation of a tool in the
-`external_communication` class during that run MUST require explicit user
-approval.
+In a run with untrusted content (AGT-003), every invocation of a tool in the
+`external_communication` class MUST require explicit user approval, unless
+the user allowed it earlier for that turn or that conversation. One approval
+MUST cover the web and command tools `web_search`, `read_page`,
+`run_command` and `start_command` together, and MAY cover them for the rest
+of the turn or for the conversation, as the user chooses; other tools are
+approved one by one (ADR-0090).
 
 ## AGT-005: Capability classes
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** design
 
 Every tool MUST declare its capability classes among `reads_private_data`,
-`ingests_untrusted`, `external_communication`, `irreversible` and `physical`.
-A design test MUST fail when a registered tool declares none.
+`ingests_untrusted`, `external_communication`, `irreversible` and `physical`,
+possibly none, and its approval default, allowed or asked. A design test
+MUST fail when a registered tool has no declaration, and MUST check the
+declarations of the tools listed in ADR-0090.
 
 ## AGT-006: Approval for consequential actions
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
 Tools in the `irreversible` or `physical` classes MUST require explicit user
-approval for every invocation. Tools in the `external_communication` class
-MUST require approval by default.
+approval for every invocation, and an approval MUST cover only that
+invocation. Tools in the `external_communication` class MUST be asked by
+default, unless ADR-0090 or a later ADR records why one is allowed by
+default. For a tool asked by default or by a tool permission (AGT-002), the
+user MAY allow it once or in that conversation. Allowances in a
+conversation MUST be created only by answering an approval request
+(AGT-012), MUST be shown with the conversation, MUST be withdrawable by its
+user, and MUST NOT be copied into a fork (ADR-0090).
 
 ## AGT-007: Approvals fail closed
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
-An approval request that is not answered within its timeout, or that cannot
-be delivered, MUST be treated as denied. The approval request MUST show the
-action, the data involved and its destination.
+An approval request that is not answered within 24 hours, or that cannot be
+delivered, MUST be treated as denied: a scheduled job MUST resume the
+conversation with its pending approvals denied and its pending questions
+declined. A denied call MUST NOT run, and the model MUST be told the user
+denied it. The approval request MUST show the tool, its arguments in full,
+what the call does, the data involved and its destination, and why it needs
+approval (ADR-0090).
 
 ## AGT-008: Audit events visible to the user
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** integration
 
-Every tool invocation MUST produce an audit event (tool, time, run,
-conversation, approval outcome) that the user it acted for can view. Tools
-with external effects MUST record an idempotency key for each call, so that a
-call that may have run twice after a crash (ADR-0034) is visible as such.
+Every tool invocation, including calls that were denied, expired or refused,
+MUST produce an audit event (tool, time, run, conversation, approval outcome
+and its scope) that the user it acted for can view. Audit events MUST NOT
+hold the call's arguments or results, MUST outlive the conversation, and
+MUST be deleted with their user. Tools in the `external_communication`,
+`irreversible` or `physical` classes MUST record an idempotency key for each
+call before it runs, so that a call that may have run twice after a crash
+(ADR-0034) is visible as such (ADR-0090).
 
 ## AGT-009: Durable runs
 
@@ -128,7 +161,7 @@ NOT be able to target any other conversation's sandbox.
 
 ## AGT-012: Approvals verified against stored requests
 
-- **Status:** draft
+- **Status:** accepted
 - **Priority:** MUST
 - **Phase:** 1
 - **Verification:** security
@@ -137,7 +170,9 @@ Approval decisions MUST be applied only to approval requests the server
 stored for that conversation and that are still pending. Decisions referring
 to unknown, already resolved or expired requests MUST be rejected, and the
 tool, arguments and destination shown to the user MUST come from the stored
-request (ADR-0033).
+request (ADR-0033). A decision MUST NOT allow more than the request offered:
+a scope the request did not offer MUST be rejected, and an allowance MUST
+NOT be created in any other way (ADR-0090).
 
 ## AGT-013: No host-side execution through framework capabilities
 

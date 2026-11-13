@@ -34,6 +34,9 @@ We will:
    approval.
 5. Always require approval for `irreversible` and `physical` tools, and for
    `external_communication` tools by default, independently of rule 4.
+   Amended by ADR-0090: the approval default is declared per tool, and the
+   web and command tools are allowed by default, guarded by rule 4, which
+   counts untrusted content from earlier turns of the conversation too.
 6. Make approvals **fail closed** and show exactly what will be done, with
    what data, and where it goes.
 7. Let tenant admins configure **per-user tool permissions**. These are

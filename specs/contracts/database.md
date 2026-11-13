@@ -232,8 +232,10 @@ A user's groups of conversations (CNV-007, ADR-0073).
 | `title` | text | not null; empty while untitled (ADR-0052), then named by its user or by its model (CNV-006); searched through a GIN index on its `simple` tsvector (CNV-009) |
 | `active_run_id` | uuid | the last run of the active path (ADR-0037); null before the first run; (`tenant_id`, `owner_id`, `active_run_id`) references `runs` on delete set null (`active_run_id`) |
 | `usage` | jsonb | Pydantic AI conversation usage |
-| `pending_interrupts` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending: questions to the user, and approvals (ADR-0033, ADR-0083), else null |
-| `approvals_expire_at` | timestamptz | expiry of the pending interrupt (AGT-007), else null |
+| `pending_interrupts` | jsonb | serialized `DeferredToolRequests` while an interrupt is pending: questions to the user, and approvals (ADR-0033, ADR-0083), with, for each approval, what the server showed the user: its reason and the scopes it offered (ADR-0090); else null |
+| `approvals_expire_at` | timestamptz | 24 hours after the interrupt was stored while approvals are pending (AGT-007, ADR-0090); null when none is, also while questions alone are pending; indexed for the expiry job |
+| `allowed_web_and_commands` | boolean | not null, default false; the web and command tools allowed in this conversation despite untrusted content (AGT-004, ADR-0090); set only when a resume answers an approval request with scope `conversation`; not copied into a fork |
+| `allowed_tools` | text[] | not null, default empty; the tools whose approval is lifted in this conversation (AGT-006), set the same way; not copied into a fork |
 | `folder_id` | uuid | its folder, or null; (`tenant_id`, `owner_id`, `folder_id`) references `folders` on delete set null (`folder_id`) |
 | `pinned_at` | timestamptz | when it was pinned; null when not pinned (CNV-008) |
 | `forked_from_conversation_id`, `forked_from_run_id` | uuid | where a fork came from (CNV-005); (`tenant_id`, `owner_id`, `forked_from_conversation_id`) references `conversations` on delete set null (`forked_from_conversation_id`); the run is kept as an identifier, without a reference, so that a fork stays one when its original is gone |
@@ -315,6 +317,7 @@ it was compacted (AGT-016, ADR-0041). The stored messages never change.
 | `conversation_id` | uuid | not null; (`tenant_id`, `owner_id`, `conversation_id`) references `conversations` on delete cascade |
 | `parent_run_id` | uuid | the run this run continues (ADR-0037); null for the first run; (`tenant_id`, `owner_id`, `parent_run_id`) references `runs` on delete cascade; indexed |
 | `kind` | text | `message` (a new turn) or `resume` (answers to an interrupt, ADR-0033) |
+| `turn_allows_web_and_commands` | boolean | not null, default false; the web and command tools are allowed for the rest of the turn (ADR-0090): set on a resume run answering an approval request with scope `turn`, and copied from the parent by every resume run |
 | `status` | text | `queued`, `running`, `interrupted`, `completed`, `failed`, `cancelled` |
 | `error_code` | text | stable error code when failed (API-007) |
 | `connection_id` | uuid | the connection that answered; (`tenant_id`, `connection_id`) references `connections` on delete set null (`connection_id`) |
@@ -354,6 +357,48 @@ It never contains content.
 Totals per run, conversation, the last 24 hours and the last 30 days are computed from these rows (MOD-007, ADR-0073).
 Per-user totals for tenant admins arrive in phase 1, through a function that
 returns only sums per user.
+
+### `tool_permissions`
+
+A tenant admin's settings of tools for each user (AGT-002, ADR-0090). No
+row means the tool or class follows its approval default.
+
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id`, `user_id` | uuid | not null; (`tenant_id`, `user_id`) references `users` |
+| `subject_kind` | text | `tool` or `class` |
+| `subject` | text | a name of `ToolName`, or a `CapabilityClass`, of the API contract |
+| `setting` | text | `allow`, `ask` or `deny` |
+| `updated_at` | timestamptz | not null |
+
+Primary key (`tenant_id`, `user_id`, `subject_kind`, `subject`).
+
+Policies:
+- `SELECT` where `tenant_id = app_tenant_id()` and (`user_id = app_user_id()`
+  or `app_is_tenant_admin()`): users read their own, so that runs and the
+  tool switches apply them.
+- `INSERT`, `UPDATE`, `DELETE` where `tenant_id = app_tenant_id()` and
+  `app_is_tenant_admin()`.
+
+### `audit_events` (private)
+
+One entry per tool call (AGT-008, ADR-0090). It never contains content: no
+arguments and no results. Entries outlive the conversation and its runs,
+which they name only by identifier, without references, so that deleting or
+rewinding a conversation keeps them; they are deleted with their user.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid | primary key |
+| `tenant_id`, `owner_id` | uuid | the user the call acted for; (`tenant_id`, `owner_id`) references `users` on delete cascade |
+| `conversation_id`, `run_id` | uuid | not null; identifiers only |
+| `tool_call_id` | text | not null; unique with `run_id`: the idempotency key of the call |
+| `tool` | text | not null; a name of `ToolName` |
+| `outcome` | text | `not_needed`, `allowed`, `approved`, `denied`, `expired` or `refused` |
+| `scope` | text | `once`, `turn` or `conversation`, else null |
+| `reason` | text | `untrusted_content`, `tool_default`, `permission`, `consequential` or `device`, else null |
+| `attempts` | integer | not null, default 0; incremented in a durable step before each start of a call of a tool in the `external_communication`, `irreversible` or `physical` class; more than one means it may have run twice (ADR-0034) |
+| `created_at` | timestamptz | not null; indexed with `owner_id` |
 
 ### `connections`
 
@@ -412,8 +457,8 @@ listing the models again replaces the rows of the connection.
 ### Policies for private tables
 
 `device_sessions`, `folders`, `user_settings`, `conversations`,
-`conversation_plans`, `conversation_messages`, `compaction_checkpoints`, `runs` and `usage_ledger`
-use the same policy for every operation:
+`conversation_plans`, `conversation_messages`, `compaction_checkpoints`, `runs`, `usage_ledger`
+and `audit_events` use the same policy for every operation:
 
 ```sql
 USING      (tenant_id = app_tenant_id() AND owner_id = app_user_id())
@@ -442,6 +487,8 @@ keys, not by privileges of `sibillo_app`.
 | `conversation_messages` | `SELECT`, `INSERT`: stored messages never change (ADR-0041) |
 | `runs` | `SELECT`, `INSERT`, `UPDATE`, `DELETE`: rewinding deletes runs (ADR-0068) |
 | `usage_ledger` | `SELECT`, `INSERT`: entries never change (ADR-0042) |
+| `tool_permissions` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `audit_events` | `SELECT`, `INSERT`; `UPDATE` of `outcome`, `scope`, `reason` and `attempts`: an event is written when the call is decided and completed as it runs |
 | `connections` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `connection_models` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | Helper functions | `EXECUTE` on `app_tenant_id()`, `app_user_id()`, `app_is_tenant_admin()`, `app_is_instance_admin()` |
@@ -479,7 +526,8 @@ and the DBOS workflows of those runs (API-003, TEN-009). Rewinding deletes the
 runs after the turn it rewinds to, and their messages and workflows, the same
 way (CNV-004, ADR-0068); the foreign key from a run to its parent cascades. Its entries in the
 cost ledger are kept, detached from the conversation and its runs, so that
-spending totals stay correct (ADR-0042). Deletion is physical;
+spending totals stay correct (ADR-0042), and so are its audit events
+(ADR-0090). Deletion is physical;
 there is no soft delete for user content.
 
 ## Migrations

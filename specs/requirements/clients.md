@@ -340,3 +340,43 @@ the edge (UX-007, UX-019).
 
 Rationale: long file names, wide pages and diagrams need a wider panel; a
 long answer needs a narrower one.
+
+## UX-022: Approval prompts
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST show a pending approval request (AGT-007) in place of the
+message box, as they show questions (UX-009), also when the conversation is
+opened later, with the time left before it is denied. The prompt MUST show
+the tool by its label and name, its arguments in full, the data it sends
+and where, and why it needs approval in plain words; when the reason is
+untrusted content, it MUST say that what the assistant read could be trying
+to steer it. The prompt MUST offer exactly the answers the request offers
+(ADR-0090), with Deny first and never preselected, and approvals and
+questions pending together MUST be answered together.
+
+Rationale: journey J7; approval fatigue is a residual risk of the threat
+model, so a prompt must be rare and say what is at stake.
+
+## UX-023: Seeing and governing what tools do
+
+- **Status:** accepted
+- **Priority:** MUST
+- **Phase:** 1
+- **Verification:** e2e
+
+Clients MUST show, on each tool call in a conversation, whether it needed
+approval and how it was answered (AGT-008). They MUST show a conversation's
+allowances (AGT-006) with its settings, each one withdrawable. They MUST
+offer an Activity page among the user's settings, listing the user's audit
+events, newest first, filterable by conversation and by tool, each linking
+to its conversation while it exists and flagging calls that may have run
+twice. Among the household's settings (UX-015), clients MUST let tenant
+admins set each user's tool permissions (AGT-002), per tool and per
+capability class, showing what applies to each tool and why.
+
+Rationale: journey J7; persona P1 checks what the assistant did, and the
+household's admin decides what each member's assistant may do.

@@ -194,8 +194,9 @@ answers, at one of three levels: off, on or deep, and which of their
 permitted tools are enabled (AGT-002), each tool on its own or a whole tool
 group at once. Clients MUST list every tool the assistant has, without
 exception, by tool group, each with its label and the name the model knows it
-by (ADR-0087). The change
-applies from the next run. A user MUST be able to set their own defaults for
+by (ADR-0087), and MUST show a tool denied to the user by a tool permission
+switched off and locked, saying that the household's admin turned it off
+(ADR-0090). The change applies from the next run. A user MUST be able to set their own defaults for
 these settings, and a new conversation MUST start with a copy of them. The
 defaults belong to the user alone: until they set one, a new conversation
 starts with the tenant's default model, reasoning on, and every permitted

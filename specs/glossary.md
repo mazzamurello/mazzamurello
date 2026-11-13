@@ -12,6 +12,7 @@ new entry here first (ADR-0005).
 | Instance admin | The person who operates the instance (host, containers, configuration). Trusted (ADR-0011). |
 | Tenant | An isolated group of users with its own data: typically a household, possibly a small organization. |
 | Tenant admin | A user who manages a tenant's users, shared spaces and tool permissions. |
+| Tool permission | A tenant admin's setting of one tool, or one capability class, for one user: allowed, asked or denied (AGT-002, ADR-0090). |
 | User | A person with an account in exactly one tenant. |
 | Device session | An authenticated session of one user on one device, identified by an opaque token and revocable by the user (ADR-0025). |
 | Passkey | A WebAuthn credential kept by a user's device, often unlocked with a fingerprint or a face; a second factor on top of the password (ADR-0065). |
@@ -27,6 +28,7 @@ new entry here first (ADR-0005).
 | Conversation | An independent chat between a user and the assistant, with its own history. A user has many. |
 | Attachment | A file the user adds to a message, uploaded into `/workspace/uploads/` of the conversation's workspace (CNV-017, ADR-0079). |
 | Message | One entry in a conversation, from the user or the assistant. |
+| Turn | A user message and the runs that answer it: the run the message starts, and the resume runs that continue it (ADR-0090). |
 | Folder | A user's named group of conversations in the conversation list; carries no instructions or settings (CNV-007). |
 | Fork | A new conversation started from a copy of another conversation up to a turn, which records where it came from (CNV-005, ADR-0073). |
 | Pin | A mark that keeps a conversation or a folder at the top of the conversation list (CNV-008). |
@@ -64,10 +66,13 @@ new entry here first (ADR-0005).
 | Tool group | A named set of tools that do one kind of work, such as the web, commands or files, which a user can switch on and off together (CNV-013, ADR-0087). |
 | Mediated tool | A tool executed by the control plane, which checks permissions, approvals and records audit events. |
 | Capability class | A declared property of a tool used for safety decisions: `reads_private_data`, `ingests_untrusted`, `external_communication`, `irreversible`, `physical`. |
-| Untrusted content | Any content not authored by the user or the system: web pages, received emails, external files, sandbox output. |
+| Approval default | Whether a tool is allowed or asked when no tool permission says otherwise, declared with its capability classes (AGT-005, ADR-0090). |
+| Untrusted content | Any content not authored by the user or the system: web pages, received emails, external files, sandbox output; in particular the results of tools in the `ingests_untrusted` class and attachments (AGT-003, ADR-0090). |
 | Lethal trifecta | The combination of access to private data, exposure to untrusted content and the ability to communicate externally, which enables data exfiltration through prompt injection. |
-| Approval | An explicit confirmation by the user before a tool call is executed. |
-| Audit event | A record of a tool call, visible to the user it acted for. |
+| Approval | An explicit confirmation by the user before a tool call is executed, asked for by an approval request that ends the run with an interrupt (ADR-0033). |
+| Allowance | An approval that also covers later calls: of the web and command tools for the rest of a turn, or of a tool in one conversation (AGT-006, ADR-0090). |
+| Audit event | A content-free record of a tool call and its approval outcome, visible to the user it acted for (AGT-008, ADR-0090). |
+| Activity | The page of a user's settings that lists their audit events (UX-023). |
 | Scheduled task | A run started by a schedule or trigger rather than by a message. |
 | Memory item | A piece of information the assistant retains about a user across conversations. Visible, editable and deletable by the user. |
 | Connector | An integration with an external system (calendar, mail, files, home automation), exposed to the agent as mediated tools. Not to be confused with a connection. |
