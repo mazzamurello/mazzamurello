@@ -93,6 +93,8 @@ class RunDeps:
     # The instructions of the run: null base instructions are the built-in ones (CNV-014).
     base_instructions: str | None = None
     additional_instructions: str | None = None
+    # How the run's message came, when it was not typed (UX-005, ADR-0088).
+    voice: str | None = None
     location: str = "remote"
     prices: dict[str, Any] = field(default_factory=dict[str, Any])
     # The model's context window, and what the run used so far (MOD-007, ADR-0073).

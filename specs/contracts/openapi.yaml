@@ -40,6 +40,7 @@ tags:
   - name: conversations
   - name: folders
   - name: runs
+  - name: speech
   - name: health
 
 paths:
@@ -418,7 +419,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, default]
+                required: [items, default, speech]
                 properties:
                   items:
                     type: array
@@ -426,7 +427,129 @@ paths:
                   default:
                     description: The tenant's default model, or `null` when it has none.
                     oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+                  speech: { $ref: "#/components/schemas/SpeechSettings" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /tenant/speech:
+    put:
+      tags: [speech]
+      operationId: setSpeechModels
+      summary: Choose the household's transcription model, and its speech model with a voice (tenant admin only).
+      description: |
+        A model must be one of the tenant's connections of the matching kind;
+        `null` takes it away, and with it spoken turns or reading aloud
+        (ADR-0088).
+      x-requirements: [API-006, TEN-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SpeechSettings" }
+      responses:
+        "200":
+          description: The household's speech models.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpeechSettings" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /speech/transcriptions:
+    post:
+      tags: [speech]
+      operationId: transcribe
+      summary: Turn one recorded spoken turn into text.
+      description: |
+        With the household's transcription model. The recording is held for
+        this request only and never kept; its language is detected
+        (API-006, ADR-0088). The cost, when the provider reports it, is
+        recorded with the purpose `speech`.
+      x-requirements: [API-006, UX-005, MOD-006]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: The recording, at most 25 MB, in a format browsers record, such as WebM, Ogg or MP4 audio.
+      responses:
+        "200":
+          description: What was said.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [text]
+                additionalProperties: false
+                properties:
+                  text: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409":
+          description: The household has no transcription model (`speech.unavailable`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413":
+          description: The recording is larger than 25 MB (`file.too_large`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502":
+          description: |
+            The transcription model failed, refused, or took more than two minutes
+            (`model.request_failed`); `detail` says which.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /speech/synthesis:
+    post:
+      tags: [speech]
+      operationId: synthesize
+      summary: Read text aloud, as audio.
+      description: |
+        With the household's speech model and voice. Clients send an answer
+        in pieces of at most 4,000 characters, made speakable first
+        (ADR-0088). The cost is recorded with the purpose `speech`, as
+        OpenRouter reports it for the generation once the audio is sent.
+      x-requirements: [API-006, UX-005, MOD-006]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              additionalProperties: false
+              properties:
+                text: { type: string, minLength: 1, maxLength: 4000, pattern: "\\S" }
+      responses:
+        "200":
+          description: The audio, as the model returns it, usually MP3.
+          content:
+            audio/*:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409":
+          description: The household has no speech model (`speech.unavailable`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502":
+          description: |
+            The speech model failed, refused, or took more than two minutes
+            (`model.request_failed`); `detail` says which.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /conversations:
     post:
@@ -1326,6 +1449,7 @@ components:
         - model.unavailable
         - model.request_failed
         - model.refused
+        - speech.unavailable
         - file.too_large
         - file.not_previewable
         - workspace.quota_exceeded
@@ -1574,13 +1698,45 @@ components:
       properties:
         connection_id: { $ref: "#/components/schemas/Id" }
         model: { type: string, minLength: 1, maxLength: 200 }
+    SpeechSettings:
+      type: object
+      description: The household's speech models; `null` when it has none (API-006, ADR-0088).
+      required: [transcription, speech]
+      additionalProperties: false
+      properties:
+        transcription:
+          oneOf: [{ $ref: "#/components/schemas/ModelChoice" }, { type: "null" }]
+        speech:
+          oneOf: [{ $ref: "#/components/schemas/SpeechChoice" }, { type: "null" }]
+
+    SpeechChoice:
+      type: object
+      description: A speech model and the voice it reads with.
+      required: [connection_id, model, voice]
+      additionalProperties: false
+      properties:
+        connection_id: { $ref: "#/components/schemas/Id" }
+        model: { type: string, minLength: 1, maxLength: 200 }
+        voice: { type: string, minLength: 1, maxLength: 200 }
+
     ModelOption:
       type: object
       description: One model a connection of the tenant offers (MOD-011, UX-015).
-      required: [connection_id, connection_name, model, name, location, prices, context_window, tools]
+      required: [connection_id, connection_name, model, name, location, prices, context_window, tools, kind, voices]
       properties:
         connection_id: { $ref: "#/components/schemas/Id" }
         connection_name: { type: string }
+        kind:
+          type: string
+          enum: [chat, transcription, speech]
+          description: |
+            What the model does: answers in conversations, turns speech into
+            text, or reads text aloud. OpenRouter says; for another server it
+            comes from the model's name (ADR-0088).
+        voices:
+          type: [array, "null"]
+          items: { type: string }
+          description: A speech model's voices, when its provider lists them; else `null`.
         model: { type: string, description: "The provider's name for the model, such as `qwen3:8b`." }
         name: { type: string, description: "The name to show, such as `Qwen3 8B`." }
         location: { $ref: "#/components/schemas/Location" }
@@ -2096,6 +2252,13 @@ components:
                   or `{"header", "custom_answer"}` with the user's own words,
                   at most 2000 characters; `cancelled` declines the question
                   (AGT-015, ADR-0083).
+        voice:
+          type: string
+          enum: [dictated, hands_free]
+          description: |
+            A Sibillo extension: how the message came, when it was not
+            typed: dictated, even in part, or spoken in hands-free mode. The
+            assistant is told so for this run (UX-005, ADR-0088).
         attachments:
           type: array
           maxItems: 20

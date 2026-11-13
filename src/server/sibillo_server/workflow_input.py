@@ -37,6 +37,8 @@ class RunWorkflowInput:
     temporary: bool = False
     # For a run that answers questions: what the model receives, by tool call ID (AGT-015, ADR-0083).
     answers: dict[str, Any] | None = None
+    # How the message came, when it was not typed: `dictated` or `hands_free` (UX-005, ADR-0088).
+    voice: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))

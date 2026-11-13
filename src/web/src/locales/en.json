@@ -216,6 +216,15 @@
     "defaultModel": "Household default model",
     "defaultHint": "New conversations start with this model, unless a user chose a default of their own. Anyone in the household can switch models in a conversation.",
     "noDefault": "No default model",
+    "voice": "Voice",
+    "voiceHint": "Which models turn spoken turns into text and read answers aloud. Without them, voice is off.",
+    "transcriptionModel": "Transcription model",
+    "noTranscription": "None: no spoken turns",
+    "speechModel": "Speech model",
+    "noSpeech": "None: no reading aloud",
+    "voiceName": "Voice",
+    "voicePlaceholder": "The voice's name, such as alloy",
+    "saveVoice": "Save voice",
     "connections": "Connections",
     "connectionsHint": "Each connection brings all of its models.",
     "noConnections": "No connections yet.",
@@ -427,5 +436,52 @@
     "chat": "Chat settings",
     "chatHint": "For this conversation, from its next answer.",
     "notSaved": "Not saved. Try again."
+  },
+  "voice": {
+    "dictate": "Dictate",
+    "stopDictating": "Stop dictating",
+    "noMicrophone": "The microphone is not available. Allow it in the browser's settings.",
+    "notHeard": "Your words could not be transcribed. Try again.",
+    "handsFree": "Hands-free",
+    "leave": "Leave hands-free",
+    "hint": "Tap the button, or press your headset's or car's next-track button, to start talking and again when you are done. After each answer, it listens again by itself.",
+    "local": "Your voice stays at home.",
+    "remote": "Your voice goes to {{connection}}.",
+    "readAloud": "Read aloud",
+    "stopReading": "Stop reading",
+    "states": {
+      "idle": "Tap to talk",
+      "listening": "Listening. Tap when you are done",
+      "transcribing": "Transcribing",
+      "waiting": "Working on it",
+      "reading": "Reading. Tap to talk",
+      "failed": "Something went wrong. Tap to try again"
+    },
+    "said": {
+      "code": "There is a code block in the conversation.",
+      "table": "There is a table in the conversation.",
+      "image": "There is an image in the conversation.",
+      "diagram": "There is a diagram in the conversation."
+    },
+    "stop": "Stop",
+    "capturing": "Your voice, as it is captured",
+    "preparing": "Preparing your text",
+    "steps": {
+      "listening": "Listening",
+      "transcribing": "Transcribing",
+      "writing": "Writing the answer",
+      "preparing": "Preparing the voice",
+      "reading": "Reading the answer"
+    },
+    "part": ", part {{part}} of {{total}}",
+    "seconds": "{{count}} s",
+    "failedStep": "{{step}} failed.",
+    "errors": {
+      "unplayable": "The audio the speech model sent could not be played.",
+      "nothing": "Nothing was heard. Try again.",
+      "microphone": "The microphone is not available. Allow it in the browser's settings.",
+      "answer": "The assistant could not answer.",
+      "notRead": "The answer could not be read aloud"
+    }
   }
 }

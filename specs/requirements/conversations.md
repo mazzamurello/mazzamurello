@@ -203,8 +203,10 @@ tool enabled, so that a user who changes nothing gets a well-configured
 assistant (ADR-0081).
 
 A model known not to reason MUST run without reasoning, and clients MUST
-show the setting disabled for it and say why. Clients MUST show the model's
-reasoning, folded, above its answer.
+show the setting disabled for it and say why. Clients MUST show each piece
+of the model's reasoning, folded, where it happened among the answer's text
+and tool activity: before the tool call or the text it led to, and after
+the tool results it reasons about (ADR-0085).
 
 Rationale: journey J13.
 

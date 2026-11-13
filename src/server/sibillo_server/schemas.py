@@ -203,6 +203,10 @@ class ModelChoiceOut(Response):
     model: str
 
 
+# What a model does: answer in conversations, turn speech into text, or read text aloud (ADR-0088).
+type ModelKind = Literal["chat", "transcription", "speech"]
+
+
 class ModelOption(Response):
     connection_id: uuid.UUID
     connection_name: str
@@ -213,11 +217,37 @@ class ModelOption(Response):
     context_window: int | None
     tools: bool | None
     reasoning: bool | None
+    kind: ModelKind
+    voices: list[str] | None
+
+
+class SpeechChoice(Request):
+    """A speech model and the voice it reads with (API-006, ADR-0088)."""
+
+    connection_id: uuid.UUID
+    model: Annotated[str, Field(min_length=1, max_length=200)]
+    voice: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class SpeechSettings(Request):
+    """The household's speech models; null when it has none (API-006, ADR-0088)."""
+
+    transcription: ModelChoice | None
+    speech: SpeechChoice | None
 
 
 class ModelList(Response):
     items: list[ModelOption]
     default: ModelChoiceOut | None
+    speech: SpeechSettings
+
+
+class Transcription(Response):
+    text: str
+
+
+class SynthesisRequest(Request):
+    text: Annotated[str, Field(min_length=1, max_length=4000, pattern=r"\S")]
 
 
 # How much a model reasons before it answers, and the tools a user can switch off (CNV-013, ADR-0081, ADR-0087).
@@ -470,6 +500,8 @@ class RunInput(BaseModel):
     # Empty when `resume` answers an interrupt (ADR-0083).
     messages: list[AgUiInputMessage]
     resume: list[dict[str, Any]] | None = None
+    # A Sibillo extension: how the message came, when it was not typed (UX-005, ADR-0088).
+    voice: Literal["dictated", "hands_free"] | None = None
     # A Sibillo extension: the files attached to the message, already uploaded (CNV-017).
     attachments: Annotated[list[Annotated[str, Field(max_length=4096)]], Field(max_length=20)] = []
 

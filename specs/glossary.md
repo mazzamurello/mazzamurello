@@ -50,6 +50,9 @@ new entry here first (ADR-0005).
 | Active path | The chain of runs, from the first to the active run: the history the user sees and that a new run continues (ADR-0037, ADR-0068). |
 | Artifact | A file of the conversation's workspace that the assistant makes for the user and shows in the conversation, such as a document, code, a diagram or a web page, opened in the viewer (ADR-0086). Not to be confused with a repository artifact, a file of this repository. |
 | Voice turn | A user turn spoken instead of typed, started and ended explicitly by the user, answered in full and read aloud (ADR-0040). |
+| Hands-free mode | A way of holding voice turns without looking at the screen: one large button, the media buttons of a headset or a car, and sounds that say where the conversation stands (UX-005, ADR-0088). |
+| Transcription model | A model of a connection that turns recorded speech into text (API-006, ADR-0088). |
+| Speech model | A model of a connection that reads text aloud in one of its voices (API-006, ADR-0088). |
 | Notification | A content-free message pushed to a user's device when a run finishes or an approval is pending (ADR-0039). |
 | Agent | The component that turns a user request into model calls and tool calls. |
 | Run | One execution of the agent in response to a message, including all its model and tool calls. |

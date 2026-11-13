@@ -24,6 +24,8 @@ CONTENT_SECURITY_POLICY = "; ".join(
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
         "font-src 'self' data:",
+        # Answers read aloud play from audio the app fetched (UX-005).
+        "media-src 'self' blob:",
         "connect-src 'self'",
         "worker-src 'self'",
         "manifest-src 'self'",

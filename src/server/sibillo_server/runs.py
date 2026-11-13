@@ -279,6 +279,7 @@ async def start_run(
         additional_instructions=additional,
         temporary=conversation.temporary,
         answers=answers,
+        voice=body.voice,
     )
     try:
         await durable.enqueue_async(

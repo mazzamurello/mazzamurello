@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import logging
+import re
 import ssl
 import time
 import uuid
@@ -89,6 +90,21 @@ class ListedModel:
     cached_input_price: Decimal | None = None
     output_price: Decimal | None = None
     currency: str | None = None
+    kind: schemas.ModelKind = "chat"
+    voices: tuple[str, ...] | None = None
+
+
+# What an OpenAI-compatible server's model does, by its name: its list does not say (ADR-0088).
+TRANSCRIPTION_NAMES = re.compile(r"whisper|transcri|parakeet|stt|asr", re.IGNORECASE)
+SPEECH_NAMES = re.compile(r"tts|speech|voice|kokoro|piper", re.IGNORECASE)
+# OpenRouter lists each kind by its output modality; text is a chat model.
+OPENROUTER_KINDS: dict[str, schemas.ModelKind] = {"transcription": "transcription", "speech": "speech", "text": "chat"}
+
+
+def kind_by_name(model: str) -> schemas.ModelKind:
+    if TRANSCRIPTION_NAMES.search(model):
+        return "transcription"
+    return "speech" if SPEECH_NAMES.search(model) else "chat"
 
 
 @dataclass
@@ -131,18 +147,22 @@ def _record(name: str, outcome: str, started: float, detail: str) -> schemas.Con
     )
 
 
-def _http_client(target: Target) -> httpx.AsyncClient:
+def connection_client(target: Target, timeout: httpx.Timeout | None = None) -> httpx.AsyncClient:
+    """The HTTP client that reaches a connection, by its rules (MOD-009, ADR-0061)."""
+    limit = timeout or httpx.Timeout(READ_SECONDS, connect=CONNECT_SECONDS)
     if target.private_network:
-        return httpx.AsyncClient(follow_redirects=False, timeout=httpx.Timeout(READ_SECONDS, connect=CONNECT_SECONDS))
+        return httpx.AsyncClient(follow_redirects=False, timeout=limit)
     # Checked addresses only, and no redirects (ADR-0061).
-    return tenant_http_client()
+    client = tenant_http_client()
+    client.timeout = limit
+    return client
 
 
 async def _get(target: Target, path: str, params: dict[str, str] | None = None) -> httpx.Response:
     headers = {} if target.api_key is None else {"Authorization": f"Bearer {target.api_key}"}
     url = target.base_url.rstrip("/") + path
     try:
-        async with _http_client(target) as client:
+        async with connection_client(target) as client:
             return await client.get(url, params=params, headers=headers)
     except httpx.TimeoutException as error:
         raise _StepError("timeout", f"no answer from {url}", _scrub(repr(error), target.api_key)) from None
@@ -172,7 +192,19 @@ def _openrouter_models(payload: list[Any]) -> list[ListedModel]:
     for item in payload:
         entry = cast(dict[str, Any], item) if isinstance(item, dict) else {}
         outputs = cast(dict[str, Any], entry.get("architecture") or {}).get("output_modalities") or ["text"]
-        if not isinstance(entry.get("id"), str) or "text" not in outputs:
+        kind: schemas.ModelKind | None = next(
+            (OPENROUTER_KINDS[output] for output in OPENROUTER_KINDS if output in outputs), None
+        )
+        if not isinstance(entry.get("id"), str) or kind is None:
+            continue
+        name = str(entry.get("name") or entry["id"])
+        if kind != "chat":
+            # Priced per second or per character, which the contract's prices do not say (ADR-0088).
+            voices = entry.get("supported_voices")
+            listed = tuple(str(voice) for voice in cast(list[Any], voices)) if isinstance(voices, list) else None
+            models.append(
+                ListedModel(model=entry["id"], name=name, kind=kind, voices=listed if kind == "speech" else None)
+            )
             continue
         pricing = cast(dict[str, Any], entry.get("pricing") or {})
         prompt, completion = _decimal(pricing.get("prompt")), _decimal(pricing.get("completion"))
@@ -181,7 +213,7 @@ def _openrouter_models(payload: list[Any]) -> list[ListedModel]:
         models.append(
             ListedModel(
                 model=entry["id"],
-                name=str(entry.get("name") or entry["id"]),
+                name=name,
                 context_window=entry.get("context_length") if isinstance(entry.get("context_length"), int) else None,
                 tools="tools" in (entry.get("supported_parameters") or []),
                 reasoning="reasoning" in (entry.get("supported_parameters") or []),
@@ -275,7 +307,12 @@ async def probe(target: Target) -> tuple[schemas.ConnectionTest, list[ListedMode
         return f"GET /key → {response.status_code} {response.reason_phrase}"
 
     async def list_models() -> str:
-        params = {"sort": "top-weekly"} if target.kind == "openrouter" else None
+        # OpenRouter lists chat models unless asked for the others too (ADR-0088).
+        params = (
+            {"sort": "top-weekly", "output_modalities": "text,transcription,speech"}
+            if target.kind == "openrouter"
+            else None
+        )
         response = await _get(target, "/models", params)
         line = f"GET {parts.path.rstrip('/')}/models → {response.status_code} {response.reason_phrase}"
         if response.status_code in (401, 403):
@@ -296,7 +333,7 @@ async def probe(target: Target) -> tuple[schemas.ConnectionTest, list[ListedMode
         else:
             listed = [cast(dict[str, Any], item) for item in entries if isinstance(item, dict)]
             names = [str(item["id"]) for item in listed if item.get("id")]
-            result.models = [ListedModel(model=name, name=name) for name in names]
+            result.models = [ListedModel(model=name, name=name, kind=kind_by_name(name)) for name in names]
         return f"{line}, {len(result.models)} models"
 
     actions: list[tuple[str, Callable[[], Awaitable[str]]]] = [("resolve", find), ("connect", connect)]
@@ -412,9 +449,10 @@ async def store_models(
         await connection.execute(
             text(
                 "INSERT INTO connection_models (tenant_id, connection_id, model, name, position, context_window, tools,"
-                " reasoning, input_price, cached_input_price, output_price, currency) VALUES (:tenant_id,"
-                " :connection_id, :model, :name, :position, :context_window, :tools, :reasoning, :input_price,"
-                " :cached_input_price, :output_price, :currency) ON CONFLICT (connection_id, model) DO NOTHING"
+                " reasoning, kind, voices, input_price, cached_input_price, output_price, currency) VALUES (:tenant_id,"
+                " :connection_id, :model, :name, :position, :context_window, :tools, :reasoning, :kind, :voices,"
+                " :input_price, :cached_input_price, :output_price, :currency)"
+                " ON CONFLICT (connection_id, model) DO NOTHING"
             ),
             {
                 "tenant_id": tenant_id,
@@ -425,6 +463,8 @@ async def store_models(
                 "context_window": listed.context_window,
                 "tools": listed.tools,
                 "reasoning": listed.reasoning,
+                "kind": listed.kind,
+                "voices": None if listed.voices is None else list(listed.voices),
                 "input_price": listed.input_price,
                 "cached_input_price": listed.cached_input_price,
                 "output_price": listed.output_price,
@@ -444,6 +484,7 @@ async def _default_if_none(
     For OpenRouter, its most used free model that can call tools, which costs
     nothing until an admin chooses; for another server, the first model it lists.
     """
+    models = [listed for listed in models if listed.kind == "chat"]
     if not models or await default_model(connection) is not None:
         return
     pick = models[0]
@@ -632,12 +673,14 @@ async def test_new_connection(body: schemas.CreateConnectionRequest, identity: A
     return test
 
 
-async def offered(connection: AsyncConnection, choice: schemas.ModelChoice) -> bool:
-    """Whether a connection of the tenant offers the model; row-level security scopes the lookup."""
+async def offered(connection: AsyncConnection, choice: schemas.ModelChoice, kind: schemas.ModelKind = "chat") -> bool:
+    """Whether a connection of the tenant offers the model, of that kind; row-level security scopes the lookup."""
     row = (
         await connection.execute(
-            text("SELECT 1 FROM connection_models WHERE connection_id = :connection AND model = :model"),
-            {"connection": choice.connection_id, "model": choice.model},
+            text(
+                "SELECT 1 FROM connection_models WHERE connection_id = :connection AND model = :model AND kind = :kind"
+            ),
+            {"connection": choice.connection_id, "model": choice.model, "kind": kind},
         )
     ).one_or_none()
     return row is not None
@@ -648,6 +691,63 @@ async def default_model(connection: AsyncConnection) -> schemas.ModelChoiceOut |
         await connection.execute(text("SELECT id, default_model FROM connections WHERE default_model IS NOT NULL"))
     ).one_or_none()
     return None if row is None else schemas.ModelChoiceOut(connection_id=row.id, model=row.default_model)
+
+
+async def speech_settings(connection: AsyncConnection) -> schemas.SpeechSettings:
+    """The household's speech models (API-006, ADR-0088)."""
+    transcription = (
+        await connection.execute(
+            text("SELECT id, transcription_model FROM connections WHERE transcription_model IS NOT NULL")
+        )
+    ).one_or_none()
+    speech = (
+        await connection.execute(
+            text("SELECT id, speech_model, speech_voice FROM connections WHERE speech_model IS NOT NULL")
+        )
+    ).one_or_none()
+    return schemas.SpeechSettings(
+        transcription=None
+        if transcription is None
+        else schemas.ModelChoice(connection_id=transcription.id, model=transcription.transcription_model),
+        speech=None
+        if speech is None
+        else schemas.SpeechChoice(connection_id=speech.id, model=speech.speech_model, voice=speech.speech_voice),
+    )
+
+
+@router.put("/tenant/speech", response_model=schemas.SpeechSettings)
+async def set_speech_settings(
+    body: schemas.SpeechSettings, identity: Authenticated, engine: Engine
+) -> schemas.SpeechSettings:
+    """Choose the household's transcription model, and its speech model with a voice (API-006, ADR-0088)."""
+    _check_admin(identity)
+    async with transaction(engine, identity) as connection:
+        if body.transcription is not None and not await offered(connection, body.transcription, "transcription"):
+            raise errors.invalid("/transcription/model", "not_offered")
+        if body.speech is not None and not await offered(
+            connection, schemas.ModelChoice(connection_id=body.speech.connection_id, model=body.speech.model), "speech"
+        ):
+            raise errors.invalid("/speech/model", "not_offered")
+        await connection.execute(
+            text(
+                "UPDATE connections SET transcription_model = NULL, speech_model = NULL, speech_voice = NULL"
+                " WHERE transcription_model IS NOT NULL OR speech_model IS NOT NULL"
+            )
+        )
+        if body.transcription is not None:
+            await connection.execute(
+                text("UPDATE connections SET transcription_model = :model, updated_at = now() WHERE id = :id"),
+                {"id": body.transcription.connection_id, "model": body.transcription.model},
+            )
+        if body.speech is not None:
+            await connection.execute(
+                text(
+                    "UPDATE connections SET speech_model = :model, speech_voice = :voice, updated_at = now()"
+                    " WHERE id = :id"
+                ),
+                {"id": body.speech.connection_id, "model": body.speech.model, "voice": body.speech.voice},
+            )
+        return await speech_settings(connection)
 
 
 @router.put("/tenant/default-model", response_model=schemas.ModelChoiceOut)
@@ -729,7 +829,8 @@ async def list_models(identity: Authenticated, engine: Engine, secret: SecretKey
                 text(
                     "SELECT m.connection_id, c.name AS connection_name, c.location, m.model, m.name,"
                     " coalesce(c.context_window, m.context_window) AS context_window,"
-                    " m.tools, m.reasoning, m.input_price, m.cached_input_price, m.output_price, m.currency,"
+                    " m.tools, m.reasoning, m.kind, m.voices, m.input_price, m.cached_input_price, m.output_price,"
+                    " m.currency,"
                     " c.models_refreshed_at < now() - make_interval(secs => :age) AS stale"
                     " FROM connection_models m JOIN connections c ON c.id = m.connection_id"
                     " ORDER BY c.name, c.id, m.position"
@@ -738,6 +839,7 @@ async def list_models(identity: Authenticated, engine: Engine, secret: SecretKey
             )
         ).all()
         default = await default_model(connection)
+        speech = await speech_settings(connection)
     if any(row.stale for row in rows):
         task = asyncio.create_task(_refresh_stale(engine, identity, secret))
         _REFRESHING.add(task)
@@ -754,7 +856,9 @@ async def list_models(identity: Authenticated, engine: Engine, secret: SecretKey
             context_window=row.context_window,
             tools=row.tools,
             reasoning=row.reasoning,
+            kind=row.kind,
+            voices=None if row.voices is None else list(row.voices),
         )
         for row in rows
     ]
-    return schemas.ModelList(items=items, default=default)
+    return schemas.ModelList(items=items, default=default, speech=speech)

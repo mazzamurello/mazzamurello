@@ -140,6 +140,35 @@ For OpenRouter, send `{"name": "OpenRouter", "kind": "openrouter",
 "api_key": "sk-or-..."}` instead; it reports the cost of each answer, which
 is recorded as it is, in US dollars.
 
+**Turn on voice**
+
+Voice turns need a model that transcribes and a model that reads aloud
+(UX-005, ADR-0088). They come from your connections, like chat models: in
+**Settings**, then **Models**, choose the household's **Transcription model**
+and **Speech model**, with its voice. Then the message box offers **Dictate**
+and **Hands-free**, and every answer **Read aloud**. The assistant is told
+when a message was dictated, so it reads past misheard words, and in
+hands-free mode that its answer will be read aloud, so it writes it for
+listening.
+
+- **OpenRouter** lists its transcription and speech models and their voices.
+  Your voice then leaves the household, as the settings and the hands-free
+  screen say.
+- **Your own speech server** keeps it at home: any server with
+  OpenAI-compatible `/audio/transcriptions` and `/audio/speech`, such as
+  [speaches](https://github.com/speaches-ai/speaches) (Whisper with Piper or
+  Kokoro voices) or [LocalAI](https://github.com/mudler/LocalAI). Add it as a
+  connection; its models whose names say `whisper`, `transcribe` or `stt`
+  transcribe, those that say `tts`, `speech`, `voice`, `kokoro` or `piper`
+  speak, and you type the voice's name. Small CPUs transcribe well with
+  Whisper `small`; the local voices sound plainer than remote ones.
+
+Hands-free mode is made for the car: one large button, and your headset's or
+car's next-track button, start and end a turn, and short sounds tell you
+when it listens, works and answers. Once an answer is read, it listens
+again by itself, so a conversation needs one press per turn, to end it. Keep the phone unlocked with the app
+open: a web app stops recording when the screen locks.
+
 **Updating before the first release**
 
 Until the first release, the database schema is rewritten instead of

@@ -106,10 +106,22 @@ a final usage chunk that repeats the finish reason and reports `cost`, and
 errors before and during a stream, as OpenRouter's documentation describes
 them. Both refuse a request when the test asks, as a content filter does: a
 `refusal` with the provider's reason and the finish reason `content_filter`
-(MOD-015). Both stream reasoning before the answer when the test asks, in the
-field each names it with (CNV-013), and text before a tool call in the same
+(MOD-015). Both stream reasoning before the answer when the test asks, also
+before a tool call and again after its result, in the field each names it
+with (CNV-013), and text before a tool call in the same
 answer, as models do when they say what they are about to do (UX-003). It records the headers of each request, so
 tests can check what the gateway sends.
+
+It also serves speech (ADR-0088). As an OpenAI-compatible server it lists
+`test-transcribe` and `test-tts` among its models, named so that their kind
+comes from their names; as OpenRouter it lists a transcription model and a
+speech model with their `output_modalities` and `supported_voices`. Its
+`/audio/transcriptions` takes a recording as OpenAI's multipart form, or as
+OpenRouter's JSON with base64 audio, and answers
+`Heard <bytes> bytes of <format>`, with a `usage.cost` as OpenRouter; its
+`/audio/speech` answers a short WAV file of silence, as OpenRouter with an
+`X-Generation-Id`, whose cost its `/generation` reports. It records each
+speech request, so tests can check the text, model and voice sent.
 
 ## Search
 
@@ -139,7 +151,14 @@ Tests find elements by role and accessible name. The sprite is hidden from
 assistive technologies (UX-013), so the app marks it with
 `data-sprite-pose`, whose value names the pose it shows: `greeting`,
 `thinking`, `searching`, `reading`, `writing`, `running`, `answering`,
-`waiting` or `error` (ADR-0070).
+`listening`, `waiting` or `error` (ADR-0070, ADR-0088).
+
+Chromium runs with a fake microphone, which records a tone, and grants it
+without asking. In hands-free mode the app marks its large button with
+`data-voice-state`, one of `idle`, `listening`, `transcribing`, `waiting`,
+`reading` or `failed`, and with `data-voice-cue`, the last sound it played:
+`start`, `end`, `tick`, `answer` or `error` (ADR-0088). Media buttons reach
+the app in tests as the keyboard's media keys.
 
 Unit tests of the app's own code run with Vitest, without a server. The
 cookie session's `Secure` attribute is accepted on `127.0.0.1` by Chromium,

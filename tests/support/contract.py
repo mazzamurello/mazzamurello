@@ -129,7 +129,8 @@ def check_response(response: httpx.Response) -> None:
     if not response.content and not media_type:
         if content and response.status_code != 204:
             raise ContractViolationError(f"{what}: the contract describes a body, and there is none")
-    elif media_type not in content:
+    elif media_type not in content and f"{media_type.partition('/')[0]}/*" not in content:
+        # A range such as `audio/*` takes any type of its kind (ADR-0088).
         raise ContractViolationError(f"{what}: content type {media_type!r} is not one of {sorted(content)}")
     elif media_type in JSON_TYPES and "schema" in content[media_type]:
         _check(_pointer(*location, "content", media_type, "schema"), response.json(), what)
@@ -139,6 +140,8 @@ def check_response(response: httpx.Response) -> None:
 
 def _check_request(request: httpx.Request, template: str, method: str) -> None:
     body = contract()["paths"][template][method].get("requestBody")
+    # A multipart form is streamed until read.
+    request.read()
     if body is None or not request.content:
         return
     described, moved = _resolve(body)

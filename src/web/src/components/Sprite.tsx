@@ -1,7 +1,7 @@
 // The sprite: Sibillo, an original mazzamurello, drawn as SVG and animated with CSS (UX-012 to UX-014, ADR-0070).
 // It is decorative: hidden from assistive technologies, which get the same information as text.
 
-export type Pose = "greeting" | "thinking" | "searching" | "reading" | "writing" | "running" | "answering" | "waiting" | "error";
+export type Pose = "greeting" | "thinking" | "searching" | "reading" | "writing" | "running" | "answering" | "listening" | "waiting" | "error";
 
 const LN = "var(--c-line)";
 const SK = "var(--c-skin)";
@@ -46,6 +46,12 @@ const FIGURE = `
     </g>
     <g class="pose pose-idle">${ARM_L}${ARM_R}</g>
     <g class="pose pose-wave">${ARM_L}<g class="wave-arm">${limb("M109,128 Q122,121 127,104", SK)}${hand(127, 102, 3.9)}</g></g>
+    <g class="pose pose-listen">${ARM_L}
+      <g class="listen-arm">${limb("M109,128 Q127,126 129,109", SK)}${hand(129, 106, 3.9)}</g>
+      <g class="waves" stroke="${LN}" stroke-width="1.8" fill="none" stroke-linecap="round">
+        <path class="wave" d="M150,96 Q155,104 150,112"/><path class="wave w2" d="M157,91 Q164,104 157,117"/><path class="wave w3" d="M164,86 Q173,104 164,122"/>
+      </g>
+    </g>
     <g class="pose pose-think">
       ${limb("M91,128 Q86,141 97,146", SK)}${hand(97, 146)}
       ${limb("M109,128 C119,139 113,128 105,123", SK)}${hand(105, 123)}

@@ -15,7 +15,15 @@ const HEIGHT = 480;
  * A button showing a model, which opens the model picker: in the message box
  * (`compact`) and for the household's default model in the settings (UX-015).
  */
-export function ModelSelect(props: { value: ModelChoice | null; onChange: (choice: ModelChoice) => void; compact?: boolean; label?: string; placeholder?: string }) {
+export function ModelSelect(props: {
+  value: ModelChoice | null;
+  onChange: (choice: ModelChoice) => void;
+  compact?: boolean;
+  label?: string;
+  placeholder?: string;
+  // Which models to offer: chat models unless said otherwise (ADR-0088).
+  kind?: ModelOption["kind"];
+}) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const models = useModels();
@@ -48,7 +56,7 @@ export function ModelSelect(props: { value: ModelChoice | null; onChange: (choic
       {open && models.data && (
         <ModelPicker
           anchor={button}
-          options={models.data.items}
+          options={models.data.items.filter((option) => option.kind === (props.kind ?? "chat"))}
           defaultModel={models.data.default}
           chosen={props.value}
           onPick={(option) => {
