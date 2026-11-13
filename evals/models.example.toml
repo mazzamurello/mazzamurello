@@ -14,6 +14,9 @@ kind = "openai"
 base_url = "http://127.0.0.1:11434/v1"
 location = "local"
 model = "gemma4:e4b"
+# Ollama's own context window must be at least as large: set OLLAMA_CONTEXT_LENGTH,
+# or the model's num_ctx, or runs stop with model.context_exceeded (MOD-017).
+context_window = 32768
 
 # A model through OpenRouter.
 [[model]]

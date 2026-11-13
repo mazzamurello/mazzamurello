@@ -421,6 +421,18 @@ def test_a_refusal_shows_the_providers_reason(page: Page, member: Account) -> No
     expect(page.get_by_role("main").get_by_role("alert")).to_contain_text(REFUSAL)
 
 
+@pytest.mark.spec("MOD-017", "UX-014")
+def test_a_model_that_cannot_go_on_says_what_to_do(page: Page, member: Account) -> None:
+    sign_in(page, member)
+    _send(page, "cut-off")
+    error = page.get_by_role("main").get_by_role("alert")
+    expect(error).to_contain_text("context window", timeout=30_000)
+    assert "model.context_exceeded" not in error.inner_text(), "the error shows a code instead of words"
+    _send(page, "chain:" + " >>> ".join(["read_file {}"] * 4))
+    expect(page.get_by_role("main").get_by_role("alert").last).to_contain_text("another model", timeout=30_000)
+    assert "model.tool_misuse" not in page.get_by_role("main").get_by_role("alert").last.inner_text()
+
+
 @pytest.mark.spec("UX-018")
 def test_typing_starts_in_the_expected_field(page: Page, member: Account) -> None:
     page.goto("/")

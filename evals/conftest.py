@@ -61,6 +61,7 @@ def load_models(path: Path) -> list[ModelUnderEvaluation]:
                 base_url=entry.get("base_url"),
                 location=entry.get("location"),
                 api_key=key,
+                context_window=int(entry["context_window"]) if "context_window" in entry else None,
             )
         )
     if not models:

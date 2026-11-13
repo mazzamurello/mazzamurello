@@ -1,6 +1,6 @@
 """The models of a household and the settings of a conversation.
 
-MOD-010, MOD-011, MOD-012, MOD-014, MOD-015, CNV-013, CNV-014, ADR-0069 and
+MOD-010, MOD-011, MOD-012, MOD-014, MOD-015, MOD-017, CNV-013, CNV-014, ADR-0069 and
 ADR-0081. Each household reaches the model the tests serve through two
 connections: a server with an OpenAI-compatible API, whose models say nothing
 about tools or reasoning, and OpenRouter, as its documentation describes it
@@ -225,6 +225,48 @@ def test_a_refused_request_fails_the_run_with_the_reason(server: Server, househo
 def _admin_without_models(database: Database, server: Server) -> str:
     """A tenant admin, also the instance admin, of a household with no connection yet."""
     return login(server, create_account(database, create_tenant(database), "tenant_admin", instance_admin=True))
+
+
+def _pathless_reads(count: int) -> str:
+    """A script that calls `read_file` without its path `count` times in a row, each once the last has failed."""
+    call = "read_file {}"
+    return "chain:" + " >>> ".join([call] * count)
+
+
+@pytest.mark.spec("MOD-017")
+def test_a_model_has_three_retries_of_a_tool(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    text = _pathless_reads(3) + ' >>> list_directory {"path": "/workspace"}'
+    run_id, events = start_run(server, household.token, conversation["id"], text)
+    assert wait_for_run(server, household.token, run_id)["status"] == "completed"
+    assert text_of(events).startswith("Tool said:")
+
+
+@pytest.mark.spec("MOD-017")
+def test_a_model_that_keeps_misusing_a_tool_fails_the_run_as_such(server: Server, household: Household) -> None:
+    conversation = create_conversation(server, household.token)
+    run_id, events = start_run(server, household.token, conversation["id"], _pathless_reads(4))
+    run = wait_for_run(server, household.token, run_id)
+    assert run["status"] == "failed"
+    assert run["error_code"] == "model.tool_misuse"
+    assert events[-1].type == "RUN_ERROR"
+    assert events[-1].data.get("code") == "model.tool_misuse"
+
+
+@pytest.mark.spec("MOD-017")
+@pytest.mark.parametrize("through", ["server", "openrouter"])
+def test_an_answer_stopped_at_the_context_limit_fails_the_run_as_such(
+    server: Server, household: Household, through: str
+) -> None:
+    conversation = create_conversation(server, household.token)
+    if through == "openrouter":
+        _choose(server, household.token, conversation["id"], household.openrouter_id, "test/popular")
+    run_id, events = start_run(server, household.token, conversation["id"], "cut-off")
+    run = wait_for_run(server, household.token, run_id)
+    assert run["status"] == "failed"
+    assert run["error_code"] == "model.context_exceeded"
+    assert events[-1].type == "RUN_ERROR"
+    assert events[-1].data.get("code") == "model.context_exceeded"
 
 
 @pytest.mark.spec("MOD-012")

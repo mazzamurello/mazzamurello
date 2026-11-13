@@ -60,6 +60,7 @@ class ModelUnderEvaluation:
     base_url: str | None = None
     location: str | None = None
     api_key: str | None = None
+    context_window: int | None = None
 
     def connection(self) -> dict[str, Any]:
         request: dict[str, Any] = {"name": self.name[:100], "kind": self.kind}
@@ -69,6 +70,8 @@ class ModelUnderEvaluation:
             request["location"] = self.location
         if self.api_key is not None:
             request["api_key"] = self.api_key
+        if self.context_window is not None:
+            request["context_window"] = self.context_window
         return request
 
 

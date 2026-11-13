@@ -9,6 +9,8 @@ last user message:
 - `drop:N` streams `N` pieces of text, then closes the connection mid-answer;
 - `refuse` is refused as a content filter refuses, with `REFUSAL` as the
   provider's reason (MOD-015);
+- `cut-off` stops at the model's length limit before saying anything: no
+  content, and the finish reason `length` (MOD-017);
 - `run:<command>` calls the agent's command tool with `<command>`, then, once
   the tool's result arrives, answers `Tool said: <result>`;
 - `runs:<command> ||| <command> …` calls the command tool with each command in
@@ -363,6 +365,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             if last == "refuse":
                 self._refuse(body)
                 return
+            if last == "cut-off":
+                self._cut_off(body)
+                return
             if last.startswith("think:"):
                 self._think(body, f"Thinking: {last.removeprefix('think:')}", f"Echo: {last}")
                 return
@@ -550,6 +555,21 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
             base = self._chunk_base(body)
             self._event(base | {"choices": [self._choice({"role": "assistant", "refusal": REFUSAL}, None)]})
             self._finish(base, "content_filter")
+
+        def _cut_off(self, body: dict[str, Any]) -> None:
+            """An answer stopped at the length limit before any content, as a model with a full context gives."""
+            if not body.get("stream"):
+                completion = self._completion(body, "")
+                completion["choices"][0]["message"] = {"role": "assistant", "content": None}
+                completion["choices"][0]["finish_reason"] = "length"
+                if self.openrouter:
+                    completion["choices"][0]["native_finish_reason"] = "length"
+                self._json(200, completion)
+                return
+            self._start_stream()
+            base = self._chunk_base(body)
+            self._event(base | {"choices": [self._choice({"role": "assistant", "content": ""}, None)]})
+            self._finish(base, "length")
 
         def _answer(self, body: dict[str, Any], pieces: list[tuple[str, float]]) -> None:
             if body.get("stream"):
