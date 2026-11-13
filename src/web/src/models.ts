@@ -1,7 +1,7 @@
 // The models of the household and the model of a conversation (MOD-010 to MOD-012, MOD-014, UX-015).
 import { useQuery } from "@tanstack/react-query";
 
-import { api, unwrap, type ModelChoice, type ModelOption } from "./api/client";
+import { api, unwrap, type EgressPolicy, type ModelChoice, type ModelOption } from "./api/client";
 
 export const MODELS = ["models"] as const;
 
@@ -15,6 +15,14 @@ export function sameModel(option: ModelOption, choice: ModelChoice | null | unde
 
 export function findModel(options: ModelOption[] | undefined, choice: ModelChoice | null | undefined): ModelOption | undefined {
   return options?.find((option) => sameModel(option, choice));
+}
+
+/**
+ * Whether a data egress policy refuses a model: only local models, and one that runs remotely
+ * (MOD-003, MOD-010, ADR-0091).
+ */
+export function refusedBy(policy: EgressPolicy | undefined, option: Pick<ModelOption, "location"> | undefined): boolean {
+  return policy === "local_only" && option?.location === "remote";
 }
 
 /** A price per million tokens, as short as it can be: `0.27`, `2.5`, `15`. */

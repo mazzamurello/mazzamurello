@@ -236,10 +236,28 @@ class SpeechSettings(Request):
     speech: SpeechChoice | None
 
 
+# A data egress policy: every model, or only local ones (MOD-003, ADR-0091).
+type EgressPolicy = Literal["any", "local_only"]
+
+
+class EgressPolicySetting(Request):
+    policy: EgressPolicy
+
+
+class EgressPolicies(Response):
+    """The policies that apply to a user, and the strictest of them, which the gateway enforces."""
+
+    household: EgressPolicy
+    admin: EgressPolicy
+    own: EgressPolicy
+    effective: EgressPolicy
+
+
 class ModelList(Response):
     items: list[ModelOption]
     default: ModelChoiceOut | None
     speech: SpeechSettings
+    egress: EgressPolicies
 
 
 class Transcription(Response):

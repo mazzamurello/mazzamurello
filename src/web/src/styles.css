@@ -175,6 +175,16 @@ body {
 .rise {
   animation: rise 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
+/* Rising without fading in, for panels read as soon as they open, such as the model picker: text is never
+   shown at a contrast lower than its own (UX-007). */
+@keyframes slide {
+  from {
+    transform: translateY(8px) scale(0.98);
+  }
+}
+.slide {
+  animation: slide 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
 
 /* The sprite (ADR-0070): one figure, a pose per moment. */
 .sprite {
@@ -451,7 +461,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .sprite,
   .sprite *,
-  .rise {
+  .rise,
+  .slide {
     animation: none !important;
   }
   .live-text {

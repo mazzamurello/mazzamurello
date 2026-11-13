@@ -36,7 +36,13 @@ CONTRACT_TABLES = (
     "compaction_checkpoints",
     "usage_ledger",
     "tool_permissions",
+    "egress_policies",
     "audit_events",
+)
+# Who may write a row of `egress_policies`: an admin what admins set, a user their own choice (MOD-003).
+EGRESS_WRITER = (
+    "tenant_id = app_tenant_id() AND ((set_by = 'admin' AND app_is_tenant_admin())"
+    " OR (set_by = 'user' AND user_id = app_user_id()))"
 )
 # Tables of a tenant that every user of it reads and its tenant admins change (ADR-0069).
 TENANT_TABLES = ("connections", "connection_models")
@@ -443,6 +449,20 @@ TABLES = [
       FOREIGN KEY (tenant_id, user_id) REFERENCES users (tenant_id, id)
     )
     """,
+    # Data egress policies stricter than `any`: the household's, an admin's for a user, a user's own (MOD-003,
+    # ADR-0091).
+    """
+    CREATE TABLE egress_policies (
+      tenant_id uuid NOT NULL REFERENCES tenants (id),
+      user_id uuid,
+      set_by text NOT NULL CHECK (set_by IN ('admin', 'user')),
+      policy text NOT NULL CHECK (policy IN ('local_only')),
+      updated_at timestamptz NOT NULL,
+      CHECK (set_by = 'admin' OR user_id IS NOT NULL),
+      UNIQUE NULLS NOT DISTINCT (tenant_id, user_id, set_by),
+      FOREIGN KEY (tenant_id, user_id) REFERENCES users (tenant_id, id) ON DELETE CASCADE
+    )
+    """,
     # One content-free entry per tool call, kept when its conversation is deleted (AGT-008, ADR-0090).
     """
     CREATE TABLE audit_events (
@@ -771,6 +791,26 @@ APPLICATION_POLICIES = [
     CREATE POLICY tool_permissions_app_select ON tool_permissions FOR SELECT TO sibillo_app
     USING (tenant_id = app_tenant_id() AND (user_id = app_user_id() OR app_is_tenant_admin()))
     """,
+    # Everyone reads the household's policy and their own; admins read what they set, never a user's own
+    # choice, and change only what they set; a user changes only their own choice (MOD-003, ADR-0091).
+    """
+    CREATE POLICY egress_policies_app_select ON egress_policies FOR SELECT TO sibillo_app
+    USING (
+      tenant_id = app_tenant_id()
+      AND (user_id IS NULL OR user_id = app_user_id() OR (set_by = 'admin' AND app_is_tenant_admin()))
+    )
+    """,
+    *(
+        f"""
+        CREATE POLICY egress_policies_app_{operation.lower()} ON egress_policies FOR {operation} TO sibillo_app
+        {clause}
+        """
+        for operation, clause in (
+            ("INSERT", f"WITH CHECK ({EGRESS_WRITER})"),
+            ("UPDATE", f"USING ({EGRESS_WRITER}) WITH CHECK ({EGRESS_WRITER})"),
+            ("DELETE", f"USING ({EGRESS_WRITER})"),
+        )
+    ),
     *(
         f"""
         CREATE POLICY tool_permissions_app_{operation.lower()} ON tool_permissions FOR {operation} TO sibillo_app
@@ -850,6 +890,7 @@ PRIVILEGES = [
     "GRANT SELECT, INSERT ON usage_ledger TO sibillo_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON connections, connection_models TO sibillo_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON tool_permissions TO sibillo_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON egress_policies TO sibillo_app",
     # An audit event is written when its call is decided, and completed as it runs (ADR-0090).
     "GRANT SELECT, INSERT ON audit_events TO sibillo_app",
     "GRANT UPDATE (outcome, scope, reason, attempts) ON audit_events TO sibillo_app",

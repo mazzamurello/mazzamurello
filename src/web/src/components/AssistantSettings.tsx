@@ -10,6 +10,7 @@ import { updateConversation } from "../conversations";
 import { findModel, useModels } from "../models";
 import { useNotify } from "../notices";
 import { toolLabel, useLockedTools } from "../tools";
+import { OwnEgressSwitch } from "./EgressSettings";
 import { ModelSelect } from "./ModelPicker";
 
 export const SETTINGS = ["me", "settings"] as const;
@@ -87,7 +88,7 @@ function ReasoningField({ value, onChange, reasons }: { value: Reasoning; onChan
 }
 
 /** A switch: the label names it, the description says more (UX-007). */
-function Switch({
+export function Switch({
   label,
   description,
   checked,
@@ -286,6 +287,7 @@ function AssistantForm({ view }: { view: UserSettingsView }) {
           placeholder={householdModel ? t("assistant.householdModel", { name: householdModel.name }) : t("assistant.noHouseholdModel")}
         />
       </div>
+      <OwnEgressSwitch />
       <ReasoningField value={settings.reasoning ?? "on"} onChange={(reasoning) => void save({ reasoning })} reasons={reasons} />
       <ToolSwitches disabled={settings.disabled_tools} onChange={(disabled_tools) => void save({ disabled_tools })} />
       <AdditionalPrompt

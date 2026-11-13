@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from sibillo_server import errors, schemas
+from sibillo_server import egress, errors, schemas
 from sibillo_server.approvals import record
 from sibillo_server.auth import Authenticated, Engine
 from sibillo_server.conversations import Durable, find_conversation
@@ -171,7 +171,8 @@ async def _run_model(connection: AsyncConnection, conversation: Any) -> Any:
     row = (
         await connection.execute(
             text(
-                "SELECT c.id, c.base_url, m.model FROM connections c JOIN connection_models m ON m.connection_id = c.id"
+                "SELECT c.id, c.base_url, c.location, m.model FROM connections c"
+                " JOIN connection_models m ON m.connection_id = c.id"
                 " WHERE c.id = :connection AND m.model = :model"
             ),
             {"connection": choice[0], "model": choice[1]},
@@ -179,6 +180,9 @@ async def _run_model(connection: AsyncConnection, conversation: Any) -> Any:
     ).one_or_none()
     if row is None:
         raise errors.ApiError(409, "model.unavailable", "The conversation's model is no longer offered")
+    # Refused before anything is sent, and never replaced by another model (MOD-003, ADR-0091).
+    if not await egress.allows(connection, row.location):
+        raise egress.refused()
     return row
 
 

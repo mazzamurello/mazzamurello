@@ -144,7 +144,8 @@
     "local": "Runs on your home server. Nothing leaves the household.",
     "remote": "Messages go to {{connection}} and the provider that runs the model.",
     "chatOnly": "This model can only chat: it cannot search, read or write files, or run commands.",
-    "noModel": "No model is set up yet. A household admin can add one in Settings."
+    "noModel": "No model is set up yet. A household admin can add one in Settings.",
+    "refused": "This chat's model runs remotely, and only local models are allowed. Choose a local model to continue."
   },
   "picker": {
     "title": "Choose a model",
@@ -158,7 +159,8 @@
     "chatOnly": "Chat only",
     "default": "Default",
     "none": "No model matches “{{query}}”.",
-    "footer": "Prices are per million tokens. OpenRouter lists its most used models first."
+    "footer": "Prices are per million tokens. OpenRouter lists its most used models first.",
+    "refused": "Not available: only local models are allowed."
   },
   "message": {
     "you": "You",
@@ -320,7 +322,8 @@
     "run_worker_lost": "The answer was interrupted when the server restarted. Send your message again.",
     "run_timeout": "The answer took too long and was stopped. Try a shorter request.",
     "internal_error": "The server could not finish the answer. Try again; if it keeps failing, tell the server's administrator.",
-    "network": "The server can't be reached. Check your connection and try again."
+    "network": "The server can't be reached. Check your connection and try again.",
+    "model_egress_refused": "This chat's model runs remotely, and only local models are allowed, so nothing was sent. Choose a local model in the message box."
   },
   "usage": {
     "conversation": "This conversation",
@@ -493,7 +496,8 @@
       "microphone": "The microphone is not available. Allow it in the browser's settings.",
       "answer": "The assistant could not answer.",
       "notRead": "The answer could not be read aloud"
-    }
+    },
+    "refused": "Voice uses a remote model, and only local models are allowed."
   },
   "approvals": {
     "title": "Approval needed",
@@ -560,5 +564,17 @@
       "irreversible": "Can't be undone",
       "physical": "Acts in the house"
     }
+  },
+  "egress": {
+    "title": "Local models only",
+    "hint": "Local models run on the household's own hardware: your messages never leave the house. Remote models run at a provider.",
+    "own": "Use only local models",
+    "ownHint": "Remote models become unavailable for you, voice included when it runs remotely.",
+    "byHousehold": "Your household uses only local models.",
+    "byAdmin": "Your household's admin chose only local models for you.",
+    "householdHint": "When on, nobody in the household can use remote models: their messages never leave the house.",
+    "everyone": "Only local models for everyone",
+    "forUser": "Only local models",
+    "forUserHint": "This user can't use remote models. They can't turn it off; they can choose it themselves."
   }
 }

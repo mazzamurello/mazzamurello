@@ -416,7 +416,7 @@ export function ConversationView() {
 
 function codeKey(error: unknown): string {
   const code = error instanceof ApiError ? error.code : "internal.error";
-  return ["model.unavailable", "model.request_failed", "model.refused", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
+  return ["model.unavailable", "model.request_failed", "model.refused", "model.egress_refused", "sandbox.unavailable", "run.worker_lost", "run.timeout"].includes(code) ? code.replace(".", "_") : "internal_error";
 }
 
 /** Why a run failed, where its answer would be, with what the model said (UX-014, MOD-015). */
@@ -580,13 +580,13 @@ function TurnView(props: {
   );
 }
 
-function IconButton(props: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+function IconButton(props: { label: string; description?: string | undefined; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       className="grid size-[30px] place-items-center rounded-lg text-muted hover:bg-hover hover:text-fg disabled:opacity-40"
       aria-label={props.label}
-      title={props.label}
+      title={props.description ?? props.label}
       disabled={props.disabled}
       onClick={props.onClick}
     >
@@ -602,7 +602,11 @@ function ReadAloudButton({ id, text }: { id: string; text: string }) {
   if (!voice?.speech) return null;
   const reading = voice.reading === id;
   return (
-    <IconButton label={reading ? t("voice.stopReading") : t("voice.readAloud")} onClick={() => (reading ? voice.stopReading() : voice.readAloud(id, text))}>
+    <IconButton
+      label={reading ? t("voice.stopReading") : t("voice.readAloud")}
+      disabled={voice.speechRefused}
+      description={voice.speechRefused ? t("voice.refused") : undefined}
+      onClick={() => (reading ? voice.stopReading() : voice.readAloud(id, text))}>
       {reading ? <Square className="size-3.5" fill="currentColor" aria-hidden="true" /> : <Volume2 className="size-4" aria-hidden="true" />}
     </IconButton>
   );

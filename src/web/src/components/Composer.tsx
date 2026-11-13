@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import type { ModelChoice } from "../api/client";
 import { hasKeyboard } from "../focus";
-import { findModel, useModels } from "../models";
+import { findModel, refusedBy, useModels } from "../models";
 import { type AttachedFile, formatSize, type useAttachments } from "../workspace";
 import { ModelSelect } from "./ModelPicker";
 import { Recorder, transcribe } from "../speech";
@@ -99,6 +99,8 @@ export function Composer(props: {
   }
 
   const local = chosen?.location === "local";
+  // A model the user's data egress policy refuses, said before anything is sent (UX-024).
+  const refused = refusedBy(models.data?.egress.effective, chosen);
   return (
     <div className="w-full">
       <form
@@ -207,15 +209,24 @@ export function Composer(props: {
             <button
               type="button"
               onClick={() => void dictate()}
-              title={t("voice.dictate")}
+              disabled={voice.transcriptionRefused}
+              // Unavailable, saying why, when only local models are allowed (UX-024).
+              title={voice.transcriptionRefused ? t("voice.refused") : t("voice.dictate")}
               aria-label={t("voice.dictate")}
-              className="grid size-9 place-items-center rounded-xl text-muted hover:bg-hover hover:text-fg"
+              className="grid size-9 place-items-center rounded-xl text-muted hover:bg-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <Mic className="size-[18px]" aria-hidden="true" />
             </button>
           )}
           {voice?.transcription && voice.speech && (
-            <button type="button" onClick={voice.open} title={t("voice.handsFree")} aria-label={t("voice.handsFree")} className="grid size-9 place-items-center rounded-xl text-muted hover:bg-hover hover:text-fg">
+            <button
+              type="button"
+              onClick={voice.open}
+              disabled={voice.transcriptionRefused || voice.speechRefused}
+              title={voice.transcriptionRefused || voice.speechRefused ? t("voice.refused") : t("voice.handsFree")}
+              aria-label={t("voice.handsFree")}
+              className="grid size-9 place-items-center rounded-xl text-muted hover:bg-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            >
               <Headphones className="size-[18px]" aria-hidden="true" />
             </button>
           )}
@@ -236,7 +247,9 @@ export function Composer(props: {
       <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[12.5px] text-faint">
         {models.data && models.data.items.length === 0
           ? t("composer.noModel")
-          : chosen?.tools === false
+          : refused
+            ? t("composer.refused")
+            : chosen?.tools === false
             ? t("composer.chatOnly")
             : chosen
               ? local

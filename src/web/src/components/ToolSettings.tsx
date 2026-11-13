@@ -7,6 +7,7 @@ import { Link } from "react-router";
 import { api, unwrap, type AuditEvent, type CapabilityClass, type PermissionSetting, type ToolInfo, type ToolName, type ToolPermissions } from "../api/client";
 import { useNotify } from "../notices";
 import { outcomeLabel, toolLabel, useTools } from "../tools";
+import { UserEgressSwitch } from "./EgressSettings";
 
 const PRIMARY = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] bg-fg px-4 text-sm font-semibold text-bg disabled:opacity-50";
 const SELECT = "h-9 rounded-[10px] border border-line-strong bg-bg px-2 text-sm outline-none focus:border-accent";
@@ -119,6 +120,7 @@ export function ToolPermissionsSection() {
           ))}
         </select>
       </div>
+      {userId && <UserEgressSwitch key={`egress-${userId}`} userId={userId} />}
       {userId && <PermissionsLoader key={userId} userId={userId} />}
     </section>
   );

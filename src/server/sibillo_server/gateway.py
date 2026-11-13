@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from sibillo_server.costs import amount
 from sibillo_server.database import Identity, transaction
+from sibillo_server.egress import check
 from sibillo_server.encryption import decrypt
 from sibillo_server.endpoints import tenant_http_client
 from sibillo_server.tool_policy import Allowances, Permissions
@@ -154,6 +155,8 @@ async def connection_model(deps: RunDeps, connection_id: uuid.UUID, model: str) 
     deps.tools = row.tools is not False
     deps.reasons = row.reasoning
     deps.location = row.location
+    # Never a request the user's data egress policy refuses (MOD-003, ADR-0091).
+    await check(deps.engine, deps.identity, row.location)
     deps.context_window = row.context_window or DEFAULT_CONTEXT_WINDOW
     # Addresses not set by the instance admin connect only to checked public addresses,
     # without redirects (MOD-009, ADR-0061).
@@ -239,6 +242,8 @@ class Gateway(AbstractCapability[RunDeps]):
     ) -> ModelRequestContext:
         # The user's message is kept even if the run stops before the answer.
         await store_messages(ctx.deps, ctx.messages[ctx.deps.history_length :])
+        # Checked before every request, so that a policy changed during the run applies (MOD-003, ADR-0091).
+        await check(ctx.deps.engine, ctx.deps.identity, ctx.deps.location)
         request_context.messages = await _compacted(ctx, list(request_context.messages))
         return request_context
 

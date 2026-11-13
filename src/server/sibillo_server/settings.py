@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from sibillo_server import errors, schemas
 from sibillo_server.auth import Authenticated, Engine
-from sibillo_server.connections import default_model, offered
+from sibillo_server.connections import allowed, default_model, offered
 from sibillo_server.database import transaction
 
 router = APIRouter()
@@ -71,8 +71,15 @@ async def new_conversation(connection: AsyncConnection) -> NewConversation:
     """A copy of the user's defaults, with the tenant's default model when theirs is unset or gone (MOD-012)."""
     settings = _response(await _stored(connection))
     model = settings.model
-    if model is None or not await offered(connection, schemas.ModelChoice(**model.model_dump())):
+    # A model the user's data egress policy refuses counts as not offered (MOD-003, ADR-0091).
+    if (
+        model is None
+        or not await offered(connection, schemas.ModelChoice(**model.model_dump()))
+        or not await allowed(connection, model)
+    ):
         model = await default_model(connection)
+        if model is not None and not await allowed(connection, model):
+            model = None
     return NewConversation(model, settings.reasoning or DEFAULT_REASONING, settings.disabled_tools)
 
 

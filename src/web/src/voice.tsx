@@ -6,7 +6,7 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import { useTranslation } from "react-i18next";
 
 import { ApiError, type ModelOption } from "./api/client";
-import { findModel, useModels } from "./models";
+import { findModel, refusedBy, useModels } from "./models";
 import { useNotify } from "./notices";
 import { type Pose, Sprite } from "./components/Sprite";
 import { VoiceLevel } from "./components/VoiceLevel";
@@ -37,6 +37,9 @@ type Sender = (text: string, voice: VoiceMode) => void;
 interface Voice {
   transcription: ModelOption | undefined;
   speech: ModelOption | undefined;
+  /** Whether the user's data egress policy refuses the household's speech models (MOD-003, UX-024). */
+  transcriptionRefused: boolean;
+  speechRefused: boolean;
   handsFree: boolean;
   state: VoiceState;
   cue: Cue | null;
@@ -79,6 +82,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const settings = models.data?.speech;
   const transcription = findModel(models.data?.items, settings?.transcription);
   const speech = findModel(models.data?.items, settings?.speech);
+  const transcriptionRefused = refusedBy(models.data?.egress.effective, transcription);
+  const speechRefused = refusedBy(models.data?.egress.effective, speech);
   const [handsFree, setHandsFree] = useState(false);
   const [state, setState] = useState<VoiceState>("idle");
   const [cue, setCue] = useState<Cue | null>(null);
@@ -307,6 +312,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       transcription,
       speech,
+      transcriptionRefused,
+      speechRefused,
       handsFree,
       state,
       cue,
@@ -325,7 +332,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       readAloud,
       stopReading,
     }),
-    [transcription, speech, handsFree, state, cue, press, runPose, stream, step, failure, open, close, register, answered, failed, reading, readAloud, stopReading],
+    [transcription, speech, transcriptionRefused, speechRefused, handsFree, state, cue, press, runPose, stream, step, failure, open, close, register, answered, failed, reading, readAloud, stopReading],
   );
 
   return <VoiceContext.Provider value={voice}>{children}</VoiceContext.Provider>;

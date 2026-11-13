@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request, Response
 from sqlalchemy import text
 from starlette.datastructures import UploadFile
 
-from sibillo_server import errors, schemas
+from sibillo_server import egress, errors, schemas
 from sibillo_server.auth import Authenticated, Engine
 from sibillo_server.connections import SecretKey, Target, connection_client
 from sibillo_server.credentials import uuid7
@@ -77,8 +77,12 @@ async def _speaker(engine: Any, identity: Identity, secret: bytes, use: Literal[
     """The household's model for `use`; row-level security scopes the lookup to the user's tenant."""
     async with transaction(engine, identity) as connection:
         row = (await connection.execute(text(QUERIES[use]))).one_or_none()
+        # Remote speech goes only where the user's data egress policy allows (MOD-003, ADR-0091).
+        allowed = row is None or await egress.allows(connection, row.location)
     if row is None:
         raise _unavailable()
+    if not allowed:
+        raise egress.refused()
     key = None if row.api_key_ciphertext is None else decrypt(secret, row.id, bytes(row.api_key_ciphertext))
     return _Speaker(
         Target(row.kind, row.base_url, key, row.private_network),

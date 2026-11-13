@@ -61,6 +61,7 @@ from sibillo_server.durable import (
     RUN_WORKFLOW,
     create_client,
 )
+from sibillo_server.egress import EgressRefusedError
 from sibillo_server.gateway import (
     Gateway,
     ModelUnavailableError,
@@ -363,6 +364,8 @@ async def _history(
 
 
 def _error_code(error: BaseException) -> str:
+    if isinstance(error, EgressRefusedError):
+        return "model.egress_refused"
     if isinstance(error, ModelUnavailableError):
         return "model.unavailable"
     if isinstance(error, ContentFilterError):
@@ -511,7 +514,7 @@ async def _execute(
             workspace=sandbox_ref(str(identity.tenant_id), str(identity.user_id), run.conversation_id),
             deferred_tool_results=_deferred_results(run),
         )
-    except (ModelUnavailableError, ModelAPIError, ContentFilterError) as error:
+    except (ModelUnavailableError, EgressRefusedError, ModelAPIError, ContentFilterError) as error:
         code = _error_code(error)
         logger.warning("run %s failed: %s", run.run_id, code)
         if run.run_id in _TITLES:

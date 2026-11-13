@@ -10,6 +10,7 @@ import { useNotify } from "../notices";
 import { type Theme, useTheme } from "../theme";
 import { AssistantSection } from "./AssistantSettings";
 import { ModelSelect } from "./ModelPicker";
+import { HouseholdEgressSection } from "./EgressSettings";
 import { ActivitySection, ToolPermissionsSection } from "./ToolSettings";
 
 type SpeechSettings = Schemas["SpeechSettings"];
@@ -169,8 +170,9 @@ function ModelsSection() {
       <section>
         <h2 className="mb-1 text-base font-bold">{t("settings.defaultModel")}</h2>
         <p className="mb-3.5 max-w-[62ch] text-sm text-muted">{t("settings.defaultHint")}</p>
-        <ModelSelect value={current ?? null} onChange={(choice) => void chooseDefault(choice)} label={t("settings.defaultModel")} placeholder={t("settings.noDefault")} />
+        <ModelSelect value={current ?? null} onChange={(choice) => void chooseDefault(choice)} label={t("settings.defaultModel")} placeholder={t("settings.noDefault")} policy="household" />
       </section>
+      <HouseholdEgressSection />
       <SpeechSection />
       <section>
         <h2 className="mb-1 text-base font-bold">{t("settings.connections")}</h2>

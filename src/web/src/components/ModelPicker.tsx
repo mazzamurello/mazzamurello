@@ -3,8 +3,8 @@ import { type CSSProperties, type RefObject, useEffect, useLayoutEffect, useRef,
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
-import type { ModelChoice, ModelOption } from "../api/client";
-import { findModel, sameModel, shortPrice, useModels } from "../models";
+import type { EgressPolicy, ModelChoice, ModelOption } from "../api/client";
+import { findModel, refusedBy, sameModel, shortPrice, useModels } from "../models";
 
 // The space the panel keeps from the window's edges and from its button.
 const MARGIN = 12;
@@ -23,6 +23,9 @@ export function ModelSelect(props: {
   placeholder?: string;
   // Which models to offer: chat models unless said otherwise (ADR-0088).
   kind?: ModelOption["kind"];
+  // Whose data egress policy marks remote models unavailable: the user's, or the household's for its
+  // defaults (MOD-003, ADR-0091).
+  policy?: "effective" | "household";
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -59,6 +62,7 @@ export function ModelSelect(props: {
           options={models.data.items.filter((option) => option.kind === (props.kind ?? "chat"))}
           defaultModel={models.data.default}
           chosen={props.value}
+          policy={models.data.egress[props.policy ?? "effective"]}
           onPick={(option) => {
             setOpen(false);
             props.onChange({ connection_id: option.connection_id, model: option.model });
@@ -87,6 +91,7 @@ function ModelPicker(props: {
   options: ModelOption[];
   defaultModel: ModelChoice | null;
   chosen: ModelChoice | null;
+  policy: EgressPolicy;
   onPick: (option: ModelOption) => void;
   onClose: () => void;
 }) {
@@ -133,7 +138,7 @@ function ModelPicker(props: {
       role="dialog"
       aria-label={t("picker.title")}
       style={style ?? { visibility: "hidden" }}
-      className="rise fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-line bg-raised text-fg shadow-soft"
+      className="slide fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-line bg-raised text-fg shadow-soft"
     >
       <div className="border-b border-line p-2.5">
         <input
@@ -158,12 +163,14 @@ function ModelPicker(props: {
                 {first.connection_name}
                 <span className="ml-auto font-normal">{first.location === "local" ? t("picker.local") : t("picker.remote")}</span>
               </h3>
+              {refusedBy(props.policy, first) && <p className="mx-2.5 mb-1 text-xs text-muted">{t("picker.refused")}</p>}
               {options.map((option) => (
                 <button
                   key={option.model}
                   type="button"
+                  disabled={refusedBy(props.policy, option)}
                   onClick={() => props.onPick(option)}
-                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 rounded-[11px] px-2.5 py-2 text-left hover:bg-hover focus-visible:bg-hover"
+                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 rounded-[11px] px-2.5 py-2 text-left hover:bg-hover focus-visible:bg-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                 >
                   <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
                     <span className="truncate">{option.name}</span>

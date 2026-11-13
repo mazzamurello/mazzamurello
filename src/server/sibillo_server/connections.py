@@ -27,7 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from sibillo_server import errors, schemas
+from sibillo_server import egress, errors, schemas
 from sibillo_server.auth import Authenticated, Engine
 from sibillo_server.credentials import uuid7
 from sibillo_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
@@ -686,6 +686,14 @@ async def offered(connection: AsyncConnection, choice: schemas.ModelChoice, kind
     return row is not None
 
 
+async def allowed(connection: AsyncConnection, choice: schemas.ModelChoice | schemas.ModelChoiceOut) -> bool:
+    """Whether the user's data egress policy allows the model's connection (MOD-003, ADR-0091)."""
+    location = (
+        await connection.execute(text("SELECT location FROM connections WHERE id = :id"), {"id": choice.connection_id})
+    ).scalar_one_or_none()
+    return location is not None and await egress.allows(connection, location)
+
+
 async def default_model(connection: AsyncConnection) -> schemas.ModelChoiceOut | None:
     row = (
         await connection.execute(text("SELECT id, default_model FROM connections WHERE default_model IS NOT NULL"))
@@ -840,6 +848,7 @@ async def list_models(identity: Authenticated, engine: Engine, secret: SecretKey
         ).all()
         default = await default_model(connection)
         speech = await speech_settings(connection)
+        policies = await egress.policies(connection)
     if any(row.stale for row in rows):
         task = asyncio.create_task(_refresh_stale(engine, identity, secret))
         _REFRESHING.add(task)
@@ -861,4 +870,4 @@ async def list_models(identity: Authenticated, engine: Engine, secret: SecretKey
         )
         for row in rows
     ]
-    return schemas.ModelList(items=items, default=default, speech=speech)
+    return schemas.ModelList(items=items, default=default, speech=speech, egress=policies)
