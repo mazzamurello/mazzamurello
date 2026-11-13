@@ -195,7 +195,18 @@
     "callDone": "Done",
     "asked": "Asked you",
     "planned": "Updated the task list",
-    "used": "Used {{name}}"
+    "used": "Used {{name}}",
+    "page": {
+      "title": "Activity",
+      "hint": "Every tool call your assistant made for you, and whether it needed your approval. What the calls sent and received stays in the chats.",
+      "tool": "Tool",
+      "allTools": "All tools",
+      "calls": "Tool calls",
+      "none": "No tool calls yet.",
+      "repeated": "May have run twice",
+      "deletedChat": "In a deleted chat",
+      "untitled": "Untitled chat"
+    }
   },
   "rewind": {
     "title": "Send the edited message?",
@@ -482,6 +493,72 @@
       "microphone": "The microphone is not available. Allow it in the browser's settings.",
       "answer": "The assistant could not answer.",
       "notRead": "The answer could not be read aloud"
+    }
+  },
+  "approvals": {
+    "title": "Approval needed",
+    "data": "Sends",
+    "destination": "To",
+    "arguments": "Arguments",
+    "deniedInHours": "Denied in {{count}} hours unless you answer.",
+    "deniedInMinutes": "Denied in {{count}} minutes unless you answer.",
+    "deny": "Deny",
+    "allow": {
+      "once": "Allow once",
+      "turn": "Allow for this turn",
+      "conversation": "Allow in this chat"
+    },
+    "reasons": {
+      "untrusted_content": "The assistant has read content from elsewhere in this chat, such as web pages or command output, which could be trying to steer it into sending your data out. Check that this is what you asked for.",
+      "tool_default": "This tool always asks before it runs.",
+      "permission": "Your household's admin asked that this tool ask you before it runs.",
+      "consequential": "This can't be undone, or acts in the real world, so it asks every time.",
+      "device": "Calls to your devices and connected services always ask."
+    },
+    "outcomes": {
+      "not_needed": "No approval needed",
+      "allowed": "Allowed",
+      "approved": "Approved once",
+      "denied": "Denied",
+      "expired": "Expired",
+      "refused": "Turned off by your household's admin",
+      "inChat": "Allowed in this chat",
+      "forTurn": "Allowed for this turn"
+    },
+    "allowedInChat": "Allowed in this chat",
+    "allowedHint": "What you allowed when the assistant asked. Withdraw it and it asks again.",
+    "nothingAllowed": "Nothing allowed yet.",
+    "webAndCommands": "Web and commands",
+    "withdraw": "Withdraw"
+  },
+  "permissions": {
+    "title": "Tool permissions",
+    "hint": "What each user's assistant may use. Ask makes every call wait for their approval; Deny takes the tool away. Tools still ask when a chat has content from elsewhere.",
+    "user": "User",
+    "chooseUser": "Choose a user",
+    "byClass": "By kind of tool",
+    "byClassHint": "A setting for a tool wins over these; among these, the strictest wins.",
+    "byTool": "By tool",
+    "tool": "Tool",
+    "setting": "Setting",
+    "applies": "Applies",
+    "fromDefault": "The tool's default",
+    "fromTool": "Set for this tool",
+    "fromClass": "From: {{name}}",
+    "save": "Save permissions",
+    "lockedByAdmin": "Turned off by your household's admin",
+    "settings": {
+      "default": "Default",
+      "allow": "Allow",
+      "ask": "Ask",
+      "deny": "Deny"
+    },
+    "classes": {
+      "reads_private_data": "Reads your data",
+      "ingests_untrusted": "Reads content from elsewhere",
+      "external_communication": "Sends data out",
+      "irreversible": "Can't be undone",
+      "physical": "Acts in the house"
     }
   }
 }

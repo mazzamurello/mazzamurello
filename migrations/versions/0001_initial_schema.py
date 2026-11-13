@@ -35,6 +35,8 @@ CONTRACT_TABLES = (
     "conversation_messages",
     "compaction_checkpoints",
     "usage_ledger",
+    "tool_permissions",
+    "audit_events",
 )
 # Tables of a tenant that every user of it reads and its tenant admins change (ADR-0069).
 TENANT_TABLES = ("connections", "connection_models")
@@ -47,6 +49,7 @@ PRIVATE_TABLES = (
     "conversation_messages",
     "compaction_checkpoints",
     "usage_ledger",
+    "audit_events",
 )
 # The tools a user can switch off, every tool by its name (CNV-013, ADR-0081, ADR-0087).
 TOOL_NAMES = (
@@ -74,6 +77,10 @@ TOOL_NAMES = (
     "'update_task_statuses', "
     "'remove_task'"
     "]"
+)
+# The capability classes of tools (AGT-005, ADR-0012).
+CAPABILITY_CLASSES = (
+    "ARRAY['reads_private_data', 'ingests_untrusted', 'external_communication', 'irreversible', 'physical']"
 )
 
 HELPER_FUNCTIONS = [
@@ -271,6 +278,9 @@ TABLES = [
       -- Its settings and its own instructions (CNV-013, CNV-014, ADR-0081).
       reasoning text NOT NULL DEFAULT 'on' CHECK (reasoning IN ('off', 'on', 'deep')),
       disabled_tools text[] NOT NULL DEFAULT '{{}}' CHECK (disabled_tools <@ {TOOL_NAMES}),
+      -- What its user allowed by answering approval requests (AGT-004, AGT-006, ADR-0090).
+      allowed_web_and_commands boolean NOT NULL DEFAULT false,
+      allowed_tools text[] NOT NULL DEFAULT '{{}}' CHECK (allowed_tools <@ {TOOL_NAMES}),
       base_instructions text,
       additional_instructions text,
       -- Folders, pins and forks (CNV-005, CNV-007, CNV-008, ADR-0073).
@@ -311,6 +321,8 @@ TABLES = [
       conversation_id uuid NOT NULL,
       parent_run_id uuid,
       kind text NOT NULL CHECK (kind IN ('message', 'resume')),
+      -- The web and commands allowed for the rest of the turn (ADR-0090).
+      turn_allows_web_and_commands boolean NOT NULL DEFAULT false,
       status text NOT NULL CHECK (status IN ('queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled')),
       error_code text,
       connection_id uuid,
@@ -350,6 +362,7 @@ TABLES = [
     "CREATE INDEX conversations_list_idx ON conversations (owner_id, last_message_at DESC)",
     "CREATE INDEX conversations_folder_idx ON conversations (folder_id)",
     "CREATE INDEX conversations_title_search_idx ON conversations USING gin (to_tsvector('simple', title))",
+    "CREATE INDEX conversations_approvals_expire_idx ON conversations (approvals_expire_at)",
     """
     CREATE TABLE conversation_messages (
       run_id uuid NOT NULL,
@@ -414,6 +427,45 @@ TABLES = [
     "CREATE INDEX usage_ledger_owner_created_at_idx ON usage_ledger (owner_id, created_at)",
     "CREATE INDEX usage_ledger_conversation_idx ON usage_ledger (conversation_id)",
     "CREATE INDEX usage_ledger_run_idx ON usage_ledger (run_id)",
+    # A tenant admin's settings of tools for each user (AGT-002, ADR-0090).
+    f"""
+    CREATE TABLE tool_permissions (
+      tenant_id uuid NOT NULL,
+      user_id uuid NOT NULL,
+      subject_kind text NOT NULL CHECK (subject_kind IN ('tool', 'class')),
+      subject text NOT NULL CHECK (
+        (subject_kind = 'tool' AND subject = ANY({TOOL_NAMES}))
+        OR (subject_kind = 'class' AND subject = ANY({CAPABILITY_CLASSES}))
+      ),
+      setting text NOT NULL CHECK (setting IN ('allow', 'ask', 'deny')),
+      updated_at timestamptz NOT NULL,
+      PRIMARY KEY (tenant_id, user_id, subject_kind, subject),
+      FOREIGN KEY (tenant_id, user_id) REFERENCES users (tenant_id, id)
+    )
+    """,
+    # One content-free entry per tool call, kept when its conversation is deleted (AGT-008, ADR-0090).
+    """
+    CREATE TABLE audit_events (
+      id uuid PRIMARY KEY,
+      tenant_id uuid NOT NULL,
+      owner_id uuid NOT NULL,
+      conversation_id uuid NOT NULL,
+      run_id uuid NOT NULL,
+      tool_call_id text NOT NULL,
+      tool text NOT NULL,
+      outcome text NOT NULL
+        CHECK (outcome IN ('not_needed', 'allowed', 'approved', 'denied', 'expired', 'refused')),
+      scope text CHECK (scope IN ('once', 'turn', 'conversation')),
+      reason text
+        CHECK (reason IN ('untrusted_content', 'tool_default', 'permission', 'consequential', 'device')),
+      attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+      created_at timestamptz NOT NULL,
+      UNIQUE (run_id, tool_call_id),
+      FOREIGN KEY (tenant_id, owner_id) REFERENCES users (tenant_id, id) ON DELETE CASCADE
+    )
+    """,
+    "CREATE INDEX audit_events_owner_created_at_idx ON audit_events (owner_id, created_at)",
+    "CREATE INDEX audit_events_conversation_idx ON audit_events (conversation_id)",
 ]
 
 TRIGGERS = [
@@ -586,6 +638,20 @@ PRE_AUTHENTICATION_FUNCTIONS = [
         )
     $$
     """,
+    # Conversations whose approval requests expired, to deny them (AGT-007, ADR-0090): only identifiers.
+    """
+    CREATE FUNCTION expired_approvals()
+    RETURNS TABLE (conversation_id uuid, tenant_id uuid, owner_id uuid)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+      SELECT c.id, c.tenant_id, c.owner_id FROM public.conversations c
+      WHERE c.approvals_expire_at < now()
+        AND NOT EXISTS (
+          SELECT 1 FROM public.runs r WHERE r.conversation_id = c.id AND r.status IN ('queued', 'running')
+        )
+    $$
+    """,
     # Whether any household has a default model, for /health before any
     # sign-in (OPS-002, ADR-0054): only a yes or a no.
     """
@@ -700,6 +766,26 @@ APPLICATION_POLICIES = [
         """
         for table in PRIVATE_TABLES
     ),
+    # Users read their own tool permissions; tenant admins read and change everyone's (AGT-002, ADR-0090).
+    """
+    CREATE POLICY tool_permissions_app_select ON tool_permissions FOR SELECT TO sibillo_app
+    USING (tenant_id = app_tenant_id() AND (user_id = app_user_id() OR app_is_tenant_admin()))
+    """,
+    *(
+        f"""
+        CREATE POLICY tool_permissions_app_{operation.lower()} ON tool_permissions FOR {operation} TO sibillo_app
+        {clause}
+        """
+        for operation, clause in (
+            ("INSERT", "WITH CHECK (tenant_id = app_tenant_id() AND app_is_tenant_admin())"),
+            (
+                "UPDATE",
+                "USING (tenant_id = app_tenant_id() AND app_is_tenant_admin())"
+                " WITH CHECK (tenant_id = app_tenant_id() AND app_is_tenant_admin())",
+            ),
+            ("DELETE", "USING (tenant_id = app_tenant_id() AND app_is_tenant_admin())"),
+        )
+    ),
     *(
         statement
         for table in TENANT_TABLES
@@ -763,6 +849,10 @@ PRIVILEGES = [
     "GRANT SELECT, INSERT, UPDATE, DELETE ON runs TO sibillo_app",
     "GRANT SELECT, INSERT ON usage_ledger TO sibillo_app",
     "GRANT SELECT, INSERT, UPDATE, DELETE ON connections, connection_models TO sibillo_app",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON tool_permissions TO sibillo_app",
+    # An audit event is written when its call is decided, and completed as it runs (ADR-0090).
+    "GRANT SELECT, INSERT ON audit_events TO sibillo_app",
+    "GRANT UPDATE (outcome, scope, reason, attempts) ON audit_events TO sibillo_app",
     """
     GRANT EXECUTE ON FUNCTION app_tenant_id(), app_user_id(), app_is_tenant_admin(), app_is_instance_admin()
       TO sibillo_app
@@ -770,7 +860,7 @@ PRIVILEGES = [
     """
     GRANT EXECUTE ON FUNCTION auth_find_login(text), auth_find_session(bytea), auth_touch_session(uuid),
       auth_record_login_attempt(text, inet, boolean), retention_expired_runs(integer),
-      expired_temporary_conversations(integer), default_model_configured()
+      expired_temporary_conversations(integer), expired_approvals(), default_model_configured()
       TO sibillo_app
     """,
 ]
@@ -807,6 +897,7 @@ def downgrade() -> None:
             "DROP FUNCTION default_model_configured()",
             "DROP FUNCTION retention_expired_runs(integer)",
             "DROP FUNCTION expired_temporary_conversations(integer)",
+            "DROP FUNCTION expired_approvals()",
             "DROP FUNCTION revoke_sessions_of_disabled_user()",
             "DROP FUNCTION connections_guard()",
             "DROP FUNCTION bootstrap_instance(text, text, text, text)",

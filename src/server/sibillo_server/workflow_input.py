@@ -37,6 +37,9 @@ class RunWorkflowInput:
     temporary: bool = False
     # For a run that answers questions: what the model receives, by tool call ID (AGT-015, ADR-0083).
     answers: dict[str, Any] | None = None
+    # For a run that answers approval requests: the decision on each call, by tool call ID, as
+    # `{approved, scope, reason, expired}` (AGT-007, ADR-0090).
+    approvals: dict[str, Any] = field(default_factory=dict[str, Any])
     # How the message came, when it was not typed: `dictated` or `hands_free` (UX-005, ADR-0088).
     voice: str | None = None
 

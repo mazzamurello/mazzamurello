@@ -53,6 +53,7 @@ WORKER_VARIABLES = frozenset(
         "SIBILLO_SANDBOXD_TOKEN",
         "SIBILLO_SEARCH_URL",
         "SIBILLO_TEMPORARY_SWEEP_SECONDS",
+        "SIBILLO_APPROVAL_SWEEP_SECONDS",
     }
 )
 MINIMUM_DRIVER_TOKEN_LENGTH = 32
@@ -93,6 +94,8 @@ class WorkerConfiguration:
     search_url: str = ""
     # Between two sweeps for temporary conversations to delete (CNV-011, ADR-0082).
     temporary_sweep_seconds: int = 600
+    # Between two sweeps for expired approval requests to deny (AGT-007, ADR-0090).
+    approval_sweep_seconds: int = 60
 
 
 def _database_url(environment: Mapping[str, str]) -> str:
@@ -165,6 +168,9 @@ def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfigura
     sweep = environment.get("SIBILLO_TEMPORARY_SWEEP_SECONDS", "600")
     if not sweep.isdigit() or not 1 <= int(sweep) <= 86400:
         raise ConfigurationError("SIBILLO_TEMPORARY_SWEEP_SECONDS must be a number of seconds from 1 to 86400")
+    approvals = environment.get("SIBILLO_APPROVAL_SWEEP_SECONDS", "60")
+    if not approvals.isdigit() or not 1 <= int(approvals) <= 3600:
+        raise ConfigurationError("SIBILLO_APPROVAL_SWEEP_SECONDS must be a number of seconds from 1 to 3600")
     url, token = _sandbox_driver(environment)
     search_url = environment.get("SIBILLO_SEARCH_URL", "")
     if search_url and not search_url.startswith(("http://", "https://")):
@@ -177,6 +183,7 @@ def load_worker_configuration(environment: Mapping[str, str]) -> WorkerConfigura
         sandboxd_token=token,
         search_url=search_url.rstrip("/"),
         temporary_sweep_seconds=int(sweep),
+        approval_sweep_seconds=int(approvals),
     )
 
 

@@ -25,6 +25,15 @@ export type ToolName = Schemas["ToolName"];
 export type Interrupt = Schemas["Interrupt"];
 export type Question = Schemas["Question"];
 export type PlanStep = Schemas["PlanStep"];
+export type ToolInfo = Schemas["ToolInfo"];
+export type ToolPermissions = Schemas["ToolPermissions"];
+export type PermissionSetting = Schemas["PermissionSetting"];
+export type CapabilityClass = Schemas["CapabilityClass"];
+export type AuditEvent = Schemas["AuditEvent"];
+export type ApprovalRequest = Schemas["ApprovalRequest"];
+export type ApprovalScope = Schemas["ApprovalScope"];
+export type ApprovalOutcome = Schemas["ApprovalOutcome"];
+export type Allowances = Schemas["Allowances"];
 
 export const API_BASE = "/v1";
 

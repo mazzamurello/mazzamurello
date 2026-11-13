@@ -5,10 +5,11 @@ import { RotateCcw, X } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { api, unwrap, type Conversation, type ModelChoice, type Reasoning, type ToolName, type UserSettings, type UserSettingsView } from "../api/client";
+import { api, unwrap, type Allowances, type Conversation, type ModelChoice, type Reasoning, type ToolName, type UserSettings, type UserSettingsView } from "../api/client";
 import { updateConversation } from "../conversations";
 import { findModel, useModels } from "../models";
 import { useNotify } from "../notices";
+import { toolLabel, useLockedTools } from "../tools";
 import { ModelSelect } from "./ModelPicker";
 
 export const SETTINGS = ["me", "settings"] as const;
@@ -86,7 +87,21 @@ function ReasoningField({ value, onChange, reasons }: { value: Reasoning; onChan
 }
 
 /** A switch: the label names it, the description says more (UX-007). */
-function Switch({ label, description, checked, onChange, strong = false }: { label: string; description?: React.ReactNode; checked: boolean; onChange: (on: boolean) => void; strong?: boolean }) {
+function Switch({
+  label,
+  description,
+  checked,
+  onChange,
+  strong = false,
+  locked = false,
+}: {
+  label: string;
+  description?: React.ReactNode;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  strong?: boolean;
+  locked?: boolean;
+}) {
   const name = useId();
   const more = useId();
   return (
@@ -106,19 +121,25 @@ function Switch({ label, description, checked, onChange, strong = false }: { lab
         type="checkbox"
         role="switch"
         checked={checked}
+        disabled={locked}
         aria-describedby={description ? more : undefined}
         onChange={(event) => onChange(event.target.checked)}
-        className="peer absolute inset-0 size-full cursor-pointer opacity-0"
+        className="peer absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
       />
-      <span aria-hidden="true" className={SWITCH} />
+      <span aria-hidden="true" className={`${SWITCH} peer-disabled:opacity-50`} />
     </div>
   );
 }
 
-/** Every tool, by group with its name, each with a switch, and a switch for each group (CNV-013, ADR-0087). */
+/**
+ * Every tool, by group with its name, each with a switch, and a switch for each group (CNV-013, ADR-0087).
+ * A tool the household's admin denied is off and locked, and says why (ADR-0090).
+ */
 function ToolSwitches({ disabled, onChange }: { disabled: ToolName[]; onChange: (disabled: ToolName[]) => void }) {
   const { t } = useTranslation();
   const heading = useId();
+  const locked = useLockedTools();
+  const isOn = (tool: ToolName) => !disabled.includes(tool) && !locked.has(tool);
   const set = (tools: ToolName[], on: boolean) => onChange(on ? disabled.filter((name) => !tools.includes(name)) : [...disabled.filter((name) => !tools.includes(name)), ...tools]);
   return (
     <div role="group" aria-labelledby={heading}>
@@ -128,19 +149,33 @@ function ToolSwitches({ disabled, onChange }: { disabled: ToolName[]; onChange: 
       <p className="mb-2.5 max-w-[62ch] text-sm text-muted">{t("assistant.toolsHint")}</p>
       <div className="flex flex-col gap-3">
         {TOOL_GROUPS.map((group) => {
-          const on = group.tools.filter((tool) => !disabled.includes(tool)).length;
+          const on = group.tools.filter(isOn).length;
+          const free = group.tools.filter((tool) => !locked.has(tool));
           return (
             <div key={group.id} className="max-w-[460px] rounded-[14px] border border-line px-2.5 py-1.5">
               <Switch
                 label={t(`assistant.toolGroups.${group.id}`)}
                 description={t("assistant.toolsOn", { on, total: group.tools.length })}
-                checked={on === group.tools.length}
-                onChange={(checked) => set(group.tools, checked)}
+                checked={free.length > 0 && free.every(isOn)}
+                onChange={(checked) => set(free, checked)}
                 strong
+                locked={free.length === 0}
               />
               <div className="mt-0.5 flex flex-col border-t border-line pt-0.5 pl-2">
                 {group.tools.map((tool) => (
-                  <Switch key={tool} label={t(`assistant.toolNames.${tool}`)} description={<code className="font-mono">{tool}</code>} checked={!disabled.includes(tool)} onChange={(checked) => set([tool], checked)} />
+                  <Switch
+                    key={tool}
+                    label={t(`assistant.toolNames.${tool}`)}
+                    description={
+                      <>
+                        <code className="font-mono">{tool}</code>
+                        {locked.has(tool) && <span className="block">{t("permissions.lockedByAdmin")}</span>}
+                      </>
+                    }
+                    checked={isOn(tool)}
+                    locked={locked.has(tool)}
+                    onChange={(checked) => set([tool], checked)}
+                  />
                 ))}
               </div>
             </div>
@@ -311,12 +346,15 @@ function ChatSettingsForm({ conversation, defaults, onDone }: { conversation: Co
   const [disabled, setDisabled] = useState(conversation.disabled_tools);
   const [base, setBase] = useState(conversation.base_instructions ?? inheritedBase);
   const [additional, setAdditional] = useState(conversation.additional_instructions ?? inheritedAdditional);
+  const [allowances, setAllowances] = useState<Allowances>(conversation.allowances);
+  const withdrawn = allowances.web_and_commands !== conversation.allowances.web_and_commands || allowances.tools.length !== conversation.allowances.tools.length;
 
   async function save() {
     try {
       const updated = await updateConversation(conversation.id, {
         reasoning,
         disabled_tools: disabled,
+        ...(withdrawn ? { allowances } : {}),
         base_instructions: own(base, inheritedBase),
         additional_instructions: own(additional, inheritedAdditional),
       });
@@ -341,6 +379,7 @@ function ChatSettingsForm({ conversation, defaults, onDone }: { conversation: Co
       <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-[22px] py-4">
         <ReasoningField value={reasoning} onChange={setReasoning} reasons={reasons} />
         <ToolSwitches disabled={disabled} onChange={setDisabled} />
+        <AllowedInChat allowances={allowances} onChange={setAllowances} />
         <AdditionalPrompt value={additional} onChange={setAdditional} placeholder={t("assistant.none")} />
         <DangerZone value={base} inherited={inheritedBase} onChange={setBase} />
       </div>
@@ -351,5 +390,37 @@ function ChatSettingsForm({ conversation, defaults, onDone }: { conversation: Co
         </button>
       </div>
     </Dialog.Content>
+  );
+}
+
+/** What the user allowed in this conversation by answering approval requests, each one withdrawable (AGT-006, UX-023). */
+function AllowedInChat({ allowances, onChange }: { allowances: Allowances; onChange: (allowances: Allowances) => void }) {
+  const { t } = useTranslation();
+  const heading = useId();
+  const items: { key: string; label: string; withdraw: () => void }[] = [
+    ...(allowances.web_and_commands ? [{ key: "web_and_commands", label: t("approvals.webAndCommands"), withdraw: () => onChange({ ...allowances, web_and_commands: false }) }] : []),
+    ...allowances.tools.map((tool) => ({ key: tool, label: toolLabel(t, tool), withdraw: () => onChange({ ...allowances, tools: allowances.tools.filter((name) => name !== tool) }) })),
+  ];
+  return (
+    <section aria-labelledby={heading}>
+      <h3 id={heading} className="mb-1 text-sm font-bold">
+        {t("approvals.allowedInChat")}
+      </h3>
+      <p className="mb-2.5 max-w-[62ch] text-sm text-muted">{t("approvals.allowedHint")}</p>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted">{t("approvals.nothingAllowed")}</p>
+      ) : (
+        <ul className="flex max-w-[460px] flex-col gap-1.5">
+          {items.map((item) => (
+            <li key={item.key} className="flex items-center justify-between gap-3 rounded-[10px] border border-line px-3 py-1.5 text-sm">
+              <span>{item.label}</span>
+              <button type="button" className="rounded-lg px-2 py-1 text-[13px] font-semibold text-danger hover:bg-hover" onClick={item.withdraw}>
+                {t("approvals.withdraw")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

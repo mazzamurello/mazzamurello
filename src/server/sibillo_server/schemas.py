@@ -285,6 +285,80 @@ def _unique(tools: list[ToolName]) -> list[ToolName]:
 
 
 type DisabledTools = Annotated[list[ToolName], AfterValidator(_unique)]
+
+# Tool permissions, approvals and audit events (AGT-002, AGT-005, AGT-008, ADR-0090).
+type CapabilityClass = Literal[
+    "reads_private_data", "ingests_untrusted", "external_communication", "irreversible", "physical"
+]
+type PermissionSetting = Literal["allow", "ask", "deny"]
+type ApprovalScope = Literal["once", "turn", "conversation"]
+type ApprovalOutcome = Literal["not_needed", "allowed", "approved", "denied", "expired", "refused"]
+type ApprovalReason = Literal["untrusted_content", "tool_default", "permission", "consequential", "device"]
+
+
+class ToolPermissions(Request):
+    tools: dict[ToolName, PermissionSetting]
+    classes: dict[CapabilityClass, PermissionSetting]
+
+
+class ToolPermissionsOut(Response):
+    tools: dict[str, PermissionSetting]
+    classes: dict[str, PermissionSetting]
+
+
+class PermissionSource(Response):
+    setting: PermissionSetting
+    subject: str
+
+
+class ToolInfo(Response):
+    name: ToolName
+    classes: list[CapabilityClass]
+    approval_default: Literal["allow", "ask"]
+    effective: PermissionSetting
+    permission: PermissionSource | None
+
+
+class ToolList(Response):
+    items: list[ToolInfo]
+
+
+class Allowances(Response):
+    web_and_commands: bool
+    tools: list[ToolName]
+
+
+class AllowancesUpdate(Request):
+    web_and_commands: bool
+    tools: DisabledTools
+
+
+class AuditEvent(Response):
+    id: uuid.UUID
+    tool: str
+    conversation_id: uuid.UUID
+    conversation_title: str | None
+    run_id: uuid.UUID
+    tool_call_id: str
+    outcome: ApprovalOutcome
+    scope: ApprovalScope | None
+    reason: ApprovalReason | None
+    repeated: bool
+    created_at: Timestamp
+
+
+class ActivityPage(Response):
+    items: list[AuditEvent]
+    next_cursor: str | None
+
+
+class RunApproval(Response):
+    tool_call_id: str
+    outcome: ApprovalOutcome
+    scope: ApprovalScope | None
+    reason: ApprovalReason | None
+
+
 # Postgres text holds no NUL character.
 type Instructions = Annotated[str, Field(max_length=20000, pattern=r"^[^\x00]*$")]
 
@@ -325,6 +399,8 @@ class UpdateConversationRequest(Request):
     pinned: bool | None = None
     reasoning: Reasoning | None = None
     disabled_tools: DisabledTools | None = None
+    # Only withdraws what the user allowed (AGT-006, ADR-0090).
+    allowances: AllowancesUpdate | None = None
     # Present and null uses the user's defaults again (CNV-014).
     base_instructions: Instructions | None = None
     additional_instructions: Instructions | None = None
@@ -400,6 +476,7 @@ class Conversation(Response):
     model: ModelChoiceOut | None
     reasoning: Reasoning
     disabled_tools: list[ToolName]
+    allowances: Allowances
     base_instructions: str | None
     additional_instructions: str | None
     folder_id: uuid.UUID | None
@@ -451,6 +528,8 @@ class PathRun(Response):
     cost: list[Money]
     # Why the run failed, shown in place of its answer (UX-014).
     error: RunError | None
+    # How the calls of the run that needed approval were decided (UX-023).
+    approvals: list[RunApproval]
 
 
 class MessagePage(Response):

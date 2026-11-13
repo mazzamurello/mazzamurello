@@ -6,13 +6,16 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { ApiError, api, unwrap, type ModelChoice, type MessagePage, type PathRun } from "../api/client";
+import type { ResumeEntry } from "../api/stream";
 import { forkConversation, rewindConversation, updateConversation, useRefreshConversations } from "../conversations";
 import { formatMoney, isPaid, USAGE } from "../costs";
 import { useNotify } from "../notices";
 import { ASK_USER, isPlanning, type LivePart, type LiveRun, poseOf, type RunUsage, toolActivity, useLiveRun } from "../run";
 import { openTemporary } from "../temporary";
+import { outcomeLabel } from "../tools";
 import { useVoice, type VoiceMode } from "../voice";
 import { type AttachedFile, download, downloadUrl, formatSize, listFolder, useAttachments } from "../workspace";
+import { ApprovalCard } from "./Approvals";
 import { ChatSettings } from "./AssistantSettings";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
@@ -182,7 +185,13 @@ export function ConversationView() {
     }
   }, [firstMessage, firstAttachments, firstVoice, conversationId, start, navigate, location.pathname]);
 
-  const questions = conversation.data?.interrupts ?? [];
+  // Pending approvals first, then questions; both are answered together (UX-022, ADR-0090).
+  const pendingInterrupts = conversation.data?.interrupts ?? [];
+  const approvals = pendingInterrupts.filter((interrupt) => interrupt.reason === "approval");
+  const questions = pendingInterrupts.filter((interrupt) => interrupt.reason !== "approval");
+  const pendingKey = pendingInterrupts.map((interrupt) => interrupt.id).join();
+  const [decided, setDecided] = useState<{ key: string; entries: ResumeEntry[] } | null>(null);
+  const decisions = decided?.key === pendingKey ? decided.entries : null;
 
   // A temporary conversation goes when its user leaves it (CNV-011).
   const temporary = conversation.data?.temporary === true;
@@ -242,6 +251,7 @@ export function ConversationView() {
   }
 
   const turns = history.data ? turnsOf(history.data) : [];
+  const decidedCalls = new Map((history.data?.runs ?? []).flatMap((run) => run.approvals.map((item) => [item.tool_call_id, item] as const)));
   // The run being answered shows live, even when the history was loaded meanwhile (ADR-0085), until
   // the history is fetched again once it ended: a history fetched while it ran lacks its end (UX-003).
   const shown = (live !== null && hideFrom !== null ? turns.slice(0, hideFrom) : turns).filter(
@@ -298,6 +308,7 @@ export function ConversationView() {
               onFork={temporary ? undefined : () => void fork(turn)}
               conversationId={conversationId}
               onShow={show}
+              decided={decidedCalls}
             />
           ))}
           {live && !settled && (
@@ -345,9 +356,15 @@ export function ConversationView() {
             {contextUsage && <ContextGauge usage={contextUsage} />}
           </div>
           <TaskList steps={live?.plan ?? conversation.data?.plan ?? []} />
-          {/* A pending question takes the message box's place until it is answered (AGT-015, UX-009). */}
-          {!running && questions.length > 0 ? (
-            <QuestionCard key={questions.map((question) => question.id).join()} interrupts={questions} onAnswer={(resume) => start({ conversationId, text: "", resume })} />
+          {/* A pending approval or question takes the message box's place until it is answered (AGT-015, UX-009, UX-022). */}
+          {!running && approvals.length > 0 && decisions === null ? (
+            <ApprovalCard
+              key={pendingKey}
+              interrupts={approvals}
+              onDecided={(entries) => (questions.length > 0 ? setDecided({ key: pendingKey, entries }) : start({ conversationId, text: "", resume: entries }))}
+            />
+          ) : !running && questions.length > 0 ? (
+            <QuestionCard key={questions.map((question) => question.id).join()} interrupts={questions} onAnswer={(resume) => start({ conversationId, text: "", resume: [...(decisions ?? []), ...resume] })} />
           ) : (
             <Composer
               onSend={(text, files, voice) => start({ conversationId, text, attachments: files, ...(voice ? { voice } : {}) })}
@@ -483,6 +500,8 @@ function TurnView(props: {
   onFork: (() => void) | undefined;
   conversationId: string;
   onShow: (path: string) => void;
+  /** How each call of the conversation that needed approval was decided, by tool call (UX-023). */
+  decided: Map<string, PathRun["approvals"][number]>;
 }) {
   const { t } = useTranslation();
   const { turn, busy } = props;
@@ -524,7 +543,7 @@ function TurnView(props: {
             </div>
           </div>
         ))}
-      <Answer parts={turn.parts} conversationId={props.conversationId} onShow={props.onShow} />
+      <Answer parts={turn.parts} conversationId={props.conversationId} onShow={props.onShow} decided={props.decided} />
       {turn.run.error && turn.run.error.code !== "run.cancelled" && (
         <RunErrorView code={turn.run.error.code} reason={turn.run.error.reason ?? props.reason ?? null} />
       )}
@@ -631,7 +650,19 @@ function UserBubble({ text, attachments, onShow }: { text: string; attachments: 
   );
 }
 
-function Answer({ parts, conversationId, onShow, running = false }: { parts: LivePart[]; conversationId: string; onShow: (path: string) => void; running?: boolean }) {
+function Answer({
+  parts,
+  conversationId,
+  onShow,
+  running = false,
+  decided,
+}: {
+  parts: LivePart[];
+  conversationId: string;
+  onShow: (path: string) => void;
+  running?: boolean;
+  decided?: Map<string, PathRun["approvals"][number]>;
+}) {
   const offers = parts.flatMap((part) => (part.kind === "tool" ? (offerOf(part) ?? []) : []));
   // Text, reasoning and tool calls in the order they came: consecutive calls form one group, and
   // consecutive reasoning one fold (UX-003, CNV-013, ADR-0085).
@@ -659,7 +690,7 @@ function Answer({ parts, conversationId, onShow, running = false }: { parts: Liv
         ) : (
           <div key={block.parts[0]?.id} className="flex flex-col items-start gap-1.5">
             {block.parts.map((part) => (
-              <ToolCall key={part.id} part={part} running={running} />
+              <ToolCall key={part.id} part={part} running={running} decision={decided?.get(part.id)} />
             ))}
           </div>
         ),
@@ -731,7 +762,7 @@ function CallState({ done, running }: { done: boolean; running: boolean }) {
 }
 
 /** Tool activity as a compact summary that expands to its full details, running or done (UX-003, ADR-0085). */
-function ToolCall({ part, running }: { part: Extract<LivePart, { kind: "tool" }>; running: boolean }) {
+function ToolCall({ part, running, decision }: { part: Extract<LivePart, { kind: "tool" }>; running: boolean; decision?: PathRun["approvals"][number] | undefined }) {
   const { t } = useTranslation();
   const activity = toolActivity(part.name);
   const args = argumentsOf(part.args);
@@ -764,6 +795,12 @@ function ToolCall({ part, running }: { part: Extract<LivePart, { kind: "tool" }>
           <b className="truncate font-semibold text-fg">{label}</b>
           {preview && <span className="min-w-0 truncate font-mono text-[12.5px]">{preview}</span>}
         </span>
+        {/* How the call was decided, when it needed approval (UX-023). */}
+        {decision && (
+          <span className={`flex-none rounded-full px-2 py-0.5 text-xs font-semibold ${decision.outcome === "denied" || decision.outcome === "expired" || decision.outcome === "refused" ? "bg-danger/15 text-danger" : "bg-accent-soft text-accent"}`}>
+            {outcomeLabel(t, decision.outcome, decision.scope)}
+          </span>
+        )}
         <ChevronRight className="size-4 flex-none transition-transform group-open/tool:rotate-90" aria-hidden="true" />
       </summary>
       <div className="mt-2 mb-1 ml-3.5 flex flex-col gap-2 border-l-2 border-line py-1 pl-3.5 text-[13.5px] text-muted">

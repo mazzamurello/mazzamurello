@@ -44,6 +44,7 @@ from sibillo_server.costs import amount
 from sibillo_server.database import Identity, transaction
 from sibillo_server.encryption import decrypt
 from sibillo_server.endpoints import tenant_http_client
+from sibillo_server.tool_policy import Allowances, Permissions
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,13 @@ class RunDeps:
     additional_instructions: str | None = None
     # How the run's message came, when it was not typed (UX-005, ADR-0088).
     voice: str | None = None
+    # The user's tool permissions, what they allowed, and whether the path before this run holds untrusted
+    # content (AGT-002, AGT-003, AGT-006, ADR-0090).
+    permissions: Permissions = field(default_factory=Permissions)
+    allowances: Allowances = field(default_factory=Allowances)
+    untrusted: bool = False
+    # The run this one continues: for a run that answers an interrupt, the run that asked (ADR-0033).
+    parent_run_id: uuid.UUID | None = None
     location: str = "remote"
     prices: dict[str, Any] = field(default_factory=dict[str, Any])
     # The model's context window, and what the run used so far (MOD-007, ADR-0073).

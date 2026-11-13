@@ -9,6 +9,7 @@ they are produced.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import signal
@@ -17,8 +18,8 @@ from collections.abc import AsyncIterable, Callable
 from dataclasses import replace
 from typing import Any, cast, get_args
 
-from dbos import DBOS, DBOSConfig
-from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, RunContext
+from dbos import DBOS, DBOSClient, DBOSConfig
+from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, RunContext, ToolDenied
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, ModelHTTPError
@@ -47,8 +48,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from sibillo_server import schemas
+from sibillo_server.approvals import Approvals
 from sibillo_server.config import WorkerConfiguration
-from sibillo_server.conversations import delete_everything, path_runs, stored_messages
+from sibillo_server.conversations import delete_everything, find_conversation, path_runs, stored_messages
+from sibillo_server.credentials import uuid7
 from sibillo_server.database import Identity, create_engine, transaction
 from sibillo_server.durable import (
     APPLICATION_NAME,
@@ -56,6 +59,7 @@ from sibillo_server.durable import (
     EVENTS_STREAM,
     RUN_QUEUE,
     RUN_WORKFLOW,
+    create_client,
 )
 from sibillo_server.gateway import (
     Gateway,
@@ -68,10 +72,14 @@ from sibillo_server.gateway import (
     store_messages,
 )
 from sibillo_server.offers import TOOLS as OFFER_TOOLS
+from sibillo_server.permissions import permissions_of
 from sibillo_server.plans import ConversationPlanStore, plan_steps
-from sibillo_server.questions import REQUESTS, asks_user, interrupts
+from sibillo_server.questions import REQUESTS, asks_user, expired, interrupts
+from sibillo_server.runs import create_run, enqueue, fail_unqueued
 from sibillo_server.sandbox import CommandPurposes, SandboxDriver, SandboxWorkspace, sandbox_ref, stop_sandbox
 from sibillo_server.settings import BUILT_IN_BASE_INSTRUCTIONS
+from sibillo_server.tool_policy import ATTACHMENTS_ORIGIN as POLICY_ATTACHMENTS_ORIGIN
+from sibillo_server.tool_policy import DENIED, EXPIRED, Allowances, has_untrusted_content
 from sibillo_server.web_tools import TOOLS as WEB_TOOLS
 from sibillo_server.workflow_input import RunWorkflowInput
 
@@ -197,6 +205,8 @@ class _Worker:
     sandboxd_url: str = ""
     sandboxd_token: str = ""
     search_url: str = ""
+    # Queues the runs the worker starts itself, such as those that deny expired approvals (ADR-0090).
+    durable: DBOSClient | None = None
 
 
 _WORKER = _Worker()
@@ -284,9 +294,17 @@ agent = Agent[RunDeps, str | DeferredToolRequests](
         # from run to run (AGT-015, UX-009, ADR-0083).
         _instructions_while_on(AskUser[RunDeps](answerer=None)),
         _instructions_while_on(Planning[RunDeps](store_resolver=_plan_store)),
+        # Tool permissions, approvals and audit events (AGT-002, AGT-004, AGT-006, AGT-008, ADR-0090).
+        Approvals(),
         DBOSDurability(event_stream_handler=_handle_events),
     ],
 )
+
+
+def _durable() -> DBOSClient:
+    if _WORKER.durable is None:
+        raise RuntimeError("the worker is not started")
+    return _WORKER.durable
 
 
 def _engine() -> AsyncEngine:
@@ -311,10 +329,13 @@ async def _set_status(identity: Identity, run_id: uuid.UUID, status: str, error_
 
 async def _history(
     identity: Identity, conversation_id: uuid.UUID, parent: uuid.UUID | None, *, answering: bool = False
-) -> list[ModelMessage]:
-    """The messages of the path that the run continues, and nothing else (CNV-002)."""
+) -> tuple[list[ModelMessage], bool]:
+    """The messages of the path that the run continues, and nothing else (CNV-002).
+
+    And whether the path holds untrusted content, compacted or not (AGT-003, ADR-0090).
+    """
     if parent is None:
-        return []
+        return [], False
     async with transaction(_engine(), identity) as connection:
         path = await path_runs(connection, conversation_id, parent)
         # The latest compaction on the path replaces the history before its run (ADR-0041).
@@ -327,6 +348,9 @@ async def _history(
         checkpoints = {row.run_id: row.messages for row in checkpoint}
         start = max((index for index, run in enumerate(path) if run.id in checkpoints), default=None)
         stored = await stored_messages(connection, [run.id for run in path])
+    untrusted = has_untrusted_content(
+        [message for run in path for message in ModelMessagesTypeAdapter.validate_python(stored[run.id])]
+    )
     history: list[ModelMessage] = []
     if start is not None:
         history = list(ModelMessagesTypeAdapter.validate_python(checkpoints[path[start].id]))
@@ -335,7 +359,7 @@ async def _history(
     # A run that failed or was stopped while a tool worked left its call without a result: the
     # model reads it as interrupted, and the conversation goes on (CNV-018). The questions a run
     # that answers them continues are left to their answers (ADR-0083).
-    return repair_messages(history, repair_last_response=not answering)
+    return repair_messages(history, repair_last_response=not answering), untrusted
 
 
 def _error_code(error: BaseException) -> str:
@@ -362,16 +386,24 @@ async def run_workflow(serialized_input: str) -> None:
     )
     run_id, conversation_id = uuid.UUID(run.run_id), uuid.UUID(run.conversation_id)
     await _set_status(identity, run_id, "running")
-    history = await _history(
-        identity,
-        conversation_id,
-        None if run.parent_run_id is None else uuid.UUID(run.parent_run_id),
-        answering=run.answers is not None,
+    parent_run_id = None if run.parent_run_id is None else uuid.UUID(run.parent_run_id)
+    history, untrusted = await _history(
+        identity, conversation_id, parent_run_id, answering=run.answers is not None or bool(run.approvals)
     )
     async with transaction(_engine(), identity) as connection:
         attribution = (
-            await connection.execute(text("SELECT model_provider, model_name FROM runs WHERE id = :id"), {"id": run_id})
+            await connection.execute(
+                text("SELECT model_provider, model_name, turn_allows_web_and_commands FROM runs WHERE id = :id"),
+                {"id": run_id},
+            )
         ).one()
+        allowed = (
+            await connection.execute(
+                text("SELECT allowed_web_and_commands, allowed_tools FROM conversations WHERE id = :id"),
+                {"id": conversation_id},
+            )
+        ).one()
+        permissions = await permissions_of(connection, identity.user_id)
     deps = RunDeps(
         engine=_engine(),
         identity=identity,
@@ -390,11 +422,20 @@ async def run_workflow(serialized_input: str) -> None:
         base_instructions=run.base_instructions,
         additional_instructions=run.additional_instructions,
         voice=run.voice,
+        permissions=permissions,
+        allowances=Allowances(
+            turn_web_and_commands=attribution.turn_allows_web_and_commands,
+            web_and_commands=allowed.allowed_web_and_commands,
+            tools=frozenset(allowed.allowed_tools),
+        ),
+        untrusted=untrusted,
+        parent_run_id=parent_run_id,
     )
     encoder: AGUIEventStream[Any, Any] = AGUIEventStream(thread_id=run.conversation_id, run_id=run.run_id)
     _ENCODERS[run.run_id] = encoder
+    asking = False
     try:
-        await _execute(run, identity, deps, history, encoder)
+        asking = await _execute(run, identity, deps, history, encoder)
     except Exception as error:
         code = _error_code(error)
         logger.exception("run %s failed: %s", run.run_id, code)
@@ -405,8 +446,10 @@ async def run_workflow(serialized_input: str) -> None:
         _ENCODERS.pop(run.run_id, None)
         _WRITTEN.pop(run.run_id, None)
         raise
-    # The sandbox ends with the answer, and whatever it started with it (SBX-018, ADR-0078).
-    await _end_sandbox(deps)
+    # The sandbox ends with the answer, and whatever it started with it (SBX-018, ADR-0078); a run that
+    # asks the user leaves it to the run that continues with the answer, or to the idle limit (ADR-0090).
+    if not asking:
+        await _end_sandbox(deps)
     _ENCODERS.pop(run.run_id, None)
     async with transaction(_engine(), identity) as connection:
         await connection.execute(
@@ -417,13 +460,13 @@ async def run_workflow(serialized_input: str) -> None:
 
 
 # Labels the part of a user's message that lists its attachments, apart from what they wrote (CNV-017).
-ATTACHMENTS_ORIGIN = "sibillo.attachments"
+ATTACHMENTS_ORIGIN = POLICY_ATTACHMENTS_ORIGIN
 
 
 def _user_prompt(run: RunWorkflowInput) -> str | list[UserContent] | None:
     """The user's message, with the files attached to it, which the model reads with their paths and sizes."""
-    if run.answers is not None:
-        # The answers to the questions are the user's input (ADR-0083).
+    if run.answers is not None or run.approvals:
+        # The answers to the questions and approvals are the user's input (ADR-0083, ADR-0090).
         return None
     if not run.attachments:
         return run.user_text
@@ -449,7 +492,7 @@ async def _execute(
     deps: RunDeps,
     history: list[ModelMessage],
     encoder: AGUIEventStream[Any, Any],
-) -> None:
+) -> bool:
     async for event in encoder.before_stream():
         await _write(run.run_id, _encoded(event))
     if run.parent_run_id is None and not run.temporary:
@@ -466,7 +509,7 @@ async def _execute(
             conversation_id=run.conversation_id,
             # The conversation's own sandbox, whatever an earlier reference in its history names (ADR-0078).
             workspace=sandbox_ref(str(identity.tenant_id), str(identity.user_id), run.conversation_id),
-            deferred_tool_results=None if run.answers is None else DeferredToolResults(calls=run.answers),
+            deferred_tool_results=_deferred_results(run),
         )
     except (ModelUnavailableError, ModelAPIError, ContentFilterError) as error:
         code = _error_code(error)
@@ -475,7 +518,7 @@ async def _execute(
             await _announce_title(run.run_id)
         await _write_error(run.run_id, code, _reason(error))
         await _set_status(identity, deps.run_id, "failed", code)
-        return
+        return False
     except BaseException:
         if (title := _TITLES.pop(run.run_id, None)) is not None:
             title.cancel()
@@ -486,20 +529,54 @@ async def _execute(
     output = result.output
     pending = REQUESTS.dump_python(output, mode="json") if isinstance(output, DeferredToolRequests) else None
     if isinstance(output, DeferredToolRequests) and not asks_user(output):
-        raise RuntimeError("the run left calls that are not questions to the user")
+        raise RuntimeError("the run left calls that are neither questions to the user nor approval requests")
+    expires_at = None
     if pending is not None:
-        # The run waits for the user's answer, which the next run brings (ADR-0033, ADR-0083).
+        # The run waits for the user's answer, which the next run brings (ADR-0033, ADR-0083); approval
+        # requests expire after a day (AGT-007, ADR-0090).
+        asks_approval = isinstance(output, DeferredToolRequests) and bool(output.approvals)
         async with transaction(_engine(), identity) as connection:
-            await connection.execute(
-                text("UPDATE conversations SET pending_interrupts = CAST(:pending AS jsonb) WHERE id = :id"),
-                {"pending": json.dumps(pending), "id": deps.conversation_id},
-            )
+            expires_at = (
+                await connection.execute(
+                    text(
+                        "UPDATE conversations SET pending_interrupts = CAST(:pending AS jsonb),"
+                        " approvals_expire_at = CASE WHEN :approvals THEN now() + make_interval(hours => :hours)"
+                        " END WHERE id = :id RETURNING approvals_expire_at"
+                    ),
+                    {
+                        "pending": json.dumps(pending),
+                        "approvals": asks_approval,
+                        "hours": APPROVAL_HOURS,
+                        "id": deps.conversation_id,
+                    },
+                )
+            ).scalar_one()
     async for event in encoder.after_stream():
         encoded = _encoded(event)
         if pending is not None and encoded["type"] == "RUN_FINISHED":
-            encoded["outcome"] = {"type": "interrupt", "interrupts": interrupts(pending)}
+            encoded["outcome"] = {"type": "interrupt", "interrupts": interrupts(pending, expires_at)}
         await _write(run.run_id, encoded)
     await _set_status(identity, deps.run_id, "completed" if pending is None else "interrupted")
+    return pending is not None
+
+
+# An approval request is denied after a day without an answer (AGT-007, ADR-0090).
+APPROVAL_HOURS = 24
+
+
+def _deferred_results(run: RunWorkflowInput) -> DeferredToolResults | None:
+    """The answers a resume run brings: to questions, and the user's decision on each approval request."""
+    if run.answers is None and not run.approvals:
+        return None
+    approvals: dict[str, bool | ToolDenied] = {}
+    metadata: dict[str, dict[str, Any]] = {}
+    for tool_call_id, decision in run.approvals.items():
+        if decision.get("approved"):
+            approvals[tool_call_id] = True
+            metadata[tool_call_id] = {"scope": decision.get("scope"), "reason": decision.get("reason")}
+        else:
+            approvals[tool_call_id] = ToolDenied(EXPIRED if decision.get("expired") else DENIED)
+    return DeferredToolResults(calls=run.answers or {}, approvals=dict(approvals), metadata=metadata)
 
 
 TITLE_PROMPT = (
@@ -640,6 +717,55 @@ async def _delete_expired_temporary_conversations() -> None:
             logger.exception("a temporary conversation could not be deleted")
 
 
+async def _deny_expired_approvals() -> None:
+    """Resume each conversation whose approval requests expired, denying them, under its owner (AGT-007)."""
+    async with transaction(_engine(), None) as connection:
+        expired_rows = (await connection.execute(text("SELECT * FROM expired_approvals()"))).all()
+    for row in expired_rows:
+        owner = Identity(
+            session_id=uuid.UUID(int=0),
+            user_id=row.owner_id,
+            tenant_id=row.tenant_id,
+            role="member",
+            instance_admin=False,
+        )
+        run_id = uuid7()
+        try:
+            async with transaction(_engine(), owner) as connection:
+                conversation = await find_conversation(connection, row.conversation_id, lock=True)
+                # Still pending and expired: it may have been answered meanwhile.
+                if conversation.pending_interrupts is None or conversation.approvals_expire_at is None:
+                    continue
+                if conversation.approvals_expire_at > datetime.datetime.now(datetime.UTC):
+                    continue
+                workflow_input = await create_run(
+                    connection,
+                    owner,
+                    conversation,
+                    run_id=run_id,
+                    answers=expired(conversation.pending_interrupts),
+                    expired=True,
+                )
+        except Exception:
+            # The next sweep tries again.
+            logger.exception("expired approvals could not be denied")
+            continue
+        try:
+            await enqueue(_durable(), workflow_input)
+        except Exception:
+            logger.exception("the run denying expired approvals could not be queued")
+            await fail_unqueued(_engine(), owner, run_id)
+
+
+async def _approval_loop(seconds: int) -> None:
+    while True:
+        try:
+            await _deny_expired_approvals()
+        except Exception:
+            logger.exception("the sweep for expired approvals failed")
+        await asyncio.sleep(seconds)
+
+
 async def _temporary_loop(seconds: int) -> None:
     while True:
         try:
@@ -667,9 +793,11 @@ async def _serve(configuration: WorkerConfiguration) -> None:
         loop.add_signal_handler(signum, stop.set)
     retention = asyncio.create_task(_retention_loop(configuration.run_retention_days))
     temporary = asyncio.create_task(_temporary_loop(configuration.temporary_sweep_seconds))
+    approvals = asyncio.create_task(_approval_loop(configuration.approval_sweep_seconds))
     await stop.wait()
     retention.cancel()
     temporary.cancel()
+    approvals.cancel()
 
 
 def run_worker(configuration: WorkerConfiguration) -> None:
@@ -681,6 +809,7 @@ def run_worker(configuration: WorkerConfiguration) -> None:
     _WORKER.sandboxd_url = configuration.sandboxd_url
     _WORKER.sandboxd_token = configuration.sandboxd_token
     _WORKER.search_url = configuration.search_url
+    _WORKER.durable = create_client(configuration.database_url)
     DBOS(
         config=DBOSConfig(
             name=APPLICATION_NAME,

@@ -21,13 +21,15 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from sibillo_server import errors, schemas
+from sibillo_server.approvals import record
 from sibillo_server.auth import Authenticated, Engine
 from sibillo_server.conversations import Durable, find_conversation
 from sibillo_server.database import UNIQUE_VIOLATION, Identity, sqlstate, transaction
 from sibillo_server.durable import APPLICATION_VERSION, EVENTS_STREAM, RUN_QUEUE, RUN_WORKFLOW
-from sibillo_server.questions import answer
+from sibillo_server.questions import Answers, answer
 from sibillo_server.sandbox import SandboxDriver, stop_conversation_sandbox
 from sibillo_server.settings import new_conversation
+from sibillo_server.tool_policy import WEB_AND_COMMANDS
 from sibillo_server.workflow_input import RunWorkflowInput
 from sibillo_server.workspace import attachment_entries
 
@@ -180,6 +182,144 @@ async def _run_model(connection: AsyncConnection, conversation: Any) -> Any:
     return row
 
 
+async def create_run(
+    connection: AsyncConnection,
+    identity: Identity,
+    conversation: Any,
+    *,
+    run_id: uuid.UUID,
+    answers: Answers | None,
+    user_text: str = "",
+    attachments: list[dict[str, Any]] | None = None,
+    voice: str | None = None,
+    expired: bool = False,
+) -> RunWorkflowInput:
+    """Record a run that continues the conversation, in the caller's transaction: its workflow's input.
+
+    A run with `answers` answers the pending interrupt: what the user allowed is kept with the
+    conversation or the turn, and each call they denied, or that expired, is audited (ADR-0090).
+    """
+    parent = conversation.active_run_id
+    model = await _run_model(connection, conversation)
+    base, additional = await _instructions(connection, conversation)
+    resuming = answers is not None
+    turn = False
+    if resuming and parent is not None:
+        turn = bool(
+            (
+                await connection.execute(
+                    text("SELECT turn_allows_web_and_commands FROM runs WHERE id = :id"), {"id": parent}
+                )
+            ).scalar_one_or_none()
+        )
+    approvals: dict[str, Any] = {}
+    for decision in answers.approvals if answers is not None else []:
+        approvals[decision.tool_call_id] = {
+            "approved": decision.approved,
+            "scope": decision.scope,
+            "reason": decision.reason,
+            "expired": expired,
+        }
+        if decision.scope == "turn":
+            turn = True
+        elif decision.scope == "conversation":
+            together = decision.reason == "untrusted_content" and decision.tool in WEB_AND_COMMANDS
+            await connection.execute(
+                text(
+                    "UPDATE conversations SET allowed_web_and_commands = allowed_web_and_commands OR :together,"
+                    " allowed_tools = CASE WHEN :together OR :tool = ANY(allowed_tools) THEN allowed_tools"
+                    " ELSE array_append(allowed_tools, CAST(:tool AS text)) END WHERE id = :id"
+                ),
+                {"together": together, "tool": decision.tool, "id": conversation.id},
+            )
+        if not decision.approved and parent is not None:
+            # The call never runs: its audit event is written now, for the run that made it (AGT-008).
+            await record(
+                connection,
+                identity,
+                conversation_id=conversation.id,
+                run_id=parent,
+                tool_call_id=decision.tool_call_id,
+                tool=decision.tool,
+                outcome="expired" if expired else "denied",
+                reason=decision.reason,
+            )
+    await connection.execute(
+        text(
+            "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status,"
+            " turn_allows_web_and_commands, connection_id, model_provider, model_name, last_event_seq, created_at)"
+            " VALUES (:id, :tenant_id, :owner_id, :conversation, :parent, :kind, 'queued', :turn, :connection,"
+            " :provider, :model, 0, now())"
+        ),
+        {
+            "kind": "resume" if resuming else "message",
+            "id": run_id,
+            "tenant_id": identity.tenant_id,
+            "owner_id": identity.user_id,
+            "conversation": conversation.id,
+            "parent": parent,
+            "turn": turn,
+            "connection": model.id,
+            "provider": urlsplit(str(model.base_url)).netloc,
+            "model": model.model,
+        },
+    )
+    await connection.execute(
+        text(
+            "UPDATE conversations SET active_run_id = :run, pending_interrupts = NULL, approvals_expire_at = NULL,"
+            " last_message_at = now(), updated_at = now() WHERE id = :id"
+        ),
+        {"run": run_id, "id": conversation.id},
+    )
+    return RunWorkflowInput(
+        tenant_id=str(identity.tenant_id),
+        user_id=str(identity.user_id),
+        role=identity.role,
+        instance_admin=identity.instance_admin,
+        conversation_id=str(conversation.id),
+        run_id=str(run_id),
+        parent_run_id=None if parent is None else str(parent),
+        user_text=user_text,
+        connection_id=str(model.id),
+        model=model.model,
+        attachments=attachments or [],
+        reasoning=conversation.reasoning,
+        disabled_tools=list(conversation.disabled_tools),
+        base_instructions=base,
+        additional_instructions=additional,
+        temporary=conversation.temporary,
+        answers=None if answers is None else answers.calls,
+        approvals=approvals,
+        voice=voice,
+    )
+
+
+async def enqueue(durable: DBOSClient, workflow_input: RunWorkflowInput) -> None:
+    """Queue the run's durable workflow for a worker: one run at a time per conversation (ADR-0034)."""
+    await durable.enqueue_async(
+        {
+            "queue_name": RUN_QUEUE,
+            "workflow_name": RUN_WORKFLOW,
+            "workflow_id": workflow_input.run_id,
+            "queue_partition_key": workflow_input.conversation_id,
+            "app_version": APPLICATION_VERSION,
+        },
+        workflow_input.to_json(),
+    )
+
+
+async def fail_unqueued(engine: AsyncEngine, identity: Identity, run_id: uuid.UUID) -> None:
+    """A run that never starts must not block its conversation (AGT-010)."""
+    async with transaction(engine, identity) as connection:
+        await connection.execute(
+            text(
+                "UPDATE runs SET status = 'failed', error_code = 'internal.error', finished_at = now()"
+                " WHERE id = :id AND status = 'queued'"
+            ),
+            {"id": run_id},
+        )
+
+
 @router.post("/conversations/{conversation_id}/runs")
 async def start_run(
     conversation_id: uuid.UUID,
@@ -191,7 +331,7 @@ async def start_run(
 ) -> StreamingResponse:
     if body.thread_id != conversation_id:
         raise errors.invalid("/threadId", "must_match_conversation")
-    # A run that answers the pending questions continues the run that asked them (AGT-015, ADR-0083).
+    # A run that answers the pending questions and approvals continues the run that asked (ADR-0033, ADR-0083).
     resuming = body.resume is not None
     user_text = "" if resuming else _user_text(body)
     attachments: list[dict[str, Any]] = []
@@ -219,90 +359,33 @@ async def start_run(
             ).one_or_none()
             if active is not None:
                 raise errors.ApiError(409, "run.in_progress", "Run in progress")
-            answers: dict[str, Any] | None = None
+            answers: Answers | None = None
             if resuming:
-                answers = answer(conversation.pending_interrupts, body.resume or [])
+                answers = answer(conversation.pending_interrupts, body.resume or [], conversation.approvals_expire_at)
             elif conversation.pending_interrupts is not None:
                 raise errors.interrupt_pending()
-            parent = conversation.active_run_id
             # A conversation never branches: a run continues the active run (ADR-0068).
-            if body.parent_run_id is not None and body.parent_run_id != parent:
+            if body.parent_run_id is not None and body.parent_run_id != conversation.active_run_id:
                 raise errors.conflict()
-            model = await _run_model(connection, conversation)
-            base, additional = await _instructions(connection, conversation)
-            await connection.execute(
-                text(
-                    "INSERT INTO runs (id, tenant_id, owner_id, conversation_id, parent_run_id, kind, status,"
-                    " connection_id, model_provider, model_name, last_event_seq, created_at)"
-                    " VALUES (:id, :tenant_id, :owner_id, :conversation, :parent, :kind, 'queued', :connection,"
-                    " :provider, :model, 0, now())"
-                ),
-                {
-                    "kind": "resume" if resuming else "message",
-                    "id": body.run_id,
-                    "tenant_id": identity.tenant_id,
-                    "owner_id": identity.user_id,
-                    "conversation": conversation_id,
-                    "parent": parent,
-                    "connection": model.id,
-                    "provider": urlsplit(str(model.base_url)).netloc,
-                    "model": model.model,
-                },
-            )
-            await connection.execute(
-                text(
-                    "UPDATE conversations SET active_run_id = :run, pending_interrupts = NULL,"
-                    " last_message_at = now(), updated_at = now() WHERE id = :id"
-                ),
-                {"run": body.run_id, "id": conversation_id},
+            workflow_input = await create_run(
+                connection,
+                identity,
+                conversation,
+                run_id=body.run_id,
+                answers=answers,
+                user_text=user_text,
+                attachments=attachments,
+                voice=body.voice,
             )
     except DBAPIError as error:
         if sqlstate(error) == UNIQUE_VIOLATION:
             # The run ID is taken by a run the user cannot see, or another run started meanwhile.
             raise errors.conflict() from None
         raise
-    workflow_input = RunWorkflowInput(
-        tenant_id=str(identity.tenant_id),
-        user_id=str(identity.user_id),
-        role=identity.role,
-        instance_admin=identity.instance_admin,
-        conversation_id=str(conversation_id),
-        run_id=str(body.run_id),
-        parent_run_id=None if parent is None else str(parent),
-        user_text=user_text,
-        connection_id=str(model.id),
-        model=model.model,
-        attachments=attachments,
-        reasoning=conversation.reasoning,
-        disabled_tools=list(conversation.disabled_tools),
-        base_instructions=base,
-        additional_instructions=additional,
-        temporary=conversation.temporary,
-        answers=answers,
-        voice=body.voice,
-    )
     try:
-        await durable.enqueue_async(
-            {
-                "queue_name": RUN_QUEUE,
-                "workflow_name": RUN_WORKFLOW,
-                "workflow_id": str(body.run_id),
-                # One run at a time per conversation (ADR-0034).
-                "queue_partition_key": str(conversation_id),
-                "app_version": APPLICATION_VERSION,
-            },
-            workflow_input.to_json(),
-        )
+        await enqueue(durable, workflow_input)
     except Exception:
-        # A run that never starts must not block its conversation (AGT-010).
-        async with transaction(engine, identity) as connection:
-            await connection.execute(
-                text(
-                    "UPDATE runs SET status = 'failed', error_code = 'internal.error', finished_at = now()"
-                    " WHERE id = :id AND status = 'queued'"
-                ),
-                {"id": body.run_id},
-            )
+        await fail_unqueued(engine, identity, body.run_id)
         raise
     return _streaming(durable, engine, identity, body.run_id, 0)
 

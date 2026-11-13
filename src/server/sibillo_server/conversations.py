@@ -39,9 +39,9 @@ router = APIRouter()
 
 CONVERSATION_COLUMNS = (
     "id, title, archived_at IS NOT NULL AS archived, temporary, active_run_id, connection_id, model, reasoning,"
-    " disabled_tools, base_instructions, additional_instructions, folder_id,"
+    " disabled_tools, allowed_web_and_commands, allowed_tools, base_instructions, additional_instructions, folder_id,"
     " pinned_at IS NOT NULL AS pinned, forked_from_conversation_id, forked_from_run_id, last_message_at,"
-    f" pending_interrupts, {CONVERSATION_PLAN}, created_at, updated_at, {CONVERSATION_COST}"
+    f" pending_interrupts, approvals_expire_at, {CONVERSATION_PLAN}, created_at, updated_at, {CONVERSATION_COST}"
 )
 ACTIVE_STATUSES = ("queued", "running")
 # The most of a model's stated reason a failed run's error repeats (MOD-015).
@@ -73,6 +73,7 @@ def conversation_response(row: Any) -> schemas.Conversation:
         else schemas.ModelChoiceOut(connection_id=row.connection_id, model=row.model),
         reasoning=row.reasoning,
         disabled_tools=list(row.disabled_tools),
+        allowances=schemas.Allowances(web_and_commands=row.allowed_web_and_commands, tools=list(row.allowed_tools)),
         base_instructions=row.base_instructions,
         additional_instructions=row.additional_instructions,
         folder_id=row.folder_id,
@@ -80,7 +81,7 @@ def conversation_response(row: Any) -> schemas.Conversation:
         forked_from=None
         if row.forked_from_conversation_id is None and row.forked_from_run_id is None
         else schemas.ForkedFrom(conversation_id=row.forked_from_conversation_id, run_id=row.forked_from_run_id),
-        interrupts=interrupts(row.pending_interrupts),
+        interrupts=interrupts(row.pending_interrupts, row.approvals_expire_at),
         plan=[schemas.PlanStep(**step) for step in plan_steps(row.plan)],
         cost=money(row.cost),
         last_message_at=row.last_message_at,
@@ -213,9 +214,16 @@ async def update_conversation(
             raise errors.invalid("/model", "not_offered")
         if body.folder_id is not None and not await _owns_folder(connection, body.folder_id):
             raise errors.invalid("/folder_id", "not_a_folder")
-        for name in ("pinned", "reasoning", "disabled_tools"):
+        for name in ("pinned", "reasoning", "disabled_tools", "allowances"):
             if name in present and getattr(body, name) is None:
                 raise errors.invalid(f"/{name}", "null")
+        # Allowances are only withdrawn here; only an answered approval request creates one (AGT-006, AGT-012).
+        allowances = body.allowances
+        if allowances is not None and (
+            (allowances.web_and_commands and not conversation.allowed_web_and_commands)
+            or not set(allowances.tools) <= set(conversation.allowed_tools)
+        ):
+            raise errors.invalid("/allowances", "only_withdrawn")
         changes = {
             "title": body.title if "title" in present else None,
             "archived": body.archived if "archived" in present else None,
@@ -226,6 +234,8 @@ async def update_conversation(
             "pinned": body.pinned,
             "reasoning": body.reasoning,
             "disabled_tools": body.disabled_tools,
+            "allowed_web_and_commands": None if allowances is None else allowances.web_and_commands,
+            "allowed_tools": None if allowances is None else list(allowances.tools),
             # Present and null uses the user's defaults again (CNV-014).
             "set_base": "base_instructions" in present,
             "base_instructions": body.base_instructions,
@@ -246,6 +256,9 @@ async def update_conversation(
                     " WHEN CAST(:pinned AS boolean) THEN coalesce(pinned_at, now()) ELSE NULL END,"
                     " reasoning = coalesce(CAST(:reasoning AS text), reasoning),"
                     " disabled_tools = coalesce(CAST(:disabled_tools AS text[]), disabled_tools),"
+                    " allowed_web_and_commands = coalesce(CAST(:allowed_web_and_commands AS boolean),"
+                    " allowed_web_and_commands),"
+                    " allowed_tools = coalesce(CAST(:allowed_tools AS text[]), allowed_tools),"
                     " base_instructions = CASE WHEN CAST(:set_base AS boolean) THEN CAST(:base_instructions AS text)"
                     " ELSE base_instructions END,"
                     " additional_instructions = CASE WHEN CAST(:set_additional AS boolean)"
@@ -524,6 +537,28 @@ def _attached(messages: Sequence[Any]) -> tuple[str, list[dict[str, Any]]] | Non
     return None
 
 
+async def run_approvals(
+    connection: AsyncConnection, run_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[schemas.RunApproval]]:
+    """How the calls of each run that needed approval, or were refused, were decided (UX-023, ADR-0090)."""
+    rows = (
+        await connection.execute(
+            text(
+                "SELECT run_id, tool_call_id, outcome, scope, reason FROM audit_events"
+                " WHERE run_id = ANY(:ids) AND (reason IS NOT NULL OR outcome IN ('allowed', 'refused'))"
+                " ORDER BY created_at, id"
+            ),
+            {"ids": list(run_ids)},
+        )
+    ).all()
+    by_run: dict[uuid.UUID, list[schemas.RunApproval]] = {}
+    for row in rows:
+        by_run.setdefault(row.run_id, []).append(
+            schemas.RunApproval(tool_call_id=row.tool_call_id, outcome=row.outcome, scope=row.scope, reason=row.reason)
+        )
+    return by_run
+
+
 def message_id(run_id: uuid.UUID, position: int) -> uuid.UUID:
     """The ID of a run's message in history, from the run and its position in it (API-003)."""
     return uuid.uuid5(run_id, f"message-{position}")
@@ -550,6 +585,7 @@ async def list_messages(
             raise errors.not_found()
         stored = await stored_messages(connection, [run.id for run in path])
         costs = await run_costs(connection, [run.id for run in path])
+        decided = await run_approvals(connection, [run.id for run in path])
     flattened: list[tuple[Any, dict[str, Any]]] = []
     for run in path:
         model_messages = ModelMessagesTypeAdapter.validate_python(stored[run.id])
@@ -575,6 +611,7 @@ async def list_messages(
                     message_ids=[],
                     cost=costs[run.id],
                     error=run_error(run, stored[run.id]),
+                    approvals=decided.get(run.id, []),
                 )
             )
         runs[-1].message_ids.append(str(message["id"]))

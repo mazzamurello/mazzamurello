@@ -15,6 +15,7 @@ from sibillo_server import (
     costs,
     folders,
     health,
+    permissions,
     runs,
     settings,
     speech,
@@ -58,6 +59,7 @@ def create_app(configuration: ApiConfiguration) -> FastAPI:
     app.include_router(folders.router, prefix=API_PREFIX)
     app.include_router(costs.router, prefix=API_PREFIX)
     app.include_router(runs.router, prefix=API_PREFIX)
+    app.include_router(permissions.router, prefix=API_PREFIX)
     app.include_router(speech.router, prefix=API_PREFIX)
     app.include_router(workspace.router, prefix=API_PREFIX)
     app.include_router(health.router, prefix=API_PREFIX)

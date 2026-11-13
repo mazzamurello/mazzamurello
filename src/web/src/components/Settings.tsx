@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Check, Cloud, House, Palette, Plug, Plus, Users, X } from "lucide-react";
+import { Activity, Bot, Check, Cloud, House, Palette, Plug, Plus, ShieldCheck, Users, X } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,6 +10,7 @@ import { useNotify } from "../notices";
 import { type Theme, useTheme } from "../theme";
 import { AssistantSection } from "./AssistantSettings";
 import { ModelSelect } from "./ModelPicker";
+import { ActivitySection, ToolPermissionsSection } from "./ToolSettings";
 
 type SpeechSettings = Schemas["SpeechSettings"];
 
@@ -18,7 +19,7 @@ const BUTTON = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[
 const PRIMARY = "inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] bg-fg px-4 text-sm font-semibold text-bg disabled:opacity-50";
 const INPUT = "h-10 w-full rounded-[10px] border border-line-strong bg-bg px-3 outline-none focus:border-accent";
 
-type Tab = "models" | "assistant" | "appearance";
+type Tab = "models" | "permissions" | "assistant" | "activity" | "appearance";
 
 interface TabItem {
   id: Tab;
@@ -36,9 +37,15 @@ export function Settings({ me }: { me: User }) {
   const [tab, setTab] = useState<Tab>(admin ? "models" : "assistant");
   const yours: TabItem[] = [
     { id: "assistant", label: t("assistant.title"), icon: <Bot className="size-[18px]" aria-hidden="true" /> },
+    { id: "activity", label: t("activity.page.title"), icon: <Activity className="size-[18px]" aria-hidden="true" /> },
     { id: "appearance", label: t("settings.appearance"), icon: <Palette className="size-[18px]" aria-hidden="true" /> },
   ];
-  const household: TabItem[] = admin ? [{ id: "models", label: t("settings.models"), icon: <Plug className="size-[18px]" aria-hidden="true" /> }] : [];
+  const household: TabItem[] = admin
+    ? [
+        { id: "models", label: t("settings.models"), icon: <Plug className="size-[18px]" aria-hidden="true" /> },
+        { id: "permissions", label: t("permissions.title"), icon: <ShieldCheck className="size-[18px]" aria-hidden="true" /> },
+      ]
+    : [];
   return (
     <div className="relative min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto grid max-w-[900px] grid-cols-1 gap-[18px] px-4 pt-6 pb-14 md:grid-cols-[190px_minmax(0,1fr)] md:gap-9">
@@ -47,7 +54,19 @@ export function Settings({ me }: { me: User }) {
           <TabGroup title={t("settings.yours")} items={yours} tab={tab} onChoose={setTab} />
           {household.length > 0 && <TabGroup title={t("settings.household")} items={household} tab={tab} onChoose={setTab} />}
         </nav>
-        <div className="flex min-w-0 flex-col gap-[34px]">{tab === "models" && admin ? <ModelsSection /> : tab === "assistant" ? <AssistantSection /> : <AppearanceSection />}</div>
+        <div className="flex min-w-0 flex-col gap-[34px]">
+          {tab === "models" && admin ? (
+            <ModelsSection />
+          ) : tab === "permissions" && admin ? (
+            <ToolPermissionsSection />
+          ) : tab === "assistant" ? (
+            <AssistantSection />
+          ) : tab === "activity" ? (
+            <ActivitySection />
+          ) : (
+            <AppearanceSection />
+          )}
+        </div>
       </div>
     </div>
   );

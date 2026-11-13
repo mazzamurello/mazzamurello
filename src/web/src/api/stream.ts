@@ -68,7 +68,7 @@ export interface StartRun {
 export interface ResumeEntry {
   interruptId: string;
   status: "resolved" | "cancelled";
-  payload?: { answers: ({ header: string; selected: string[] } | { header: string; custom_answer: string })[] };
+  payload?: { answers: ({ header: string; selected: string[] } | { header: string; custom_answer: string })[] } | { approved: boolean; scope?: "once" | "turn" | "conversation" };
 }
 
 /** Start a run with one user message, and read its events. */
