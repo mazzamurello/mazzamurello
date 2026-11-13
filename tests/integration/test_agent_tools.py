@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
+from tests.support.approvals import approving
 from tests.support.database import Database, uuid7
 from tests.support.fixtures import HarnessModel
 from tests.support.runs import (
@@ -111,8 +112,9 @@ def test_large_tool_output_reaches_the_model_bounded_and_stays_in_the_scratch_fo
         f"runs:head -c {size} /dev/zero | tr '\\0' a"
         " ||| find /scratch -type f -size +50k | wc -l; find /workspace -type f -size +50k | wc -l"
     )
-    run_id, _ = start_run(server, token, conversation["id"], command)
-    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    # The second command reads the first's output, which is untrusted: it asks, and is approved (ADR-0090).
+    _, _, last_run = approving(server, token, conversation["id"], command)
+    assert wait_for_run(server, token, last_run)["status"] == "completed"
     (last,) = default_model.endpoint.requests_with(command)[-1:]
     first, second = [str(m.get("content", "")) for m in last.body.get("messages", []) if m.get("role") == "tool"]
     assert first.count("a") < size
@@ -355,3 +357,22 @@ def test_sandbox_commands_say_what_they_are_for(server: Server, token: str, defa
     history = messages(server, token, conversation["id"])["items"]
     calls = [c for message in history for c in message.get("toolCalls", []) if c["function"]["name"] == "run_command"]
     assert [json.loads(c["function"]["arguments"])["description"] for c in calls] == ["Saying hello"]
+
+
+@pytest.mark.spec("AGT-008")
+def test_a_call_that_may_have_run_twice_after_a_crash_says_so(
+    server: Server, token: str, default_model: HarnessModel
+) -> None:
+    conversation = create_conversation(server, token)
+    marker = f"marker-{uuid7()}"
+    # The worker dies while the command runs; the run is replayed, and the command runs again.
+    run_id, events = start_run(server, token, conversation["id"], f"run:sleep 3; echo {marker}", stop_after=4)
+    assert any(event.type == "TOOL_CALL_START" for event in events), [event.type for event in events]
+    server.crash_and_restart_worker()
+    assert wait_for_run(server, token, run_id, timeout=120)["status"] in {"completed", "failed"}
+    with server.client(token) as client:
+        response = client.get("/me/activity", params={"conversation_id": conversation["id"], "tool": "run_command"})
+    assert response.status_code == 200, response.text
+    (event,) = body(response)["items"]
+    assert event["run_id"] == run_id
+    assert event["repeated"] is True

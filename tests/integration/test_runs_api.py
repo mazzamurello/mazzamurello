@@ -107,6 +107,8 @@ def test_history_is_served_as_ag_ui_messages(server: Server, token: str) -> None
             "cost": [{"amount": "0", "currency": "USD"}],
             # A run that did not fail has no error (UX-014).
             "error": None,
+            # Nor calls that needed approval (UX-023).
+            "approvals": [],
         }
     ]
 

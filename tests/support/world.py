@@ -30,6 +30,7 @@ KEY_COLUMNS: dict[str, tuple[str, ...]] = {
     "runs": ("id",),
     "conversation_messages": ("run_id", "seq"),
     "usage_ledger": ("id",),
+    "audit_events": ("id",),
 }
 
 
@@ -69,7 +70,7 @@ def create_tenant(conn: psycopg.Connection) -> uuid.UUID:
 
 
 def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> User:
-    user_id, conversation_id, run_id, session_id, ledger_id, folder_id = (uuid7() for _ in range(6))
+    user_id, conversation_id, run_id, session_id, ledger_id, folder_id, audit_id = (uuid7() for _ in range(7))
     username, token_hash = f"user-{user_id}", user_id.bytes * 2
     conn.execute(
         "INSERT INTO users (id, tenant_id, username, display_name, password_hash, role, instance_admin, created_at)"
@@ -121,6 +122,16 @@ def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> Us
         " price_source, created_at) VALUES (%s, %s, %s, %s, %s, 'run', 'test', 'test-model', 'free', now())",
         (ledger_id, tenant_id, user_id, conversation_id, run_id),
     )
+    conn.execute(
+        "INSERT INTO tool_permissions (tenant_id, user_id, subject_kind, subject, setting, updated_at)"
+        " VALUES (%s, %s, 'tool', 'web_search', 'ask', now())",
+        (tenant_id, user_id),
+    )
+    conn.execute(
+        "INSERT INTO audit_events (id, tenant_id, owner_id, conversation_id, run_id, tool_call_id, tool, outcome,"
+        " created_at) VALUES (%s, %s, %s, %s, %s, 'call-1', 'web_search', 'not_needed', now())",
+        (audit_id, tenant_id, user_id, conversation_id, run_id),
+    )
     rows: dict[str, tuple[object, ...]] = {
         "device_sessions": (session_id,),
         "folders": (folder_id,),
@@ -131,6 +142,7 @@ def create_user(conn: psycopg.Connection, tenant_id: uuid.UUID, role: str) -> Us
         "runs": (run_id,),
         "conversation_messages": (run_id, 1),
         "usage_ledger": (ledger_id,),
+        "audit_events": (audit_id,),
     }
     assert set(rows) == set(PRIVATE_TABLES)
     return User(user_id, tenant_id, username, role, token_hash, conversation_id, run_id, rows)

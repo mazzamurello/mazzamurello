@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from tests.support.accounts import Account, assert_problem, body, create_account, create_tenant, login
+from tests.support.approvals import approving
 from tests.support.database import Database
 from tests.support.fixtures import HarnessModel
 from tests.support.runs import create_conversation, messages, replay, start_run, text_of, wait_for_run
@@ -77,10 +78,11 @@ def test_rewinding_leaves_the_workspace_alone(server: Server, token: str) -> Non
     name, before, after = f"rewind-{secrets.token_hex(4)}.txt", secrets.token_hex(6), secrets.token_hex(6)
     # In the workspace, which outlives the answers that use it (ADR-0078).
     first, _ = start_run(server, token, conversation["id"], f"run:echo {before} > /workspace/{name}")
-    start_run(server, token, conversation["id"], f"run:echo {after} > /workspace/{name}")
+    # Later commands follow the first's output, which is untrusted: they ask, and are approved (ADR-0090).
+    approving(server, token, conversation["id"], f"run:echo {after} > /workspace/{name}")
     assert _rewind(server, token, conversation["id"], first).status_code == 200
-    run_id, events = start_run(server, token, conversation["id"], f"run:cat /workspace/{name}")
-    assert wait_for_run(server, token, run_id)["status"] == "completed"
+    _, events, last = approving(server, token, conversation["id"], f"run:cat /workspace/{name}")
+    assert wait_for_run(server, token, last)["status"] == "completed"
     assert after in text_of(events), "rewinding changed a file of the workspace"
 
 
@@ -139,7 +141,7 @@ def test_history_no_longer_describes_versions(server: Server, token: str) -> Non
     conversation = create_conversation(server, token)
     start_run(server, token, conversation["id"], "plain")
     (run,) = messages(server, token, conversation["id"])["runs"]
-    assert set(run) == {"run_id", "parent_run_id", "kind", "message_ids", "cost", "error"}
+    assert set(run) == {"run_id", "parent_run_id", "kind", "message_ids", "cost", "error", "approvals"}
     # The active run is no longer set by updating the conversation.
     with server.client(token) as client:
         response = client.patch(f"/conversations/{conversation['id']}", json={"active_run_id": None})

@@ -30,6 +30,9 @@ ALLOWED_CAPABILITIES = {
     "pydantic_ai_harness.ask_user._capability.AskUser",
     "pydantic_ai_harness.planning._capability.Planning",
     "pydantic_ai.durable_exec.dbos._durability.DBOSDurability",
+    # Tool permissions, approvals and audit events: it takes tools away, ends the run to ask, and records
+    # each call (AGT-002, AGT-004, AGT-006, AGT-008, ADR-0090).
+    "sibillo_server.approvals.Approvals",
 }
 # Tools the provider runs: only the search over the agent's own tools.
 ALLOWED_NATIVE_TOOLS = {"tool_search"}

@@ -9,11 +9,12 @@ from tests.support.database import CONTRACT_TABLES, SECURITY_DEFINER_FUNCTIONS, 
 from tests.support.world import World
 
 # Security-definer functions sibillo_app may call: the pre-authentication ones, and
-# the retention lookup of the worker (ADR-0052).
+# the lookups of the worker's sweeps (ADR-0052, ADR-0082, ADR-0090).
 PRE_AUTHENTICATION_FUNCTIONS = (
     *(name for name in SECURITY_DEFINER_FUNCTIONS if name.startswith("auth_")),
     "retention_expired_runs",
     "expired_temporary_conversations",
+    "expired_approvals",
     "default_model_configured",
 )
 

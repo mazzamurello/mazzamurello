@@ -204,7 +204,12 @@ def start_server(config: pytest.Config, database: Database, sandbox_driver: tupl
         api = Process("api", api_environment, command="api")
         config.add_cleanup(api.close)
         # Temporary conversations are swept every second, so that their tests need not wait (ADR-0082).
-        worker_environment = {"SIBILLO_SEARCH_URL": search_url, "SIBILLO_TEMPORARY_SWEEP_SECONDS": "1"}
+        # So are expired approval requests, so that their tests need not wait either (ADR-0090).
+        worker_environment = {
+            "SIBILLO_SEARCH_URL": search_url,
+            "SIBILLO_TEMPORARY_SWEEP_SECONDS": "1",
+            "SIBILLO_APPROVAL_SWEEP_SECONDS": "1",
+        }
         worker = Process("worker", base | shared | worker_environment, command="worker")
         config.add_cleanup(worker.close)
         server = Server(

@@ -124,6 +124,12 @@ def _new_row(table: str, owner: User) -> tuple[LiteralString, tuple[Any, ...]]:
                 " created_at) VALUES (%s, %s, %s, 'run', 'test', 'test-model', 'free', now())",
                 (uuid7(), tenant, user),
             )
+        case "audit_events":
+            return (
+                "INSERT INTO audit_events (id, tenant_id, owner_id, conversation_id, run_id, tool_call_id, tool,"
+                " outcome, created_at) VALUES (%s, %s, %s, %s, %s, 'intruder', 'web_search', 'not_needed', now())",
+                (uuid7(), tenant, user, owner.conversation_id, owner.run_id),
+            )
         case _:
             raise AssertionError(f"no row builder for {table}")
 

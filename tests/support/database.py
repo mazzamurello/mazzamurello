@@ -38,11 +38,12 @@ PRIVATE_TABLES = (
     "compaction_checkpoints",
     "runs",
     "usage_ledger",
+    "audit_events",
 )
 # Configuration of the instance, without a tenant.
 INSTANCE_TABLES = ("tenants",)
 # Tables of a tenant that are not private to one user (ADR-0069).
-TENANT_TABLES = ("users", "connections", "connection_models")
+TENANT_TABLES = ("users", "connections", "connection_models", "tool_permissions")
 CONTRACT_TABLES = ("tenants", "login_attempts", *TENANT_TABLES, *PRIVATE_TABLES)
 # Column holding the owning user of each private table.
 OWNER_COLUMN = {table: "user_id" if table == "device_sessions" else "owner_id" for table in PRIVATE_TABLES}
@@ -59,6 +60,7 @@ SECURITY_DEFINER_FUNCTIONS = (
     "revoke_sessions_of_disabled_user",
     "retention_expired_runs",
     "expired_temporary_conversations",
+    "expired_approvals",
     "default_model_configured",
 )
 

@@ -18,6 +18,9 @@ last user message:
   the request does not offer it;
 - `say:<text> ||| tool:<name> <arguments>` says `<text>`, then calls the tool
   in the same answer, as `tool:` does (UX-003);
+- `chain:<name> <arguments> >>> <name> <arguments> …` calls each tool in
+  turn, one per answer, each once the result of the one before has arrived,
+  then answers `Tool said: <last result>` (ADR-0090);
 - `think:<text>` streams `Thinking: <text>` as the model's reasoning, then
   `Echo: <message>` (CNV-013);
 - `think-run:<command>` reasons `Planning: <command>` and calls the command
@@ -350,6 +353,9 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 name, _, arguments = call.partition(" ")
                 self._named_tool_turn(body, name, arguments or "{}", said)
                 return
+            if last.startswith("chain:"):
+                self._chained_turns(body, last.removeprefix("chain:").split(" >>> "))
+                return
             if last.startswith("tool:"):
                 name, _, arguments = last.removeprefix("tool:").partition(" ")
                 self._named_tool_turn(body, name, arguments or "{}")
@@ -465,6 +471,18 @@ def _handler(model: ModelServer) -> type[BaseHTTPRequestHandler]:
                 return
             name, argument = _command_tool(cast(list[dict[str, Any]], body.get("tools", [])))
             self._call(body, name, json.dumps({argument: commands[done]}))
+
+        def _chained_turns(self, body: dict[str, Any], calls: list[str]) -> None:
+            messages = cast(list[dict[str, Any]], body.get("messages", []))
+            # The tool results of this answer: those after the last user message.
+            users = [index for index, message in enumerate(messages) if message.get("role") == "user"]
+            done = sum(1 for message in messages[(users[-1] if users else -1) + 1 :] if message.get("role") == "tool")
+            if done >= len(calls):
+                result = str(messages[-1].get("content", ""))
+                self._answer(body, [(f"Tool said: {result[:2000]}", 0.0)])
+                return
+            name, _, arguments = calls[done].partition(" ")
+            self._call(body, name, arguments or "{}")
 
         def _named_tool_turn(self, body: dict[str, Any], name: str, arguments: str, said: str = "") -> None:
             messages = cast(list[dict[str, Any]], body.get("messages", []))

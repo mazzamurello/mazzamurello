@@ -49,6 +49,12 @@ GRANTS: dict[str, dict[str, Columns]] = {
     "usage_ledger": {"SELECT": EVERY, "INSERT": EVERY},
     "connections": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
     "connection_models": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
+    "tool_permissions": {"SELECT": EVERY, "INSERT": EVERY, "UPDATE": EVERY, "DELETE": EVERY},
+    "audit_events": {
+        "SELECT": EVERY,
+        "INSERT": EVERY,
+        "UPDATE": Columns(only=("outcome", "scope", "reason", "attempts")),
+    },
 }
 EXECUTABLE_FUNCTIONS = {
     "app_tenant_id()",
@@ -61,6 +67,7 @@ EXECUTABLE_FUNCTIONS = {
     "auth_record_login_attempt(text, inet, boolean)",
     "retention_expired_runs(integer)",
     "expired_temporary_conversations(integer)",
+    "expired_approvals()",
     "default_model_configured()",
 }
 
