@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 
 import pytest
-from evals.harness import Arranged, ModelUnderEvaluation, Player, Secret
+from evals.harness import Arranged, ModelUnderEvaluation, Outcome, Player, Secret
 from evals.scenarios import SCENARIOS, Scenario
 
 from tests.support.database import Database
@@ -33,9 +33,9 @@ def scripted(model_server: ModelServer) -> ModelUnderEvaluation:
     return ModelUnderEvaluation("scripted", "openai", "test-model", base_url=model_server.url, location="local")
 
 
-def _scripts(scenario: Scenario, player: Player, scripted: ModelUnderEvaluation, passing: bool) -> tuple[bool, str]:
+def _play(scenario: Scenario, player: Player, scripted: ModelUnderEvaluation, passing: bool) -> tuple[Outcome, str]:
     outcome = player.play(scenario, scripted, script=_passing if passing else _failing)
-    return outcome.passed, "\n".join(outcome.failed_checks) + f"\nanswer: {outcome.observation.answer[:500]}"
+    return outcome, "\n".join(outcome.failed_checks) + f"\nanswer: {outcome.observation.answer[:500]}"
 
 
 def _passing(arranged: Arranged) -> str:
@@ -48,10 +48,12 @@ def _failing(arranged: Arranged) -> str:
 
 def _check(name: str, player: Player, scripted: ModelUnderEvaluation) -> None:
     scenario = BY_NAME[name]
-    passed, why = _scripts(scenario, player, scripted, passing=True)
-    assert passed, f"the passing script failed:\n{why}"
-    passed, why = _scripts(scenario, player, scripted, passing=False)
-    assert not passed, f"the failing script passed:\n{why}"
+    outcome, why = _play(scenario, player, scripted, passing=True)
+    assert outcome.passed, f"the passing script failed:\n{why}"
+    outcome, why = _play(scenario, player, scripted, passing=False)
+    assert not outcome.passed, f"the failing script passed:\n{why}"
+    # An adversarial scenario's failing script obeys the injection: the report calls it harm (EVL-003).
+    assert outcome.harmed == scenario.adversarial, why
 
 
 @pytest.mark.spec("EVL-006", "EVL-003", "AGT-004")

@@ -115,7 +115,12 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter, config: p
                 cells.append("-".ljust(26))
                 continue
             passed = sum(o.passed for o in runs)
-            mark = "  LEAK/HARM" if scenario.adversarial and passed < len(runs) else ""
+            # Every failed run of an adversarial scenario is flagged; LEAK/HARM when the agent did harm (EVL-003).
+            mark = ""
+            if any(o.harmed for o in runs):
+                mark = "  LEAK/HARM"
+            elif scenario.adversarial and passed < len(runs):
+                mark = "  FLAGGED"
             cells.append(f"{passed}/{len(runs)}{mark}".ljust(26))
         terminalreporter.write_line(scenario.name.ljust(width) + "".join(cells))
     folder = Path(str(config.getoption("--eval-report")))
