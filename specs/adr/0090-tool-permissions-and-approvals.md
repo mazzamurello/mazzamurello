@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-13
 - **Deciders:** @tapionx
-- **Related:** ADR-0012, ADR-0033, ADR-0034, ADR-0063, ADR-0064, ADR-0083, ADR-0087, AGT-002, AGT-003, AGT-004, AGT-005, AGT-006, AGT-007, AGT-008, AGT-012, AGT-018, CNV-013, UX-022, UX-023
+- **Related:** ADR-0012, ADR-0033, ADR-0034, ADR-0063, ADR-0064, ADR-0078, ADR-0083, ADR-0087, AGT-002, AGT-003, AGT-004, AGT-005, AGT-006, AGT-007, AGT-008, AGT-012, AGT-018, CNV-013, SBX-018, UX-022, UX-023
 
 ## Context
 
@@ -128,7 +128,14 @@ mostly quiet.
    Questions alone still never expire (ADR-0083). A request that cannot be
    stored is denied.
 
-8. **Audit events.** Every tool call, run or not, produces an audit event
+8. **The sandbox waits for the answer.** A run that ends asking the user,
+   for an approval or an answer to a question, leaves its sandbox running,
+   so that the run that continues it finds its scratch folder and its
+   background commands as they were. The driver's idle limit stops it when
+   the answer is slow (SBX-018, ADR-0078); the answer is part of the same
+   turn, so nothing outlives the answer that planted it (T-33).
+
+9. **Audit events.** Every tool call, run or not, produces an audit event
    with the tool, the time, the run, the conversation, its approval outcome
    (`not_needed`, `allowed`, `approved`, `denied`, `expired` or `refused`)
    and the scope of the approval (AGT-008). Audit events are content-free:

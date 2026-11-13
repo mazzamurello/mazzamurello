@@ -215,8 +215,11 @@ When a sandbox stops, for inactivity or on request, its container MUST be
 removed, so that the next command runs in a new one from the sandbox image:
 processes, installed software and every file outside `/workspace` are gone.
 Commands MUST start in a scratch folder, `/scratch`, outside the workspace
-(ADR-0076). A sandbox MUST be stopped when the run it serves ends, and the
-driver MUST stop every sandbox when it starts (ADR-0078).
+(ADR-0076). A sandbox MUST be stopped when the run it serves ends, unless
+the run ends asking the user for an answer or an approval: the run that
+continues it with the answer then finds the sandbox as it was, until the
+driver's idle limit stops it (ADR-0090). The driver MUST stop every sandbox
+when it starts (ADR-0078).
 
 Rationale: anything planted outside the workspace must not outlive the
 answer that planted it (T-33), and only what was deliberately kept is
